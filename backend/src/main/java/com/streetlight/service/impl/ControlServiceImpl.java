@@ -3,8 +3,6 @@ package com.streetlight.service.impl;
 import com.streetlight.common.BusinessException;
 import com.streetlight.entity.ControlLog;
 import com.streetlight.entity.Device;
-import com.streetlight.enums.ControlMode;
-import com.streetlight.enums.LightStatus;
 import com.streetlight.mqtt.MqttPublishService;
 import com.streetlight.repository.ControlLogRepository;
 import com.streetlight.repository.DeviceRepository;
@@ -45,7 +43,7 @@ public class ControlServiceImpl implements ControlService {
         }
         if ("success".equals(result)) {
             deviceRepository.findByDeviceId(deviceId).ifPresent(d -> {
-                d.setLightStatus("on".equals(command) ? LightStatus.ON : LightStatus.OFF);
+                d.setLightStatus(command);
                 deviceRepository.save(d);
             });
         }
@@ -56,7 +54,7 @@ public class ControlServiceImpl implements ControlService {
     public void setControlMode(Long id, String mode) {
         Device d = deviceRepository.findById(id)
                 .orElseThrow(() -> new BusinessException("设备不存在, id=" + id));
-        d.setControlMode(ControlMode.valueOf(mode.toUpperCase()));
+        d.setControlMode(mode.toLowerCase());
         deviceRepository.save(d);
         log.info("切换控制模式: id={}, mode={}", id, mode);
     }

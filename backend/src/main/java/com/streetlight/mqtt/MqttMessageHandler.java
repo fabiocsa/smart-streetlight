@@ -7,9 +7,12 @@ import com.streetlight.service.ControlService;
 import com.streetlight.service.SensorDataService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.eclipse.paho.client.mqttv3.IMqttDeliveryToken;
-import org.eclipse.paho.client.mqttv3.MqttCallback;
-import org.eclipse.paho.client.mqttv3.MqttMessage;
+import org.eclipse.paho.mqttv5.client.MqttCallback;
+import org.eclipse.paho.mqttv5.client.MqttDisconnectResponse;
+import org.eclipse.paho.mqttv5.client.IMqttToken;
+import org.eclipse.paho.mqttv5.common.MqttException;
+import org.eclipse.paho.mqttv5.common.MqttMessage;
+import org.eclipse.paho.mqttv5.common.packet.MqttProperties;
 import org.springframework.stereotype.Component;
 
 import java.time.LocalDateTime;
@@ -24,8 +27,13 @@ public class MqttMessageHandler implements MqttCallback {
     private final ObjectMapper objectMapper = new ObjectMapper();
 
     @Override
-    public void connectionLost(Throwable cause) {
-        log.warn("MQTT连接断开: {}", cause.getMessage());
+    public void disconnected(MqttDisconnectResponse disconnectResponse) {
+        log.warn("MQTT连接断开: {}", disconnectResponse.getReasonString());
+    }
+
+    @Override
+    public void mqttErrorOccurred(MqttException exception) {
+        log.warn("MQTT错误: {}", exception.getMessage());
     }
 
     @Override
@@ -63,6 +71,15 @@ public class MqttMessageHandler implements MqttCallback {
     }
 
     @Override
-    public void deliveryComplete(IMqttDeliveryToken token) {
+    public void deliveryComplete(IMqttToken token) {
+    }
+
+    @Override
+    public void connectComplete(boolean reconnect, String serverURI) {
+        log.info("MQTT连接完成: reconnect={}, server={}", reconnect, serverURI);
+    }
+
+    @Override
+    public void authPacketArrived(int reasonCode, MqttProperties properties) {
     }
 }

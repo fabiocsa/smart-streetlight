@@ -17,9 +17,9 @@ public class DashboardService {
         var devices = deviceService.getAllDevices();
 
         long totalDevices = devices.size();
-        long onlineDevices = devices.stream().filter(d -> d.getStatus().name().equals("ONLINE")).count();
+        long onlineDevices = devices.stream().filter(d -> "online".equals(d.getStatus())).count();
         long offlineDevices = totalDevices - onlineDevices;
-        long lightsOn = devices.stream().filter(d -> d.getLightStatus().name().equals("ON")).count();
+        long lightsOn = devices.stream().filter(d -> "on".equals(d.getLightStatus())).count();
         long lightsOff = totalDevices - lightsOn;
         long pendingAlarms = alarmService.countPendingAlarms();
         long todayAlarms = alarmService.countTodayAlarms();

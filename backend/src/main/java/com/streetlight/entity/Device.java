@@ -1,8 +1,6 @@
 package com.streetlight.entity;
 
 import com.streetlight.enums.DeviceStatus;
-import com.streetlight.enums.LightStatus;
-import com.streetlight.enums.ControlMode;
 import jakarta.persistence.*;
 import lombok.*;
 import org.hibernate.annotations.CreationTimestamp;
@@ -28,10 +26,9 @@ public class Device {
     @Column(name = "device_id", nullable = false, unique = true, length = 50)
     private String deviceId;
 
-    @Enumerated(EnumType.STRING)
     @Column(nullable = false, length = 20)
     @Builder.Default
-    private DeviceStatus status = DeviceStatus.OFFLINE;
+    private String status = "offline";
 
     @Column(name = "threshold_on", nullable = false)
     @Builder.Default
@@ -41,10 +38,9 @@ public class Device {
     @Builder.Default
     private Double thresholdOff = 100.0;
 
-    @Enumerated(EnumType.STRING)
     @Column(name = "light_status", nullable = false, length = 10)
     @Builder.Default
-    private LightStatus lightStatus = LightStatus.OFF;
+    private String lightStatus = "off";
 
     @Column(name = "control_mode", nullable = false, length = 10)
     @Builder.Default

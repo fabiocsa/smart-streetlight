@@ -3,8 +3,6 @@ package com.streetlight.service.impl;
 import com.streetlight.entity.SensorData;
 import com.streetlight.entity.Device;
 import com.streetlight.enums.DeviceStatus;
-import com.streetlight.enums.LightStatus;
-import com.streetlight.enums.ControlMode;
 import com.streetlight.mqtt.MqttPublishService;
 import com.streetlight.repository.DeviceRepository;
 import com.streetlight.repository.SensorDataRepository;
@@ -39,20 +37,20 @@ public class SensorDataServiceImpl implements SensorDataService {
         sensorDataRepository.save(data);
 
         deviceRepository.findByDeviceId(deviceId).ifPresent(device -> {
-            boolean wasOffline = device.getStatus() == DeviceStatus.OFFLINE;
+            boolean wasOffline = "offline".equals(device.getStatus());
             device.setLastHeartbeat(LocalDateTime.now());
             if (wasOffline) {
-                device.setStatus(DeviceStatus.ONLINE);
+                device.setStatus("online");
                 alarmService.autoResolveOfflineAlarm(deviceId);
                 log.info("设备恢复在线: deviceId={}", deviceId);
             }
             deviceRepository.save(device);
 
-            if (device.getControlMode() == ControlMode.AUTO) {
+            if ("auto".equals(device.getControlMode())) {
                 String cmd = null;
-                if (device.getLightStatus() == LightStatus.OFF && lightIntensity < device.getThresholdOn()) {
+                if ("off".equals(device.getLightStatus()) && lightIntensity < device.getThresholdOn()) {
                     cmd = "on";
-                } else if (device.getLightStatus() == LightStatus.ON && lightIntensity > device.getThresholdOff()) {
+                } else if ("on".equals(device.getLightStatus()) && lightIntensity > device.getThresholdOff()) {
                     cmd = "off";
                 }
                 if (cmd != null) {

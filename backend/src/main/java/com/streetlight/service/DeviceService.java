@@ -2,8 +2,6 @@ package com.streetlight.service;
 
 import com.streetlight.entity.Device;
 import com.streetlight.enums.DeviceStatus;
-import com.streetlight.enums.LightStatus;
-import com.streetlight.enums.ControlMode;
 import com.streetlight.repository.DeviceRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
@@ -33,9 +31,9 @@ public class DeviceService {
 
     @Transactional
     public Device addDevice(Device device) {
-        device.setStatus(DeviceStatus.OFFLINE);
-        device.setLightStatus(LightStatus.OFF);
-        device.setControlMode(ControlMode.AUTO);
+        device.setStatus("offline");
+        device.setLightStatus("off");
+        device.setControlMode("auto");
         return deviceRepository.save(device);
     }
 
@@ -57,12 +55,12 @@ public class DeviceService {
     public void updateHeartbeat(String deviceId) {
         deviceRepository.findByDeviceId(deviceId).ifPresent(device -> {
             device.setLastHeartbeat(LocalDateTime.now());
-            device.setStatus(DeviceStatus.ONLINE);
+            device.setStatus("online");
             deviceRepository.save(device);
         });
     }
 
     public List<Device> getDevicesByStatus(String status) {
-        return deviceRepository.findByStatus(DeviceStatus.valueOf(status.toUpperCase()));
+        return deviceRepository.findByStatus(status.toLowerCase());
     }
 }

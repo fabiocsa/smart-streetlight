@@ -27,13 +27,13 @@ public class HeartbeatCheckTask {
 
     @Scheduled(fixedRate = 5000)
     public void checkHeartbeat() {
-        List<Device> onlineDevices = deviceRepository.findByStatus(DeviceStatus.ONLINE);
+        List<Device> onlineDevices = deviceRepository.findByStatus("online");
         LocalDateTime now = LocalDateTime.now();
         for (Device device : onlineDevices) {
             if (device.getLastHeartbeat() == null) continue;
             long secondsSinceHb = Duration.between(device.getLastHeartbeat(), now).getSeconds();
             if (secondsSinceHb > heartbeatTimeout) {
-                device.setStatus(DeviceStatus.OFFLINE);
+                device.setStatus("offline");
                 deviceRepository.save(device);
                 alarmService.createOfflineAlarm(device.getDeviceId());
                 log.warn("设备离线: deviceId={}, 已离线{}秒", device.getDeviceId(), secondsSinceHb);

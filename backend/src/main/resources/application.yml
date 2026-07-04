@@ -19,7 +19,7 @@ spring:
 
 mqtt:
   broker: tcp://10.18.39.100:1883
-  client-id: backend-server
+  client-id: backend-server-v1
   username: jieshou
   password: jieshou123
   topic-prefix: streetlight

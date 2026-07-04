@@ -1,9 +1,9 @@
 package com.streetlight.config;
 
-import org.eclipse.paho.client.mqttv3.MqttClient;
-import org.eclipse.paho.client.mqttv3.MqttConnectOptions;
-import org.eclipse.paho.client.mqttv3.MqttException;
-import org.eclipse.paho.client.mqttv3.persist.MemoryPersistence;
+import org.eclipse.paho.mqttv5.client.MqttClient;
+import org.eclipse.paho.mqttv5.client.MqttConnectionOptions;
+import org.eclipse.paho.mqttv5.common.MqttException;
+import org.eclipse.paho.mqttv5.client.persist.MemoryPersistence;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
@@ -32,9 +32,9 @@ public class MqttConfig {
     @Bean
     public MqttClient mqttClient() throws MqttException {
         MqttClient client = new MqttClient(broker, clientId, new MemoryPersistence());
-        MqttConnectOptions options = new MqttConnectOptions();
+        MqttConnectionOptions options = new MqttConnectionOptions();
         options.setAutomaticReconnect(true);
-        options.setCleanSession(true);
+        options.setCleanStart(true);
         options.setConnectionTimeout(connectionTimeout);
         options.setKeepAliveInterval(keepAliveInterval);
 
@@ -42,7 +42,7 @@ public class MqttConfig {
             options.setUserName(username);
         }
         if (!password.isBlank()) {
-            options.setPassword(password.toCharArray());
+            options.setPassword(password.getBytes());
         }
 
         client.connect(options);
@@ -50,10 +50,10 @@ public class MqttConfig {
     }
 
     @Bean
-    public MqttConnectOptions mqttConnectOptions() {
-        MqttConnectOptions options = new MqttConnectOptions();
+    public MqttConnectionOptions mqttConnectOptions() {
+        MqttConnectionOptions options = new MqttConnectionOptions();
         options.setAutomaticReconnect(true);
-        options.setCleanSession(true);
+        options.setCleanStart(true);
         options.setConnectionTimeout(connectionTimeout);
         options.setKeepAliveInterval(keepAliveInterval);
         return options;
