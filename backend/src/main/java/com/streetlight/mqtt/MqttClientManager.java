@@ -24,39 +24,13 @@ public class MqttClientManager {
     public void init() {
         try {
             mqttClient.setCallback(messageHandler);
-
-            // 订阅所有设备主题
             String sensorTopic = topicPrefix + "/+/sensor/data";
-            String statusTopic = topicPrefix + "/+/status";
             String responseTopic = topicPrefix + "/+/control/response";
-
             mqttClient.subscribe(sensorTopic, 1);
-            mqttClient.subscribe(statusTopic, 1);
             mqttClient.subscribe(responseTopic, 1);
-
-            log.info("MQTT已订阅主题: {}, {}, {}", sensorTopic, statusTopic, responseTopic);
+            log.info("MQTT已订阅主题: {}, {}", sensorTopic, responseTopic);
         } catch (MqttException e) {
             log.error("MQTT订阅失败: {}", e.getMessage(), e);
-        }
-    }
-
-    /**
-     * 发送控制指令到设备
-     */
-    public void publishControl(String deviceId, String command, String source) {
-        String topic = topicPrefix + "/" + deviceId + "/control";
-        String payload = String.format(
-                "{\"command\":\"%s\",\"source\":\"%s\",\"timestamp\":\"%s\"}",
-                command, source, java.time.LocalDateTime.now().toString());
-        publish(topic, payload);
-    }
-
-    private void publish(String topic, String payload) {
-        try {
-            mqttClient.publish(topic, payload.getBytes(), 1, false);
-            log.info("MQTT发布 - topic: {}, payload: {}", topic, payload);
-        } catch (MqttException e) {
-            log.error("MQTT发布失败 - topic: {}: {}", topic, e.getMessage(), e);
         }
     }
 }

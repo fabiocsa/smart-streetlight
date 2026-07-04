@@ -1,7 +1,13 @@
 package com.streetlight.entity;
 
+import com.streetlight.enums.DeviceStatus;
+import com.streetlight.enums.LightStatus;
+import com.streetlight.enums.ControlMode;
 import jakarta.persistence.*;
 import lombok.*;
+import org.hibernate.annotations.CreationTimestamp;
+import org.hibernate.annotations.UpdateTimestamp;
+
 import java.time.LocalDateTime;
 
 @Entity
@@ -22,9 +28,10 @@ public class Device {
     @Column(name = "device_id", nullable = false, unique = true, length = 50)
     private String deviceId;
 
+    @Enumerated(EnumType.STRING)
     @Column(nullable = false, length = 20)
     @Builder.Default
-    private String status = "offline";
+    private DeviceStatus status = DeviceStatus.OFFLINE;
 
     @Column(name = "threshold_on", nullable = false)
     @Builder.Default
@@ -34,13 +41,15 @@ public class Device {
     @Builder.Default
     private Double thresholdOff = 100.0;
 
+    @Enumerated(EnumType.STRING)
     @Column(name = "light_status", nullable = false, length = 10)
     @Builder.Default
-    private String lightStatus = "off";
+    private LightStatus lightStatus = LightStatus.OFF;
 
+    @Enumerated(EnumType.STRING)
     @Column(name = "control_mode", nullable = false, length = 10)
     @Builder.Default
-    private String controlMode = "auto";
+    private ControlMode controlMode = ControlMode.AUTO;
 
     @Column(length = 200)
     private String location;
@@ -48,20 +57,11 @@ public class Device {
     @Column(name = "last_heartbeat")
     private LocalDateTime lastHeartbeat;
 
+    @CreationTimestamp
     @Column(name = "created_at", updatable = false)
     private LocalDateTime createdAt;
 
+    @UpdateTimestamp
     @Column(name = "updated_at")
     private LocalDateTime updatedAt;
-
-    @PrePersist
-    protected void onCreate() {
-        createdAt = LocalDateTime.now();
-        updatedAt = LocalDateTime.now();
-    }
-
-    @PreUpdate
-    protected void onUpdate() {
-        updatedAt = LocalDateTime.now();
-    }
 }

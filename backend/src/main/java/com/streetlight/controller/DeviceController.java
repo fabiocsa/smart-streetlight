@@ -45,21 +45,4 @@ public class DeviceController {
         deviceService.deleteDevice(id);
         return ResponseEntity.noContent().build();
     }
-
-    @PutMapping("/{id}/control-mode")
-    public ResponseEntity<Device> setControlMode(
-            @PathVariable Long id, @RequestBody ControlModeRequest request) {
-        Device updated = deviceService.updateControlMode(id, request.controlMode());
-        return ResponseEntity.ok(updated);
-    }
-
-    @PutMapping("/{id}/threshold")
-    public ResponseEntity<Device> setThreshold(
-            @PathVariable Long id, @RequestBody ThresholdRequest request) {
-        Device updated = deviceService.updateThreshold(id, request.thresholdOn(), request.thresholdOff());
-        return ResponseEntity.ok(updated);
-    }
-
-    public record ControlModeRequest(String controlMode) {}
-    public record ThresholdRequest(Double thresholdOn, Double thresholdOff) {}
 }

@@ -1,6 +1,9 @@
 package com.streetlight.service;
 
 import com.streetlight.entity.Device;
+import com.streetlight.enums.DeviceStatus;
+import com.streetlight.enums.LightStatus;
+import com.streetlight.enums.ControlMode;
 import com.streetlight.repository.DeviceRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
@@ -30,9 +33,9 @@ public class DeviceService {
 
     @Transactional
     public Device addDevice(Device device) {
-        device.setStatus("offline");
-        device.setLightStatus("off");
-        device.setControlMode("auto");
+        device.setStatus(DeviceStatus.OFFLINE);
+        device.setLightStatus(LightStatus.OFF);
+        device.setControlMode(ControlMode.AUTO);
         return deviceRepository.save(device);
     }
 
@@ -51,40 +54,15 @@ public class DeviceService {
     }
 
     @Transactional
-    public Device updateThreshold(Long id, Double thresholdOn, Double thresholdOff) {
-        return deviceRepository.findById(id).map(device -> {
-            device.setThresholdOn(thresholdOn);
-            device.setThresholdOff(thresholdOff);
-            return deviceRepository.save(device);
-        }).orElseThrow(() -> new RuntimeException("设备不存在, id=" + id));
-    }
-
-    @Transactional
-    public Device updateControlMode(Long id, String controlMode) {
-        return deviceRepository.findById(id).map(device -> {
-            device.setControlMode(controlMode);
-            return deviceRepository.save(device);
-        }).orElseThrow(() -> new RuntimeException("设备不存在, id=" + id));
-    }
-
-    @Transactional
     public void updateHeartbeat(String deviceId) {
         deviceRepository.findByDeviceId(deviceId).ifPresent(device -> {
             device.setLastHeartbeat(LocalDateTime.now());
-            device.setStatus("online");
+            device.setStatus(DeviceStatus.ONLINE);
             deviceRepository.save(device);
         });
     }
 
     public List<Device> getDevicesByStatus(String status) {
-        return deviceRepository.findByStatus(status);
-    }
-
-    @Transactional
-    public void updateLightStatus(String deviceId, String lightStatus) {
-        deviceRepository.findByDeviceId(deviceId).ifPresent(device -> {
-            device.setLightStatus(lightStatus);
-            deviceRepository.save(device);
-        });
+        return deviceRepository.findByStatus(DeviceStatus.valueOf(status.toUpperCase()));
     }
 }

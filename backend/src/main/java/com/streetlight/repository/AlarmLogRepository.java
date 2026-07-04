@@ -1,6 +1,8 @@
 package com.streetlight.repository;
 
 import com.streetlight.entity.AlarmLog;
+import com.streetlight.enums.AlarmStatus;
+import com.streetlight.enums.AlarmType;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
@@ -12,17 +14,17 @@ import java.util.List;
 @Repository
 public interface AlarmLogRepository extends JpaRepository<AlarmLog, Long> {
 
-    List<AlarmLog> findByDeviceIdOrderByCreatedAtDesc(String deviceId);
+    Page<AlarmLog> findAll(Pageable pageable);
 
-    Page<AlarmLog> findByStatus(String status, Pageable pageable);
+    Page<AlarmLog> findByStatus(AlarmStatus status, Pageable pageable);
 
-    Page<AlarmLog> findByAlarmType(String alarmType, Pageable pageable);
+    Page<AlarmLog> findByAlarmType(AlarmType type, Pageable pageable);
 
-    Page<AlarmLog> findByStatusAndAlarmType(String status, String alarmType, Pageable pageable);
+    Page<AlarmLog> findByStatusAndAlarmType(AlarmStatus status, AlarmType type, Pageable pageable);
 
-    long countByStatus(String status);
+    List<AlarmLog> findByDeviceIdAndStatus(String deviceId, AlarmStatus status);
+
+    long countByStatus(AlarmStatus status);
 
     long countByCreatedAtBetween(LocalDateTime start, LocalDateTime end);
-
-    List<AlarmLog> findByDeviceIdAndStatus(String deviceId, String status);
 }
