@@ -21,7 +21,8 @@
       "Bash(timeout 5 bash -c 'echo > /dev/tcp/10.18.39.100/1883')",
       "Bash(taskkill //F //PID 30400)",
       "Bash(taskkill //F //PID 37392)",
-      "Bash(python3 -c \"import sys,json; d=json.load\\(sys.stdin\\); print\\(f'设备数: {len\\(d\\)}, 第一个: {d[0][\\\\\"name\\\\\"]} - {d[0][\\\\\"status\\\\\"]}'\\)\")"
+      "Bash(python3 -c \"import sys,json; d=json.load\\(sys.stdin\\); print\\(f'设备数: {len\\(d\\)}, 第一个: {d[0][\\\\\"name\\\\\"]} - {d[0][\\\\\"status\\\\\"]}'\\)\")",
+      "Bash(taskkill //F //PID 22320)"
     ]
   }
 }

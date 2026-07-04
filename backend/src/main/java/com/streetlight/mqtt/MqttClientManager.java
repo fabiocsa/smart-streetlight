@@ -24,8 +24,8 @@ public class MqttClientManager {
     public void init() {
         try {
             mqttClient.setCallback(messageHandler);
-            String sensorTopic = topicPrefix + "/+/sensor/data";
-            String responseTopic = topicPrefix + "/+/control/response";
+            String sensorTopic = "sensor/data";
+            String responseTopic = "control/response";
             mqttClient.subscribe(sensorTopic, 1);
             mqttClient.subscribe(responseTopic, 1);
             log.info("MQTT已订阅主题: {}, {}", sensorTopic, responseTopic);

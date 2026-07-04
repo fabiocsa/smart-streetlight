@@ -41,9 +41,9 @@ public class MqttMessageHandler implements MqttCallback {
         String payload = new String(message.getPayload());
         log.info("收到MQTT消息 - topic: {}, payload: {}", topic, payload);
         try {
-            if (topic.contains("/sensor/data")) {
+            if (topic.contains("sensor/data")) {
                 handleSensorData(payload);
-            } else if (topic.contains("/control/response")) {
+            } else if (topic.contains("control/response")) {
                 handleControlResponse(payload);
             }
         } catch (Exception e) {
@@ -54,10 +54,10 @@ public class MqttMessageHandler implements MqttCallback {
     private void handleSensorData(String payload) throws JsonProcessingException {
         JsonNode root = objectMapper.readTree(payload);
         String deviceId = root.get("deviceId").asText();
-        double lightIntensity = root.get("lightIntensity").asDouble();
+        double lightIntensity = root.get("illuminance").asDouble();
         LocalDateTime reportedAt = LocalDateTime.now();
         if (root.has("timestamp") && !root.get("timestamp").isNull()) {
-            reportedAt = LocalDateTime.parse(root.get("timestamp").asText().replace("Z", ""));
+            reportedAt = LocalDateTime.parse(root.get("timestamp").asText().replace("Z", "").replace(" ", "T"));
         }
         sensorDataService.saveAndAutoControl(deviceId, lightIntensity, reportedAt);
     }
