@@ -33,6 +33,7 @@ com\streetlight\controller\SensorDataController.class
 com\streetlight\entity\Device.class
 com\streetlight\entity\ControlLog.class
 com\streetlight\entity\AlarmLog.class
+com\streetlight\enums\ControlModeConverter.class
 com\streetlight\common\BusinessException.class
 com\streetlight\config\CorsConfig.class
 com\streetlight\dto\ControlModeRequest.class

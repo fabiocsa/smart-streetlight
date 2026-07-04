@@ -12,7 +12,8 @@
       "Bash(git -C \"/e/JAVA/下/smart-streetlight\" log --oneline -5)",
       "Bash(git -C \"/e/JAVA/下/smart-streetlight\" status --short)",
       "Bash(mvn --version)",
-      "Bash(mysqld --version)"
+      "Bash(mysqld --version)",
+      "Bash(curl *)"
     ]
   }
 }

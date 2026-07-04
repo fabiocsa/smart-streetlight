@@ -46,10 +46,9 @@ public class Device {
     @Builder.Default
     private LightStatus lightStatus = LightStatus.OFF;
 
-    @Enumerated(EnumType.STRING)
     @Column(name = "control_mode", nullable = false, length = 10)
     @Builder.Default
-    private ControlMode controlMode = ControlMode.AUTO;
+    private String controlMode = "auto";
 
     @Column(length = 200)
     private String location;

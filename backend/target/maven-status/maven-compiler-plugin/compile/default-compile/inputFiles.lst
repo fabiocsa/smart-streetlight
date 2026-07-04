@@ -10,6 +10,7 @@ E:\JAVA\下\smart-streetlight\backend\src\main\java\com\streetlight\repository\A
 E:\JAVA\下\smart-streetlight\backend\src\main\java\com\streetlight\service\impl\AlarmServiceImpl.java
 E:\JAVA\下\smart-streetlight\backend\src\main\java\com\streetlight\service\DashboardService.java
 E:\JAVA\下\smart-streetlight\backend\src\main\java\com\streetlight\service\SensorDataService.java
+E:\JAVA\下\smart-streetlight\backend\src\main\java\com\streetlight\enums\ControlModeConverter.java
 E:\JAVA\下\smart-streetlight\backend\src\main\java\com\streetlight\common\GlobalExceptionHandler.java
 E:\JAVA\下\smart-streetlight\backend\src\main\java\com\streetlight\enums\LightStatus.java
 E:\JAVA\下\smart-streetlight\backend\src\main\java\com\streetlight\websocket\WebSocketHandler.java
