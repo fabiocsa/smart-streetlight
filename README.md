@@ -81,7 +81,7 @@ smart-streetlight/
 ### 1. 克隆项目
 
 ```bash
-git clone <仓库地址>
+git clone https://github.com/fabiocsa/smart-streetlight.git
 cd smart-streetlight
 ```
 
@@ -161,3 +161,5 @@ python mqtt_simulator.py
 ## 🏗️ 后续（基地10天）
 
 校内15天使用Mock数据发生器模拟硬件数据，基地10天接入真实鸿蒙开发板（Hi3861/Hi3516），软件代码基本不变，仅替换数据源。
+66611
+1
