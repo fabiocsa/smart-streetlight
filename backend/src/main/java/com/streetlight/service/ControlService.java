@@ -4,6 +4,7 @@ import com.streetlight.entity.ControlLog;
 import com.streetlight.entity.Device;
 import com.streetlight.repository.ControlLogRepository;
 import com.streetlight.repository.DeviceRepository;
+import com.streetlight.websocket.WebSocketHandler;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -16,6 +17,7 @@ public class ControlService {
 
     private final ControlLogRepository controlLogRepository;
     private final DeviceRepository deviceRepository;
+    private final WebSocketHandler webSocketHandler;
 
     @Transactional
     public ControlLog sendCommand(String deviceId, String command, String source) {
@@ -23,6 +25,9 @@ public class ControlService {
         deviceRepository.findByDeviceId(deviceId).ifPresent(device -> {
             device.setLightStatus(command);
             deviceRepository.save(device);
+
+            // WebSocket 推送设备状态变更
+            webSocketHandler.pushDeviceStatus(deviceId, device.getStatus(), command);
         });
 
         // 记录控制日志
@@ -32,7 +37,12 @@ public class ControlService {
                 .source(source)
                 .result("success")
                 .build();
-        return controlLogRepository.save(log);
+        ControlLog savedLog = controlLogRepository.save(log);
+
+        // WebSocket 推送控制结果
+        webSocketHandler.pushControlResult(deviceId, command, "success");
+
+        return savedLog;
     }
 
     public List<ControlLog> getControlLogs(String deviceId) {

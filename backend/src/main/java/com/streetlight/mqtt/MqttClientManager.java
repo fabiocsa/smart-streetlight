@@ -1,42 +1,32 @@
 package com.streetlight.mqtt;
 
-import com.streetlight.service.DeviceService;
-import jakarta.annotation.PostConstruct;
-import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.eclipse.paho.client.mqttv3.MqttClient;
 import org.eclipse.paho.client.mqttv3.MqttException;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 
+/**
+ * MQTT 消息发布管理器
+ * <p>
+ * 负责向设备发送控制指令。消息消费由 {@link MqttPahoMessageDrivenChannelAdapter} 处理，
+ * 此类仅保留发布功能。
+ */
 @Component
 @Slf4j
-@RequiredArgsConstructor
 public class MqttClientManager {
 
     private final MqttClient mqttClient;
-    private final MqttMessageHandler messageHandler;
 
     @Value("${mqtt.topic-prefix:streetlight}")
     private String topicPrefix;
 
-    @PostConstruct
-    public void init() {
-        try {
-            mqttClient.setCallback(messageHandler);
-
-            // 订阅所有设备主题
-            String sensorTopic = topicPrefix + "/+/sensor/data";
-            String statusTopic = topicPrefix + "/+/status";
-            String responseTopic = topicPrefix + "/+/control/response";
-
-            mqttClient.subscribe(sensorTopic, 1);
-            mqttClient.subscribe(statusTopic, 1);
-            mqttClient.subscribe(responseTopic, 1);
-
-            log.info("MQTT已订阅主题: {}, {}, {}", sensorTopic, statusTopic, responseTopic);
-        } catch (MqttException e) {
-            log.error("MQTT订阅失败: {}", e.getMessage(), e);
+    @Autowired(required = false)
+    public MqttClientManager(MqttClient mqttClient) {
+        this.mqttClient = mqttClient;
+        if (mqttClient == null) {
+            log.warn("MQTT客户端未就绪，发布功能将在MQTT连接后可用");
         }
     }
 
@@ -52,6 +42,10 @@ public class MqttClientManager {
     }
 
     private void publish(String topic, String payload) {
+        if (mqttClient == null || !mqttClient.isConnected()) {
+            log.warn("MQTT客户端未连接，无法发布消息 - topic: {}", topic);
+            return;
+        }
         try {
             mqttClient.publish(topic, payload.getBytes(), 1, false);
             log.info("MQTT发布 - topic: {}, payload: {}", topic, payload);

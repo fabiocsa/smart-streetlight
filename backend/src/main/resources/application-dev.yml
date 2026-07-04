@@ -1,0 +1,42 @@
+server:
+  port: 8080
+
+spring:
+  datasource:
+    url: jdbc:h2:mem:streetlight;DB_CLOSE_DELAY=-1;DB_CLOSE_ON_EXIT=FALSE;MODE=MySQL
+    username: sa
+    password:
+    driver-class-name: org.h2.Driver
+
+  jpa:
+    hibernate:
+      ddl-auto: create-drop
+    show-sql: true
+    properties:
+      hibernate:
+        format_sql: true
+    defer-datasource-initialization: true
+
+  h2:
+    console:
+      enabled: true
+      path: /h2-console
+
+  sql:
+    init:
+      mode: always
+      data-locations: classpath:data-dev.sql
+
+# MQTT 配置 - 开发环境不强制连接
+mqtt:
+  broker: tcp://localhost:1883
+  client-id: streetlight-backend-dev
+  username:
+  password:
+  topic-prefix: streetlight
+  connection-timeout: 5
+  keep-alive-interval: 60
+
+streetlight:
+  offline-threshold-seconds: 30
+  heartbeat-check-interval-seconds: 5
