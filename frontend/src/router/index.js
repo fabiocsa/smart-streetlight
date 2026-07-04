@@ -12,6 +12,24 @@ const routes = [
     meta: { title: '总览' }
   },
   {
+    path: '/monitor',
+    name: 'Monitor',
+    component: () => import('@/views/monitor/index.vue'),
+    meta: { title: '实时监测' }
+  },
+  {
+    path: '/history',
+    name: 'History',
+    component: () => import('@/views/history/index.vue'),
+    meta: { title: '历史趋势' }
+  },
+  {
+    path: '/control',
+    name: 'Control',
+    component: () => import('@/views/control/index.vue'),
+    meta: { title: '设备控制' }
+  },
+  {
     path: '/devices',
     name: 'Devices',
     component: () => import('@/views/device/index.vue'),
@@ -28,6 +46,18 @@ const routes = [
     name: 'Alarms',
     component: () => import('@/views/alarm/index.vue'),
     meta: { title: '告警管理' }
+  },
+  {
+    path: '/alarms/history',
+    name: 'AlarmHistory',
+    component: () => import('@/views/alarm/history.vue'),
+    meta: { title: '告警历史' }
+  },
+  {
+    path: '/chat',
+    name: 'Chat',
+    component: () => import('@/views/chat/index.vue'),
+    meta: { title: '智能问答' }
   }
 ]
 

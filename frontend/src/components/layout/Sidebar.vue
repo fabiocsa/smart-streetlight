@@ -18,6 +18,18 @@
       <el-icon><Odometer /></el-icon>
       <template #title>总览</template>
     </el-menu-item>
+    <el-menu-item index="/monitor">
+      <el-icon><DataAnalysis /></el-icon>
+      <template #title>实时监测</template>
+    </el-menu-item>
+    <el-menu-item index="/history">
+      <el-icon><TrendCharts /></el-icon>
+      <template #title>历史趋势</template>
+    </el-menu-item>
+    <el-menu-item index="/control">
+      <el-icon><Switch /></el-icon>
+      <template #title>设备控制</template>
+    </el-menu-item>
     <el-menu-item index="/devices">
       <el-icon><Monitor /></el-icon>
       <template #title>设备管理</template>
@@ -26,13 +38,17 @@
       <el-icon><WarningFilled /></el-icon>
       <template #title>告警管理</template>
     </el-menu-item>
+    <el-menu-item index="/chat">
+      <el-icon><ChatDotRound /></el-icon>
+      <template #title>智能问答</template>
+    </el-menu-item>
   </el-menu>
 </template>
 
 <script setup>
 import { computed } from 'vue'
 import { useRoute } from 'vue-router'
-import { Odometer, Monitor, WarningFilled, Lightning } from '@element-plus/icons-vue'
+import { Odometer, Monitor, WarningFilled, Lightning, DataAnalysis, TrendCharts, Switch, ChatDotRound } from '@element-plus/icons-vue'
 
 const route = useRoute()
 const props = defineProps({
