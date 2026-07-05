@@ -54,8 +54,12 @@ public class SensorDataServiceImpl implements SensorDataService {
                     cmd = "off";
                 }
                 if (cmd != null) {
-                    mqttPublishService.publishCommand(deviceId, cmd, "auto");
-                    log.info("自动联动: deviceId={}, light={}, cmd={}", deviceId, lightIntensity, cmd);
+                    try {
+                        mqttPublishService.publishCommand(deviceId, cmd, "auto");
+                        log.info("自动联动: deviceId={}, light={}, cmd={}", deviceId, lightIntensity, cmd);
+                    } catch (Exception e) {
+                        log.warn("自动联动MQTT发送失败: deviceId={}, cmd={}, {}", deviceId, cmd, e.getMessage());
+                    }
                 }
             }
         });

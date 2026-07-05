@@ -7,9 +7,10 @@ import com.streetlight.service.ControlService;
 import com.streetlight.service.SensorDataService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.eclipse.paho.mqttv5.client.MqttCallback;
-import org.eclipse.paho.mqttv5.client.MqttDisconnectResponse;
 import org.eclipse.paho.mqttv5.client.IMqttToken;
+import org.eclipse.paho.mqttv5.client.MqttCallback;
+import org.eclipse.paho.mqttv5.client.MqttClient;
+import org.eclipse.paho.mqttv5.client.MqttDisconnectResponse;
 import org.eclipse.paho.mqttv5.common.MqttException;
 import org.eclipse.paho.mqttv5.common.MqttMessage;
 import org.eclipse.paho.mqttv5.common.packet.MqttProperties;
@@ -24,6 +25,7 @@ public class MqttMessageHandler implements MqttCallback {
 
     private final SensorDataService sensorDataService;
     private final ControlService controlService;
+    private final MqttClient mqttClient;
     private final ObjectMapper objectMapper = new ObjectMapper();
 
     @Override
@@ -77,6 +79,15 @@ public class MqttMessageHandler implements MqttCallback {
     @Override
     public void connectComplete(boolean reconnect, String serverURI) {
         log.info("MQTT连接完成: reconnect={}, server={}", reconnect, serverURI);
+        if (reconnect) {
+            try {
+                mqttClient.subscribe("sensor/data", 1);
+                mqttClient.subscribe("control/response", 1);
+                log.info("MQTT重连后重新订阅主题: sensor/data, control/response");
+            } catch (MqttException e) {
+                log.error("MQTT重连后订阅失败: {}", e.getMessage(), e);
+            }
+        }
     }
 
     @Override
