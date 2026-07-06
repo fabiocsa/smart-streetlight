@@ -4,11 +4,10 @@ com\streetlight\dto\ThresholdRequest.class
 com\streetlight\entity\SensorData$SensorDataBuilder.class
 com\streetlight\entity\ControlLog$ControlLogBuilder.class
 com\streetlight\config\MqttConfig.class
-com\streetlight\task\HeartbeatCheckTask.class
 com\streetlight\mqtt\MqttClientManager.class
 com\streetlight\enums\ControlMode.class
-com\streetlight\dto\ResolveAlarmRequest.class
 com\streetlight\entity\AlarmLog$AlarmLogBuilder.class
+com\streetlight\dto\ResolveAlarmRequest.class
 com\streetlight\service\impl\AlarmServiceImpl.class
 com\streetlight\enums\DeviceStatus.class
 com\streetlight\service\DeviceService.class
@@ -22,8 +21,8 @@ com\streetlight\service\SensorDataService.class
 com\streetlight\common\GlobalExceptionHandler.class
 com\streetlight\controller\DashboardController.class
 com\streetlight\controller\DeviceController.class
-com\streetlight\repository\ControlLogRepository.class
 com\streetlight\service\impl\SensorDataServiceImpl.class
+com\streetlight\repository\ControlLogRepository.class
 com\streetlight\common\Result.class
 com\streetlight\controller\ControlController.class
 com\streetlight\controller\ChatController.class
@@ -43,8 +42,8 @@ com\streetlight\enums\AlarmStatus.class
 com\streetlight\controller\AlarmController.class
 com\streetlight\service\impl\ControlServiceImpl.class
 com\streetlight\StreetlightApplication.class
-com\streetlight\enums\AlarmSeverity.class
 com\streetlight\service\ControlService.class
+com\streetlight\enums\AlarmSeverity.class
 com\streetlight\enums\AlarmType.class
 com\streetlight\mqtt\MqttMessageHandler.class
 com\streetlight\enums\LightStatus.class
