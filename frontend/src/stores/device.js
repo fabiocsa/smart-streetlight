@@ -14,9 +14,11 @@ export const useDeviceStore = defineStore('device', () => {
   async function fetchDevices() {
     loading.value = true
     try {
-      devices.value = await getDevices()
+      const data = await getDevices()
+      devices.value = Array.isArray(data) ? data : []
     } catch (e) {
       console.error('Failed to fetch devices:', e)
+      devices.value = []
     } finally {
       loading.value = false
     }

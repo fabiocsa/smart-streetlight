@@ -18,4 +18,15 @@ for (const [key, component] of Object.entries(ElementPlusIconsVue)) {
 app.use(createPinia())
 app.use(router)
 app.use(ElementPlus, { locale: zhCn })
+
+// Global error handler - prevent crashes from taking down the app
+app.config.errorHandler = (err, instance, info) => {
+  console.error('Global Vue error:', err, info)
+}
+
+// Handle unhandled promise rejections
+window.addEventListener('unhandledrejection', (event) => {
+  console.error('Unhandled promise rejection:', event.reason)
+})
+
 app.mount('#app')

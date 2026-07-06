@@ -3,17 +3,71 @@
     <!-- Header -->
     <div class="page-header">
       <h2>设备管理</h2>
-      <el-button type="primary" @click="showAddDialog = true">
-        <el-icon><Plus /></el-icon>添加设备
-      </el-button>
+      <div class="page-header-right">
+        <el-input
+          v-model="searchQuery"
+          placeholder="搜索设备名称/编号/位置"
+          clearable
+          prefix-icon="Search"
+          style="width: 260px"
+          @input="handleSearchInput"
+        />
+        <el-button type="primary" @click="showAddDialog = true">
+          <el-icon><Plus /></el-icon>添加设备
+        </el-button>
+      </div>
     </div>
 
-    <!-- Device Table -->
-    <el-card shadow="hover">
-      <el-table :data="deviceStore.devices" v-loading="deviceStore.loading" stripe style="width: 100%">
-        <el-table-column prop="name" label="设备名称" min-width="140" />
+    <template v-if="!deviceStore.loading && filteredDevices.length === 0 && searchQuery">
+      <el-card shadow="hover">
+        <div class="empty-state">
+          <span style="font-size: 48px">🔍</span>
+          <span style="color: #909399; font-size: 14px;">没有找到匹配的设备</span>
+          <el-button size="small" @click="searchQuery = ''; handleSearchInput()">清除搜索</el-button>
+        </div>
+      </el-card>
+    </template>
+    <template v-else-if="!deviceStore.loading && deviceStore.devices.length === 0">
+      <el-card shadow="hover">
+        <div class="empty-state">
+          <span style="font-size: 48px">🏮</span>
+          <span style="color: #909399; font-size: 14px;">还没有添加任何路灯设备</span>
+          <el-button type="primary" size="small" @click="showAddDialog = true">立即添加</el-button>
+        </div>
+      </el-card>
+    </template>
+    <template v-else>
+      <el-card shadow="hover">
+      <el-table :data="filteredDevices" v-loading="deviceStore.loading" stripe style="width: 100%">
+        <el-table-column label="设备名称" min-width="140">
+          <template #default="{ row }">
+            <div v-if="editCell?.id === row.id && editCell?.field === 'name'" class="inline-edit">
+              <el-input
+                v-model="editCell.value"
+                size="small"
+                @blur="saveInlineEdit(row)"
+                @keyup.enter="saveInlineEdit(row)"
+                @keyup.escape="cancelInlineEdit"
+              />
+            </div>
+            <span v-else class="inline-text" @click="startInlineEdit(row, 'name', row.name)">{{ row.name }}</span>
+          </template>
+        </el-table-column>
         <el-table-column prop="deviceId" label="设备编号" width="120" />
-        <el-table-column prop="location" label="安装位置" min-width="140" />
+        <el-table-column label="安装位置" min-width="140">
+          <template #default="{ row }">
+            <div v-if="editCell?.id === row.id && editCell?.field === 'location'" class="inline-edit">
+              <el-input
+                v-model="editCell.value"
+                size="small"
+                @blur="saveInlineEdit(row)"
+                @keyup.enter="saveInlineEdit(row)"
+                @keyup.escape="cancelInlineEdit"
+              />
+            </div>
+            <span v-else class="inline-text" @click="startInlineEdit(row, 'location', row.location || '')">{{ row.location || '未知位置' }}</span>
+          </template>
+        </el-table-column>
         <el-table-column label="在线状态" width="100">
           <template #default="{ row }">
             <el-tag :type="row.status === 'online' ? 'success' : 'info'" size="small">
@@ -64,7 +118,8 @@
           </template>
         </el-table-column>
       </el-table>
-    </el-card>
+      </el-card>
+    </template>
 
     <!-- Add Device Dialog -->
     <el-dialog v-model="showAddDialog" title="添加设备" width="420px">
@@ -103,20 +158,14 @@
 
     <!-- Threshold Dialog -->
     <el-dialog v-model="showThresholdDialog" title="设置光照阈值" width="420px">
-      <el-form :model="thresholdForm" label-width="110px">
+      <el-form :model="thresholdForm" label-width="120px">
         <el-form-item label="开灯光照阈值">
-          <el-input-number v-model="thresholdForm.thresholdOn" :min="0" :max="2000" />
+          <el-input-number v-model="thresholdForm.thresholdOn" :min="0" :max="500" :step="5" />
           <span style="margin-left: 8px; color: #909399;">Lux</span>
         </el-form-item>
         <el-form-item label="关灯光照阈值">
-          <el-input-number v-model="thresholdForm.thresholdOff" :min="0" :max="2000" />
+          <el-input-number v-model="thresholdForm.thresholdOff" :min="0" :max="500" :step="5" />
           <span style="margin-left: 8px; color: #909399;">Lux</span>
-        </el-form-item>
-        <el-form-item>
-          <el-tag type="info" size="small">光照低于开灯阈值 → 自动开灯</el-tag>
-        </el-form-item>
-        <el-form-item>
-          <el-tag type="info" size="small">光照高于关灯阈值 → 自动关灯</el-tag>
         </el-form-item>
       </el-form>
       <template #footer>
@@ -128,13 +177,60 @@
 </template>
 
 <script setup>
-import { ref, onMounted } from 'vue'
+import { ref, computed, onMounted, nextTick } from 'vue'
 import { Plus } from '@element-plus/icons-vue'
-import { ElMessage } from 'element-plus'
+import { ElMessage, ElMessageBox } from 'element-plus'
 import { addDevice, updateDevice, deleteDevice, setControlMode, setThreshold } from '@/api/device'
 import { useDeviceStore } from '@/stores/device'
+import { useAlarmStore } from '@/stores/alarm'
 
 const deviceStore = useDeviceStore()
+const alarmStore = useAlarmStore()
+
+// Search
+const searchQuery = ref('')
+let searchTimer = null
+
+const filteredDevices = computed(() => {
+  const devices = deviceStore.devices
+  if (!Array.isArray(devices)) return []
+  if (!searchQuery.value) return devices
+  const q = searchQuery.value.toLowerCase()
+  return devices.filter(d =>
+    d.name?.toLowerCase().includes(q) ||
+    d.deviceId?.toLowerCase().includes(q) ||
+    d.location?.toLowerCase().includes(q)
+  )
+})
+
+// Inline editing
+const editCell = ref(null)
+
+function startInlineEdit(row, field, value) {
+  editCell.value = { id: row.id, field, value: value ?? '' }
+  // Auto-focus the input after render using DOM query
+  nextTick(() => {
+    const input = document.querySelector('.inline-edit .el-input__inner')
+    if (input) input.focus()
+  })
+}
+
+async function saveInlineEdit(row) {
+  if (!editCell.value) return
+  const { field, value } = editCell.value
+  editCell.value = null
+  try {
+    await updateDevice(row.id, { [field]: value })
+    row[field] = value
+    ElMessage.success(`${field === 'name' ? '名称' : '位置'}已更新`)
+  } catch (e) {
+    // handled by interceptor
+  }
+}
+
+function cancelInlineEdit() {
+  editCell.value = null
+}
 
 // Add dialog
 const showAddDialog = ref(false)
@@ -143,7 +239,10 @@ const addFormRef = ref(null)
 const addForm = ref({ name: '', deviceId: '', location: '' })
 const addRules = {
   name: [{ required: true, message: '请输入设备名称', trigger: 'blur' }],
-  deviceId: [{ required: true, message: '请输入设备编号', trigger: 'blur' }]
+  deviceId: [
+    { required: true, message: '请输入设备编号', trigger: 'blur' },
+    { pattern: /^[A-Za-z0-9-]{2,20}$/, message: '格式：字母+数字+中划线，2-20字符', trigger: 'blur' }
+  ]
 }
 
 // Edit dialog
@@ -155,6 +254,10 @@ const editForm = ref({ id: null, name: '', location: '' })
 const showThresholdDialog = ref(false)
 const thresholdLoading = ref(false)
 const thresholdForm = ref({ id: null, thresholdOn: 50, thresholdOff: 100 })
+const thresholdPreset = ref(null)
+const thresholdBatchApply = ref(false)
+const thresholdValidateError = ref('')
+const thresholdModified = ref(false)
 
 function formatTime(t) {
   if (!t) return '--'
@@ -203,6 +306,19 @@ async function handleEditConfirm() {
 }
 
 async function handleDelete(id) {
+  // Check for pending alarms
+  const pendingAlarms = alarmStore.alarms.filter(a => a.status === 'pending' && a.deviceId === deviceStore.devices.find(d => d.id === id)?.deviceId)
+  if (pendingAlarms.length > 0) {
+    try {
+      await ElMessageBox.confirm(
+        `该设备有 ${pendingAlarms.length} 条未处理告警，删除后数据不可恢复，是否继续？`,
+        '删除确认',
+        { confirmButtonText: '继续删除', cancelButtonText: '取消', type: 'warning' }
+      )
+    } catch {
+      return
+    }
+  }
   try {
     await deleteDevice(id)
     ElMessage.success('设备已删除')
@@ -246,6 +362,13 @@ async function handleThresholdConfirm() {
   }
 }
 
+function handleSearchInput() {
+  if (searchTimer) clearTimeout(searchTimer)
+  searchTimer = setTimeout(() => {
+    // The filteredDevices computed will auto-update
+  }, 300)
+}
+
 onMounted(() => {
   deviceStore.fetchDevices()
 })
@@ -263,5 +386,41 @@ onMounted(() => {
   margin: 0;
   font-size: 20px;
   color: #303133;
+}
+
+.page-header-right {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.empty-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  padding: 60px 0;
+}
+
+.inline-text {
+  cursor: pointer;
+  padding: 2px 4px;
+  border-radius: 3px;
+  transition: background 0.2s;
+}
+
+.inline-text:hover {
+  background: #ecf5ff;
+}
+
+.inline-edit {
+  max-width: 180px;
+}
+
+.threshold-slider-group {
+  display: flex;
+  align-items: center;
+  width: 100%;
 }
 </style>

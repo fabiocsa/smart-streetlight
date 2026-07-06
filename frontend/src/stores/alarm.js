@@ -13,18 +13,28 @@ export const useAlarmStore = defineStore('alarm', () => {
     loading.value = true
     try {
       const res = await getAlarms(params)
-      alarms.value = res.content || []
-      totalElements.value = res.totalElements || 0
+      alarms.value = (res && Array.isArray(res.content)) ? res.content : []
+      totalElements.value = res?.totalElements || 0
       return res
     } catch (e) {
       console.error('Failed to fetch alarms:', e)
+      alarms.value = []
     } finally {
       loading.value = false
     }
   }
 
   function addNewAlarm(alarm) {
-    alarms.value.unshift(alarm)
+    // Mark as new for highlight animation
+    const newAlarm = { ...alarm, _isNew: true }
+    alarms.value.unshift(newAlarm)
+    // Remove _isNew flag after animation duration
+    setTimeout(() => {
+      const idx = alarms.value.findIndex(a => a === newAlarm)
+      if (idx >= 0) {
+        newAlarm._isNew = false
+      }
+    }, 2500)
   }
 
   function markResolved(alarmId) {

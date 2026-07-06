@@ -101,6 +101,15 @@
 
     <!-- Alarm Table -->
     <el-card shadow="hover">
+      <!-- Empty filter result -->
+      <template v-if="!loading && alarms.length === 0">
+        <div class="empty-filter-result">
+          <span style="font-size: 40px">📋</span>
+          <span style="color: #909399; font-size: 14px;">没有匹配的告警记录</span>
+          <el-button size="small" type="primary" @click="handleClearFilter">清除筛选</el-button>
+        </div>
+      </template>
+      <template v-else>
       <el-table
         :data="alarms"
         v-loading="loading"
@@ -187,6 +196,7 @@
         <span>已选择 {{ selectedRows.length }} 条</span>
         <el-button size="small" type="primary" @click="batchResolve">批量处理</el-button>
       </div>
+      </template>
     </el-card>
 
     <!-- Expanded detail drawer -->
@@ -246,22 +256,25 @@
 
 <script setup>
 import { ref, reactive, computed, onMounted, watch } from 'vue'
-import { ElMessage } from 'element-plus'
+import { useRoute, useRouter } from 'vue-router'
+import { ElMessage, ElMessageBox } from 'element-plus'
 import { Download } from '@element-plus/icons-vue'
 import { getAlarms, resolveAlarm } from '@/api/alarm'
 import { useDeviceStore } from '@/stores/device'
 import { useWebSocketStore } from '@/stores/websocket'
 
+const route = useRoute()
+const router = useRouter()
 const deviceStore = useDeviceStore()
 const wsStore = useWebSocketStore()
 
-// Filters
+// Filters with URL query persistence
 const filters = reactive({
-  timePreset: '',
-  deviceId: '',
-  type: '',
-  status: '',
-  keyword: ''
+  timePreset: route.query.timePreset || '',
+  deviceId: route.query.deviceId || '',
+  type: route.query.type || '',
+  status: route.query.status || '',
+  keyword: route.query.keyword || ''
 })
 
 const alarms = ref([])
@@ -296,6 +309,9 @@ const showResolvedInfo = computed(() =>
 let keywordTimer = null
 
 onMounted(() => {
+  // Restore page from query params
+  if (route.query.page) currentPage.value = parseInt(route.query.page)
+  if (route.query.size) pageSize.value = parseInt(route.query.size)
   loadAlarms()
 })
 
@@ -343,6 +359,17 @@ async function loadAlarms() {
   if (filters.type) params.type = filters.type
   if (filters.status) params.status = filters.status
   if (filters.keyword) params.keyword = filters.keyword
+
+  // Persist filters to URL query
+  const query = {}
+  if (filters.timePreset) query.timePreset = filters.timePreset
+  if (filters.deviceId) query.deviceId = filters.deviceId
+  if (filters.type) query.type = filters.type
+  if (filters.status) query.status = filters.status
+  if (filters.keyword) query.keyword = filters.keyword
+  if (currentPage.value > 1) query.page = String(currentPage.value)
+  if (pageSize.value !== 20) query.size = String(pageSize.value)
+  router.replace({ query })
 
   try {
     const res = await getAlarms(params)
@@ -421,8 +448,42 @@ async function confirmResolve() {
   }
 }
 
-function batchResolve() {
-  ElMessage.info('批量处理功能待实现')
+function handleClearFilter() {
+  filters.timePreset = ''
+  filters.deviceId = ''
+  filters.type = ''
+  filters.status = ''
+  filters.keyword = ''
+  currentPage.value = 1
+  loadAlarms()
+}
+
+async function batchResolve() {
+  const pendingRows = selectedRows.value.filter(r => r.status === 'pending')
+  if (pendingRows.length === 0) {
+    ElMessage.info('选中的告警已全部处理')
+    return
+  }
+
+  try {
+    await ElMessageBox.confirm(
+      `确认批量处理 ${pendingRows.length} 条告警？`,
+      '批量处理',
+      { confirmButtonText: '确认', cancelButtonText: '取消', type: 'info' }
+    )
+    for (const row of pendingRows) {
+      try {
+        await resolveAlarm(row.id, '批量处理')
+      } catch (e) {
+        console.error(`Failed to resolve alarm ${row.id}:`, e)
+      }
+    }
+    ElMessage.success(`已处理 ${pendingRows.length} 条告警`)
+    selectedRows.value = []
+    loadAlarms()
+  } catch {
+    // cancelled
+  }
 }
 
 function exportCSV() {
@@ -514,6 +575,15 @@ function exportCSV() {
   gap: 12px;
   font-size: 13px;
   color: #606266;
+}
+
+.empty-filter-result {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  padding: 60px 0;
 }
 
 :deep(.row-pending) {

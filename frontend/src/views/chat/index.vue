@@ -53,7 +53,19 @@
 
                 <!-- Normal message -->
                 <template v-else>
-                  <div class="message-content" v-html="renderMarkdown(msg.content)" />
+                  <div
+                    class="message-content"
+                    :class="{ 'collapsed': msg.collapsed }"
+                    v-html="renderMarkdown(msg.content)"
+                  />
+                  <!-- Expand button for long messages -->
+                  <div
+                    v-if="msg.role === 'assistant' && msg.content && msg.content.length > 300"
+                    class="expand-btn"
+                    @click="msg.collapsed = !msg.collapsed"
+                  >
+                    {{ msg.collapsed ? '展开全文' : '收起' }}
+                  </div>
                   <!-- Copy button -->
                   <div v-if="msg.role === 'assistant' && msg.content" class="message-actions">
                     <el-tooltip content="复制" placement="top">
@@ -100,21 +112,27 @@
 
           <!-- Input Area -->
           <div class="chat-input-area">
-            <el-input
-              v-model="inputText"
-              type="textarea"
-              :rows="2"
-              :disabled="!wsStore.connected"
-              placeholder="输入您的问题…"
-              @keydown.enter.exact.prevent="sendMessage"
-              @keydown.shift.enter.exact="() => {}"
-              maxlength="500"
-              show-word-limit
-            >
-              <template #prefix>
-                <el-icon v-if="!wsStore.connected" color="#F56C6C"><WarningFilled /></el-icon>
-              </template>
-            </el-input>
+            <div class="input-wrapper">
+              <el-input
+                v-model="inputText"
+                type="textarea"
+                :rows="2"
+                :disabled="!wsStore.connected"
+                placeholder="输入您的问题…"
+                @keydown.enter.exact.prevent="sendMessage"
+                @keydown.shift.enter.exact="() => {}"
+                maxlength="500"
+                show-word-limit
+                clearable
+              >
+                <template #prefix>
+                  <el-icon v-if="!wsStore.connected" color="#F56C6C"><WarningFilled /></el-icon>
+                </template>
+              </el-input>
+              <div v-if="inputText" class="input-clear" @click="inputText = ''">
+                <el-icon size="14" color="#c0c4cc"><CircleClose /></el-icon>
+              </div>
+            </div>
             <div class="input-actions">
               <span v-if="!wsStore.connected" class="offline-tip">网络连接已断开</span>
               <el-button
@@ -155,11 +173,13 @@ import { ElMessage } from 'element-plus'
 import {
   ChatDotSquare, ChatDotRound, User, Delete,
   CopyDocument, Refresh, Promotion,
-  WarningFilled, ChatLineSquare
+  WarningFilled, ChatLineSquare, CircleClose
 } from '@element-plus/icons-vue'
 import { useWebSocketStore } from '@/stores/websocket'
+import { useChatStore } from '@/stores/chat'
 
 const wsStore = useWebSocketStore()
+const chatStore = useChatStore()
 
 const messages = ref([])
 const inputText = ref('')
@@ -176,17 +196,38 @@ const quickQuestions = [
   '设备控制没有响应怎么办？'
 ]
 
+// Sensitive word filter
+const sensitiveWords = ['攻击', '入侵', '爆破', '后门', '漏洞', '病毒', '木马', '恶意']
+
+function filterSensitive(text) {
+  for (const word of sensitiveWords) {
+    if (text.includes(word)) {
+      return false
+    }
+  }
+  return true
+}
+
+function loadMessages() {
+  if (chatStore.messages.length > 0) {
+    messages.value = chatStore.messages
+  } else {
+    messages.value = [{
+      role: 'assistant',
+      content: '您好！我是智慧路灯系统的维护助手，可以帮您解答设备维护、故障排查等相关问题。请问有什么可以帮您的？',
+      isWelcome: true
+    }]
+    chatStore.setMessages(messages.value)
+  }
+}
+
 onMounted(() => {
-  // Welcome message
-  messages.value = [{
-    role: 'assistant',
-    content: '您好！我是智慧路灯系统的维护助手，可以帮您解答设备维护、故障排查等相关问题。请问有什么可以帮您的？',
-    isWelcome: true
-  }]
+  loadMessages()
 })
 
 function addMessage(msg) {
   messages.value.push(msg)
+  chatStore.setMessages(messages.value)
   scrollToBottom()
 }
 
@@ -203,12 +244,18 @@ async function sendMessage() {
   const text = inputText.value.trim()
   if (!text || sending.value || !wsStore.connected) return
 
+  // Sensitive word filter
+  if (!filterSensitive(text)) {
+    ElMessage.warning('输入内容包含敏感词汇，请重新描述问题')
+    return
+  }
+
   // Add user message
   addMessage({ role: 'user', content: text })
   inputText.value = ''
 
   // Add placeholder AI message
-  const aiMsg = { role: 'assistant', content: '', typing: true }
+  const aiMsg = { role: 'assistant', content: '', typing: true, collapsed: true }
   addMessage(aiMsg)
   sending.value = true
 
@@ -245,12 +292,14 @@ async function sendMessage() {
     }
 
     messages.value = [...messages.value]
+    chatStore.setMessages(messages.value)
     scrollToBottom()
   } catch (e) {
     if (e.name === 'AbortError') return
     aiMsg.typing = false
     aiMsg.error = '回复失败，请重试'
     messages.value = [...messages.value]
+    chatStore.setMessages(messages.value)
   } finally {
     sending.value = false
     abortController = null
@@ -265,11 +314,13 @@ function sendQuickQuestion(question) {
 }
 
 function clearMessages() {
-  messages.value = [{
+  const welcome = {
     role: 'assistant',
     content: '您好！我是智慧路灯系统的维护助手，可以帮您解答设备维护、故障排查等相关问题。请问有什么可以帮您的？',
     isWelcome: true
-  }]
+  }
+  messages.value = [welcome]
+  chatStore.setMessages([welcome])
 }
 
 function retryMessage(index) {
@@ -301,24 +352,29 @@ function copyText(text) {
   })
 }
 
-// Simple markdown renderer (basic)
+// Simple markdown renderer with code block support
 function renderMarkdown(text) {
   if (!text) return ''
   let html = text
     .replace(/&/g, '&amp;')
     .replace(/</g, '&lt;')
     .replace(/>/g, '&gt;')
-    // Bold
-    .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
-    // Italic
-    .replace(/\*(.+?)\*/g, '<em>$1</em>')
-    // Inline code
-    .replace(/`(.+?)`/g, '<code style="background:#f0f0f0;padding:1px 4px;border-radius:3px;font-size:90%">$1</code>')
-    // Line breaks
-    .replace(/\n/g, '<br>')
-    // Lists
-    .replace(/^- (.+?)(<br>|$)/gm, '<li>$1</li>')
-    .replace(/(<li>.*<\/li>)/s, '<ul>$1</ul>')
+  // Code blocks (multi-line ```)
+  html = html.replace(/```(\w*)\n([\s\S]*?)```/g, (_, lang, code) => {
+    const langClass = lang ? ` class="lang-${lang}"` : ''
+    return `<pre style="background:#1e1e1e;color:#d4d4d4;padding:12px;border-radius:6px;overflow-x:auto;font-size:12px;line-height:1.5;margin:8px 0"><code${langClass}>${code.replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>')}</code></pre>`
+  })
+  // Inline code
+  html = html.replace(/`([^`]+?)`/g, '<code style="background:#f0f0f0;padding:1px 4px;border-radius:3px;font-size:90%">$1</code>')
+  // Bold
+  html = html.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
+  // Italic
+  html = html.replace(/\*(.+?)\*/g, '<em>$1</em>')
+  // Line breaks (but not inside <pre>)
+  html = html.replace(/\n/g, '<br>')
+  // Lists
+  html = html.replace(/^- (.+?)(<br>|$)/gm, '<li>$1</li>')
+  html = html.replace(/(<li>.*<\/li>)/s, '<ul>$1</ul>')
   return html
 }
 </script>
@@ -438,6 +494,34 @@ function renderMarkdown(text) {
   white-space: pre-wrap;
 }
 
+.message-content.collapsed {
+  max-height: 400px;
+  overflow: hidden;
+  position: relative;
+}
+
+.message-content.collapsed::after {
+  content: '';
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  height: 60px;
+  background: linear-gradient(transparent, #fff);
+}
+
+.expand-btn {
+  font-size: 12px;
+  color: #409EFF;
+  cursor: pointer;
+  margin-top: 4px;
+  user-select: none;
+}
+
+.expand-btn:hover {
+  color: #66b1ff;
+}
+
 .message-actions {
   display: flex;
   gap: 6px;
@@ -496,6 +580,27 @@ function renderMarkdown(text) {
   padding: 12px 16px;
   border-top: 1px solid #ebeef5;
   background: #fff;
+}
+
+.input-wrapper {
+  position: relative;
+}
+
+.input-clear {
+  position: absolute;
+  right: 8px;
+  top: 8px;
+  z-index: 2;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+}
+
+.input-clear:hover .el-icon {
+  color: #909399 !important;
 }
 
 .input-actions {

@@ -2,10 +2,11 @@
   <el-menu
     :default-active="activeMenu"
     :collapse="isCollapse"
-    router
     background-color="#001529"
     text-color="#ffffffcc"
     active-text-color="#fff"
+    router
+    @select="handleSelect"
   >
     <div class="sidebar-logo">
       <el-icon :size="28" color="#409EFF">
@@ -47,10 +48,11 @@
 
 <script setup>
 import { computed } from 'vue'
-import { useRoute } from 'vue-router'
+import { useRoute, useRouter } from 'vue-router'
 import { Odometer, Monitor, WarningFilled, Lightning, DataAnalysis, TrendCharts, Switch, ChatDotRound } from '@element-plus/icons-vue'
 
 const route = useRoute()
+const router = useRouter()
 const props = defineProps({
   isCollapse: {
     type: Boolean,
@@ -59,6 +61,10 @@ const props = defineProps({
 })
 
 const activeMenu = computed(() => route.path)
+
+function handleSelect(index) {
+  router.push(index)
+}
 </script>
 
 <style scoped>

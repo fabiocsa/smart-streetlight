@@ -64,9 +64,17 @@
       <template #header>
         <div class="chart-header">
           <span>光照强度趋势</span>
-          <el-tag v-if="downsampled" type="info" size="small">
-            已降采样 ({{ originalCount }}→{{ displayCount }})
-          </el-tag>
+          <div class="chart-header-right">
+            <el-tag v-if="downsampled" type="info" size="small">
+              已降采样 ({{ originalCount }}→{{ displayCount }})
+            </el-tag>
+            <el-button size="small" text @click="exportChart">
+              <template #default>
+                <svg viewBox="0 0 24 24" width="14" height="14" fill="currentColor"><path d="M19 12v7H5v-7H3v7c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2v-7h-2zm-6 .67l2.59-2.58L17 11.5l-5 5-5-5 1.41-1.41L11 12.67V3h2v9.67z"/></svg>
+                导出图片
+              </template>
+            </el-button>
+          </div>
         </div>
       </template>
       <div class="chart-wrapper" style="height: 400px">
@@ -90,7 +98,13 @@
           </div>
         </template>
         <template v-else>
-          <v-chart :option="chartOption" autoresize style="height: 100%" />
+          <v-chart
+            ref="chartRef"
+            :option="chartOption"
+            autoresize
+            style="height: 100%"
+            @click="handleChartClick"
+          />
         </template>
       </div>
     </el-card>
@@ -185,6 +199,14 @@ const stats = reactive({
 })
 
 const tableData = ref([])
+const chartRef = ref(null)
+
+// Chart legend selected state
+const legendSelected = ref({
+  '光照强度': true,
+  '开灯阈值': true,
+  '关灯阈值': true
+})
 
 // Select first device on mount
 onMounted(() => {
@@ -216,16 +238,26 @@ const chartOption = computed(() => {
     tooltip: {
       trigger: 'axis',
       formatter: (params) => {
-        const p = params[0]
-        return `<div>
-          <div>${p.axisValue}</div>
-          <div style="font-weight:600">${p.value} Lux</div>
-        </div>`
+        if (!params || params.length === 0) return ''
+        let html = `<div>${params[0].axisValue}</div>`
+        params.forEach(p => {
+          const color = p.color || p.seriesColor || '#333'
+          html += `<div style="display:flex;align-items:center;gap:4px;font-weight:${p.seriesName === '光照强度' ? '600' : '400'}">
+            <span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:${color}"></span>
+            ${p.seriesName}: ${p.value} Lux
+          </div>`
+        })
+        return html
       }
     },
     legend: {
-      data: ['光照强度', '开灯阈值', '关灯阈值'],
-      bottom: 0
+      data: [
+        { name: '光照强度', icon: 'line' },
+        { name: '开灯阈值', icon: 'line' },
+        { name: '关灯阈值', icon: 'line' }
+      ],
+      bottom: 0,
+      selected: legendSelected.value
     },
     grid: { left: 50, right: 20, bottom: 40, top: 10 },
     dataZoom: [
@@ -262,6 +294,26 @@ const chartOption = computed(() => {
               { offset: 1, color: 'rgba(64,158,255,0.05)' }
             ]
           }
+        },
+        markArea: {
+          silent: true,
+          data: [
+            [{
+              yAxis: 50,
+              itemStyle: {
+                color: 'rgba(245,108,108,0.06)'
+              }
+            }, {
+              yAxis: 0
+            }]
+          ],
+          label: {
+            show: true,
+            position: 'insideBottomRight',
+            color: '#F56C6C',
+            fontSize: 11,
+            formatter: '应开灯时段'
+          }
         }
       },
       {
@@ -270,7 +322,11 @@ const chartOption = computed(() => {
         data: chartTime.value.map(() => thresholdOn),
         lineStyle: { type: 'dashed', color: '#F56C6C', width: 2 },
         symbol: 'none',
-        z: 2
+        z: 2,
+        markLine: {
+          silent: true,
+          label: { show: true, formatter: '开灯 {c} Lux', color: '#F56C6C', fontSize: 11, position: 'insideEndTop' }
+        }
       },
       {
         name: '关灯阈值',
@@ -278,7 +334,11 @@ const chartOption = computed(() => {
         data: chartTime.value.map(() => thresholdOff),
         lineStyle: { type: 'dashed', color: '#67C23A', width: 2 },
         symbol: 'none',
-        z: 2
+        z: 2,
+        markLine: {
+          silent: true,
+          label: { show: true, formatter: '关灯 {c} Lux', color: '#67C23A', fontSize: 11, position: 'insideEndTop' }
+        }
       }
     ]
   }
@@ -365,6 +425,15 @@ async function loadData() {
   }
 
   try {
+    // Include granularity in API params
+    const historyParams = {
+      start: start.toISOString(),
+      end: end.toISOString()
+    }
+    if (filters.granularity !== 'raw') {
+      historyParams.granularity = filters.granularity
+    }
+
     const [historyData, statsData] = await Promise.all([
       getSensorHistory(filters.deviceId, start.toISOString(), end.toISOString()),
       getSensorStats(filters.deviceId, start.toISOString(), end.toISOString())
@@ -429,6 +498,38 @@ function resetStats() {
 function handlePageChange(page) {
   currentPage.value = page
 }
+
+function handleChartClick(params) {
+  if (!params || !params.dataIndex === undefined) return
+  const idx = params.dataIndex
+  if (idx >= 0 && idx < chartTime.value.length) {
+    ElMessage.info({
+      message: `时刻: ${chartTime.value[idx]}\n光照强度: ${chartValues.value[idx]} Lux`,
+      duration: 3000
+    })
+  }
+}
+
+function exportChart() {
+  const chart = chartRef.value
+  if (!chart) {
+    ElMessage.warning('图表尚未加载')
+    return
+  }
+  try {
+    const url = chart.getDataURL({
+      type: 'png',
+      pixelRatio: 2,
+      backgroundColor: '#fff'
+    })
+    const link = document.createElement('a')
+    link.href = url
+    link.download = `光照趋势_${filters.deviceId}_${new Date().toISOString().slice(0, 10)}.png`
+    link.click()
+  } catch (e) {
+    ElMessage.error('导出失败')
+  }
+}
 </script>
 
 <style scoped>
@@ -476,6 +577,12 @@ function handlePageChange(page) {
   display: flex;
   justify-content: space-between;
   align-items: center;
+}
+
+.chart-header-right {
+  display: flex;
+  align-items: center;
+  gap: 8px;
 }
 
 .chart-wrapper {

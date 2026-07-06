@@ -21,25 +21,38 @@
           :key="device.id"
           :xs="12" :sm="8" :md="6" :lg="4"
         >
-          <el-card
-            :class="['device-chip', {
-              'active': monitorStore.currentDeviceId === device.deviceId,
-              'offline': device.status === 'offline'
-            }]"
-            shadow="hover"
-            @click="selectDevice(device.deviceId)"
+          <el-popover
+            placement="bottom"
+            :width="220"
+            trigger="hover"
+            :hide-after="100"
+            @show="loadHoverTrend(device.deviceId)"
           >
-            <div class="chip-content">
-              <span class="chip-name">{{ device.name }}</span>
-              <el-tag
-                :type="device.status === 'online' ? 'success' : 'info'"
-                size="small"
-                effect="plain"
+            <template #reference>
+              <el-card
+                :class="['device-chip', {
+                  'active': monitorStore.currentDeviceId === device.deviceId,
+                  'offline': device.status === 'offline'
+                }]"
+                shadow="hover"
+                @click="selectDevice(device.deviceId)"
               >
-                {{ device.status === 'online' ? '在线' : '离线' }}
-              </el-tag>
+                <div class="chip-content">
+                  <span class="chip-name">{{ device.name }}</span>
+                  <el-tag
+                    :type="device.status === 'online' ? 'success' : 'info'"
+                    size="small"
+                    effect="plain"
+                  >
+                    {{ device.status === 'online' ? '在线' : '离线' }}
+                  </el-tag>
+                </div>
+              </el-card>
+            </template>
+            <div style="width: 200px; height: 100px;">
+              <v-chart :option="hoverTrendOption(device.deviceId)" autoresize style="width:100%;height:100%" />
             </div>
-          </el-card>
+          </el-popover>
         </el-col>
       </el-row>
 
@@ -98,7 +111,7 @@
                     <div
                       class="sensor-value"
                       :class="{ 'value-flash': intensityFlash }"
-                      :key="displayIntensity"
+                      :key="monitorStore.currentDeviceId + '-' + displayIntensity"
                     >
                       {{ displayIntensity }}
                       <span class="sensor-unit">Lux</span>
@@ -197,6 +210,7 @@
           <el-radio-button value="">全部</el-radio-button>
           <el-radio-button value="online">在线</el-radio-button>
           <el-radio-button value="offline">离线</el-radio-button>
+          <el-radio-button value="alarm">告警</el-radio-button>
         </el-radio-group>
       </div>
 
@@ -283,9 +297,11 @@
 
 <script setup>
 import { ref, computed, onMounted, onUnmounted, watch } from 'vue'
+import { ElMessage } from 'element-plus'
 import { WarningFilled } from '@element-plus/icons-vue'
 import { useDeviceStore } from '@/stores/device'
 import { useMonitorStore } from '@/stores/monitor'
+import { useAlarmStore } from '@/stores/alarm'
 import { useWebSocketStore } from '@/stores/websocket'
 import VChart from 'vue-echarts'
 import { use } from 'echarts/core'
@@ -297,6 +313,7 @@ use([LineChart, TooltipComponent, GridComponent, CanvasRenderer])
 
 const deviceStore = useDeviceStore()
 const monitorStore = useMonitorStore()
+const alarmStore = useAlarmStore()
 const wsStore = useWebSocketStore()
 
 const activeTab = ref('monitor')
@@ -335,14 +352,21 @@ onUnmounted(() => {
 })
 
 // Watch WS connection
-watch(() => wsStore.connected, (connected) => {
+watch(() => wsStore.connected, (connected, wasConnected) => {
   if (connected) {
     wsFallback.value = false
     stopFallbackPolling()
+    // Show reconnect toast (skip initial connect)
+    if (wasConnected === false && lastWsConnected !== undefined) {
+      ElMessage.success('实时连接已恢复')
+    }
+    lastWsConnected = true
   } else {
     startFallbackPolling()
+    lastWsConnected = false
   }
 })
+let lastWsConnected = undefined
 
 // Computed
 const displayIntensity = computed(() => {
@@ -380,7 +404,17 @@ const deviceLightStatus = computed(() => {
 const filteredDevices = computed(() => {
   let list = deviceStore.devices
   if (statusFilter.value) {
-    list = list.filter(d => d.status === statusFilter.value)
+    if (statusFilter.value === 'alarm') {
+      // Find devices that have pending alarms
+      const alarmedDeviceIds = new Set(
+        alarmStore.alarms
+          .filter(a => a.status === 'pending')
+          .map(a => a.deviceId)
+      )
+      list = list.filter(d => alarmedDeviceIds.has(d.deviceId))
+    } else {
+      list = list.filter(d => d.status === statusFilter.value)
+    }
   }
   if (searchQuery.value) {
     const q = searchQuery.value.toLowerCase()
@@ -438,6 +472,45 @@ const miniTrendOption = computed(() => {
     }]
   }
 })
+
+// Hover trend chart data cache
+const hoverTrendCache = ref({})
+
+function hoverTrendOption(deviceId) {
+  const readings = monitorStore.recentReadings[deviceId] || hoverTrendCache.value[deviceId] || []
+  return {
+    grid: { left: 5, right: 5, bottom: 5, top: 5 },
+    xAxis: { type: 'category', data: readings.map((_, i) => ''), show: false },
+    yAxis: { type: 'value', show: false, min: 0 },
+    series: [{
+      type: 'line',
+      data: readings.map(r => r.lightIntensity),
+      smooth: true,
+      showSymbol: false,
+      lineStyle: { width: 1.5, color: '#409EFF' },
+      areaStyle: {
+        color: { type: 'linear', x: 0, y: 0, x2: 0, y2: 1,
+          colorStops: [
+            { offset: 0, color: 'rgba(64,158,255,0.3)' },
+            { offset: 1, color: 'rgba(64,158,255,0.05)' }
+          ]
+        }
+      }
+    }]
+  }
+}
+
+function loadHoverTrend(deviceId) {
+  // Use cached data if available from recentReadings
+  const readings = monitorStore.recentReadings[deviceId]
+  if (readings && readings.length > 0) return
+  // Otherwise try to fetch latest data for this device
+  monitorStore.fetchLatestData(deviceId).then(data => {
+    if (data) {
+      hoverTrendCache.value[deviceId] = [data]
+    }
+  })
+}
 
 // Methods
 function selectDevice(deviceId) {

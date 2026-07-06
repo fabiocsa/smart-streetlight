@@ -54,8 +54,6 @@
         </template>
       </el-empty>
     </template>
-
-    <!-- Device Control Panel -->
     <template v-else>
       <el-row :gutter="20">
         <!-- Left: Manual Control (F3.2) -->
@@ -111,6 +109,11 @@
                 <span>当前光照: <strong>{{ currentIntensity ?? '--' }} Lux</strong></span>
                 <span>控制模式: <strong>{{ selectedDevice.controlMode === 'auto' ? '自动' : '手动' }}</strong></span>
                 <span>最后操作: <strong>{{ lastOperationTime }}</strong></span>
+              </div>
+
+              <!-- Keyboard shortcut hint -->
+              <div v-if="selectedDevice.controlMode === 'manual' && selectedDevice.status === 'online'" class="shortcut-hint">
+                快捷键: <el-tag size="small">O</el-tag> 开灯 / <el-tag size="small">F</el-tag> 关灯
               </div>
 
               <!-- Offline hint -->
@@ -257,11 +260,15 @@ const lastCmd = ref(null)
 const logLoading = ref(false)
 const lastOperationTime = ref('--')
 let cmdTimeout = null
+let lastCmdTime = 0 // For debounce
+const DEBOUNCE_MS = 500
 
 onMounted(() => {
   wsStore.on('SENSOR_DATA', handleSensorData)
   wsStore.on('CONTROL_RESULT', handleControlResult)
   wsStore.on('DEVICE_STATUS', handleDeviceStatus)
+  // Keyboard shortcuts
+  document.addEventListener('keydown', handleKeydown)
 })
 
 onUnmounted(() => {
@@ -269,6 +276,7 @@ onUnmounted(() => {
   wsStore.off('CONTROL_RESULT', handleControlResult)
   wsStore.off('DEVICE_STATUS', handleDeviceStatus)
   if (cmdTimeout) clearTimeout(cmdTimeout)
+  document.removeEventListener('keydown', handleKeydown)
 })
 
 const intensityPercent = computed(() => {
@@ -323,6 +331,11 @@ async function loadLogs() {
 function sendCommand(cmd) {
   if (!selectedDevice.value || cmdLoading.value) return
 
+  // Debounce: ignore if last command was within DEBOUNCE_MS
+  const now = Date.now()
+  if (now - lastCmdTime < DEBOUNCE_MS) return
+  lastCmdTime = now
+
   cmdLoading.value = true
   lastCmd.value = cmd
 
@@ -338,6 +351,20 @@ function sendCommand(cmd) {
     .catch(() => {
       cmdLoading.value = false
     })
+}
+
+function handleKeydown(e) {
+  // Only handle when a device is selected and not in an input
+  if (!selectedDevice.value || e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') return
+
+  const key = e.key.toLowerCase()
+  if (key === 'o') {
+    e.preventDefault()
+    sendCommand('on')
+  } else if (key === 'f') {
+    e.preventDefault()
+    sendCommand('off')
+  }
 }
 
 function handleSensorData(data, deviceId) {
@@ -514,6 +541,12 @@ function formatTime(t) {
 .offline-hint {
   max-width: 400px;
   margin: 0 auto;
+}
+
+.shortcut-hint {
+  font-size: 11px;
+  color: #c0c4cc;
+  margin-top: 8px;
 }
 
 /* Auto mode styles */

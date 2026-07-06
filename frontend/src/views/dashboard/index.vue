@@ -3,8 +3,19 @@
     <!-- Stats Cards -->
     <el-row :gutter="20" class="stats-row">
       <el-col :xs="12" :sm="8" :md="4" v-for="card in statCards" :key="card.label">
-        <el-card shadow="hover" class="stat-card" :style="{ borderTop: `3px solid ${card.color}` }">
-          <div class="stat-value" :style="{ color: card.color }">{{ card.value }}</div>
+        <el-card
+          shadow="hover"
+          class="stat-card clickable"
+          :style="{ borderTop: `3px solid ${card.color}` }"
+          @click="handleStatClick(card.key)"
+        >
+          <div
+            class="stat-value"
+            :class="{ 'offline-flash': card.key === 'offlineDevices' && card.value > 0 }"
+            :style="{ color: card.color }"
+          >
+            {{ card.value }}
+          </div>
           <div class="stat-label">{{ card.label }}</div>
           <el-icon class="stat-icon" :style="{ color: card.color }" :size="32">
             <component :is="card.icon" />
@@ -18,9 +29,12 @@
       <el-col :xs="24" :md="12">
         <el-card shadow="hover">
           <template #header>
-            <span>设备在线状态</span>
+            <div class="card-header">
+              <span>设备在线状态</span>
+              <el-tag v-if="chartLoading.status" type="info" size="small" effect="plain">加载中</el-tag>
+            </div>
           </template>
-          <div class="chart-container">
+          <div class="chart-container" v-loading="chartLoading.status">
             <v-chart :option="deviceStatusChartOption" autoresize />
           </div>
         </el-card>
@@ -28,9 +42,12 @@
       <el-col :xs="24" :md="12">
         <el-card shadow="hover">
           <template #header>
-            <span>灯光状态</span>
+            <div class="card-header">
+              <span>灯光状态</span>
+              <el-tag v-if="chartLoading.light" type="info" size="small" effect="plain">加载中</el-tag>
+            </div>
           </template>
-          <div class="chart-container">
+          <div class="chart-container" v-loading="chartLoading.light">
             <v-chart :option="lightStatusChartOption" autoresize />
           </div>
         </el-card>
@@ -44,14 +61,55 @@
           <template #header>
             <div class="card-header">
               <span>实时光照强度</span>
-              <el-tag :type="wsStore.connected ? 'success' : 'danger'" size="small">
-                {{ wsStore.connected ? '实时' : '离线' }}
-              </el-tag>
+              <div class="card-header-right">
+                <el-tag :type="wsStore.connected ? 'success' : 'danger'" size="small">
+                  {{ wsStore.connected ? '实时' : '离线' }}
+                </el-tag>
+              </div>
             </div>
           </template>
-          <div class="chart-container" style="height: 350px">
+          <div class="chart-container" style="height: 350px" v-loading="chartLoading.realtime">
             <v-chart :option="realtimeChartOption" autoresize />
           </div>
+        </el-card>
+      </el-col>
+    </el-row>
+
+    <!-- Recent Alarms -->
+    <el-row :gutter="20" class="charts-row">
+      <el-col :span="24">
+        <el-card shadow="hover">
+          <template #header>
+            <div class="card-header">
+              <span>最近告警</span>
+              <el-button text size="small" @click="$router.push('/alarms')">
+                查看全部 &gt;
+              </el-button>
+            </div>
+          </template>
+          <div v-if="alarmStore.loading" class="alarm-loading">
+            <el-skeleton :rows="3" animated />
+          </div>
+          <div v-else-if="recentAlarms.length === 0" class="alarm-empty">
+            <span style="font-size: 32px">✅</span>
+            <span style="color: #909399; font-size: 13px; margin-top: 4px">当前无未处理告警，一切正常</span>
+          </div>
+          <el-table v-else :data="recentAlarms" stripe size="small" @row-click="handleAlarmRowClick">
+            <el-table-column label="设备" prop="deviceId" width="100" />
+            <el-table-column label="类型" width="100">
+              <template #default="{ row }">
+                <el-tag :type="row.alarmType === 'offline' ? 'danger' : 'warning'" size="small">
+                  {{ row.alarmType === 'offline' ? '离线' : '传感器异常' }}
+                </el-tag>
+              </template>
+            </el-table-column>
+            <el-table-column label="内容" min-width="200" show-overflow-tooltip prop="content" />
+            <el-table-column label="时间" width="160">
+              <template #default="{ row }">
+                {{ formatTime(row.createdAt) }}
+              </template>
+            </el-table-column>
+          </el-table>
         </el-card>
       </el-col>
     </el-row>
@@ -60,6 +118,7 @@
 
 <script setup>
 import { ref, computed, onMounted, onUnmounted, reactive } from 'vue'
+import { useRouter } from 'vue-router'
 import { Monitor, CircleCheck, WarningFilled, Aim } from '@element-plus/icons-vue'
 import { getDashboardStats } from '@/api/dashboard'
 import { useDeviceStore } from '@/stores/device'
@@ -73,6 +132,7 @@ import { CanvasRenderer } from 'echarts/renderers'
 
 use([PieChart, LineChart, TitleComponent, TooltipComponent, LegendComponent, GridComponent, CanvasRenderer])
 
+const router = useRouter()
 const deviceStore = useDeviceStore()
 const alarmStore = useAlarmStore()
 const wsStore = useWebSocketStore()
@@ -87,14 +147,24 @@ const stats = ref({
   todayAlarms: 0
 })
 
+const chartLoading = reactive({
+  status: false,
+  light: false,
+  realtime: false
+})
+
 const statCards = computed(() => [
-  { label: '总设备数', value: stats.value.totalDevices, color: '#409EFF', icon: Monitor },
-  { label: '在线设备', value: stats.value.onlineDevices, color: '#67C23A', icon: CircleCheck },
-  { label: '离线设备', value: stats.value.offlineDevices, color: '#F56C6C', icon: WarningFilled },
-  { label: '灯光开启', value: stats.value.lightsOn, color: '#E6A23C', icon: Aim },
-  { label: '灯光关闭', value: stats.value.lightsOff, color: '#909399', icon: Monitor },
-  { label: '待处理告警', value: stats.value.pendingAlarms, color: '#F56C6C', icon: WarningFilled }
+  { key: 'totalDevices', label: '总设备数', value: stats.value.totalDevices, color: '#409EFF', icon: Monitor },
+  { key: 'onlineDevices', label: '在线设备', value: stats.value.onlineDevices, color: '#67C23A', icon: CircleCheck },
+  { key: 'offlineDevices', label: '离线设备', value: stats.value.offlineDevices, color: '#F56C6C', icon: WarningFilled },
+  { key: 'lightsOn', label: '灯光开启', value: stats.value.lightsOn, color: '#E6A23C', icon: Aim },
+  { key: 'lightsOff', label: '灯光关闭', value: stats.value.lightsOff, color: '#909399', icon: Monitor },
+  { key: 'pendingAlarms', label: '待处理告警', value: stats.value.pendingAlarms, color: '#F56C6C', icon: WarningFilled }
 ])
+
+const recentAlarms = computed(() => {
+  return alarmStore.alarms.filter(a => a.status === 'pending').slice(0, 5)
+})
 
 const deviceStatusChartOption = computed(() => ({
   tooltip: { trigger: 'item', formatter: '{b}: {c} ({d}%)' },
@@ -180,6 +250,9 @@ function handleSensorData(data, deviceId) {
 }
 
 async function loadStats() {
+  chartLoading.status = true
+  chartLoading.light = true
+  chartLoading.realtime = true
   try {
     const data = await getDashboardStats()
     stats.value = { ...stats.value, ...data }
@@ -190,16 +263,53 @@ async function loadStats() {
     stats.value.offlineDevices = deviceStore.offlineCount
     stats.value.lightsOn = deviceStore.lightsOnCount
     stats.value.lightsOff = deviceStore.lightsOffCount
+  } finally {
+    chartLoading.status = false
+    chartLoading.light = false
+    chartLoading.realtime = false
+  }
+}
+
+function handleStatClick(key) {
+  switch (key) {
+    case 'totalDevices':
+    case 'onlineDevices':
+    case 'offlineDevices':
+    case 'lightsOn':
+    case 'lightsOff':
+      router.push('/devices')
+      break
+    case 'pendingAlarms':
+      router.push('/alarms')
+      break
+  }
+}
+
+function handleAlarmRowClick(row) {
+  router.push('/alarms')
+}
+
+function formatTime(t) {
+  if (!t) return '--'
+  return new Date(t).toLocaleString('zh-CN')
+}
+
+// Handle page visibility change for auto-refresh
+function handleVisibilityChange() {
+  if (document.visibilityState === 'visible') {
+    loadStats()
   }
 }
 
 onMounted(() => {
   loadStats()
   wsStore.on('SENSOR_DATA', handleSensorData)
+  document.addEventListener('visibilitychange', handleVisibilityChange)
 })
 
 onUnmounted(() => {
   wsStore.off('SENSOR_DATA', handleSensorData)
+  document.removeEventListener('visibilitychange', handleVisibilityChange)
 })
 </script>
 
@@ -216,6 +326,16 @@ onUnmounted(() => {
 .stat-card {
   position: relative;
   overflow: hidden;
+}
+
+.stat-card.clickable {
+  cursor: pointer;
+  transition: transform 0.2s;
+}
+
+.stat-card.clickable:hover {
+  transform: translateY(-4px);
+  box-shadow: 0 4px 12px rgba(0,0,0,0.1);
 }
 
 .stat-value {
@@ -237,6 +357,15 @@ onUnmounted(() => {
   opacity: 0.3;
 }
 
+.offline-flash {
+  animation: offlinePulse 2s ease-in-out infinite;
+}
+
+@keyframes offlinePulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.5; }
+}
+
 .charts-row {
   margin-bottom: 20px;
 }
@@ -249,5 +378,24 @@ onUnmounted(() => {
   display: flex;
   justify-content: space-between;
   align-items: center;
+}
+
+.card-header-right {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.alarm-loading {
+  padding: 16px;
+}
+
+.alarm-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  gap: 4px;
 }
 </style>
