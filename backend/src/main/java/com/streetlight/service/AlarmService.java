@@ -1,68 +1,19 @@
 package com.streetlight.service;
 
 import com.streetlight.entity.AlarmLog;
-import com.streetlight.repository.AlarmLogRepository;
-import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
-import org.springframework.data.domain.PageRequest;
-import org.springframework.stereotype.Service;
-import org.springframework.transaction.annotation.Transactional;
 
-import java.time.LocalDate;
-import java.time.LocalDateTime;
-import java.time.LocalTime;
-import java.util.List;
+public interface AlarmService {
 
-@Service
-@RequiredArgsConstructor
-public class AlarmService {
+    void createOfflineAlarm(String deviceId);
 
-    private final AlarmLogRepository alarmLogRepository;
+    void autoResolveOfflineAlarm(String deviceId);
 
-    public AlarmLog createAlarm(AlarmLog alarm) {
-        return alarmLogRepository.save(alarm);
-    }
+    Page<AlarmLog> listAlarms(int page, int size, String status, String type);
 
-    public Page<AlarmLog> getAlarms(String status, String alarmType, int page, int size) {
-        PageRequest pageRequest = PageRequest.of(page, size);
-        if (status != null && alarmType != null) {
-            return alarmLogRepository.findByStatusAndAlarmType(status, alarmType, pageRequest);
-        } else if (status != null) {
-            return alarmLogRepository.findByStatus(status, pageRequest);
-        } else if (alarmType != null) {
-            return alarmLogRepository.findByAlarmType(alarmType, pageRequest);
-        }
-        return alarmLogRepository.findAll(pageRequest);
-    }
+    void resolveAlarm(Long alarmId, String resolvedBy);
 
-    @Transactional
-    public AlarmLog resolveAlarm(Long id, String resolvedBy) {
-        return alarmLogRepository.findById(id).map(alarm -> {
-            alarm.setStatus("resolved");
-            alarm.setResolvedAt(LocalDateTime.now());
-            alarm.setResolvedBy(resolvedBy);
-            return alarmLogRepository.save(alarm);
-        }).orElseThrow(() -> new RuntimeException("告警不存在, id=" + id));
-    }
+    long countPendingAlarms();
 
-    @Transactional
-    public void resolveAlarmsByDeviceId(String deviceId) {
-        List<AlarmLog> pendingAlarms = alarmLogRepository.findByDeviceIdAndStatus(deviceId, "pending");
-        for (AlarmLog alarm : pendingAlarms) {
-            alarm.setStatus("resolved");
-            alarm.setResolvedAt(LocalDateTime.now());
-            alarm.setResolvedBy("system");
-        }
-        alarmLogRepository.saveAll(pendingAlarms);
-    }
-
-    public long countPendingAlarms() {
-        return alarmLogRepository.countByStatus("pending");
-    }
-
-    public long countTodayAlarms() {
-        LocalDateTime todayStart = LocalDate.now().atStartOfDay();
-        LocalDateTime todayEnd = LocalDate.now().atTime(LocalTime.MAX);
-        return alarmLogRepository.countByCreatedAtBetween(todayStart, todayEnd);
-    }
+    long countTodayAlarms();
 }

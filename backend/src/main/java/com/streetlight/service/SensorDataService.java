@@ -1,38 +1,19 @@
 package com.streetlight.service;
 
 import com.streetlight.entity.SensorData;
-import com.streetlight.repository.SensorDataRepository;
-import lombok.RequiredArgsConstructor;
-import org.springframework.stereotype.Service;
 
 import java.time.LocalDateTime;
-import java.util.*;
+import java.util.List;
+import java.util.Map;
+import java.util.Optional;
 
-@Service
-@RequiredArgsConstructor
-public class SensorDataService {
+public interface SensorDataService {
 
-    private final SensorDataRepository sensorDataRepository;
+    SensorData saveAndAutoControl(String deviceId, Double lightIntensity, LocalDateTime reportedAt);
 
-    public SensorData saveSensorData(SensorData data) {
-        return sensorDataRepository.save(data);
-    }
+    Optional<SensorData> getLatestByDeviceId(String deviceId);
 
-    public Optional<SensorData> getLatestByDeviceId(String deviceId) {
-        return sensorDataRepository.findTopByDeviceIdOrderByReportedAtDesc(deviceId);
-    }
+    List<SensorData> getHistory(String deviceId, LocalDateTime start, LocalDateTime end);
 
-    public List<SensorData> getHistory(String deviceId, LocalDateTime start, LocalDateTime end) {
-        return sensorDataRepository.findByDeviceIdAndReportedAtBetweenOrderByReportedAtAsc(
-                deviceId, start, end);
-    }
-
-    public Map<String, Object> getStats(String deviceId, LocalDateTime start, LocalDateTime end) {
-        Map<String, Object> stats = new LinkedHashMap<>();
-        stats.put("avg", sensorDataRepository.avgLightIntensity(deviceId, start, end));
-        stats.put("max", sensorDataRepository.maxLightIntensity(deviceId, start, end));
-        stats.put("min", sensorDataRepository.minLightIntensity(deviceId, start, end));
-        stats.put("count", sensorDataRepository.countByDeviceIdAndTimeRange(deviceId, start, end));
-        return stats;
-    }
+    Map<String, Object> getStats(String deviceId, LocalDateTime start, LocalDateTime end);
 }

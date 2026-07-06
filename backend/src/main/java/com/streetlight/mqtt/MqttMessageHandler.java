@@ -1,41 +1,51 @@
 package com.streetlight.mqtt;
 
-import com.streetlight.entity.SensorData;
+import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.streetlight.service.ControlService;
-import com.streetlight.service.DeviceService;
 import com.streetlight.service.SensorDataService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.eclipse.paho.client.mqttv3.IMqttDeliveryToken;
-import org.eclipse.paho.client.mqttv3.MqttCallback;
-import org.eclipse.paho.client.mqttv3.MqttMessage;
+import org.eclipse.paho.mqttv5.client.IMqttToken;
+import org.eclipse.paho.mqttv5.client.MqttCallback;
+import org.eclipse.paho.mqttv5.client.MqttClient;
+import org.eclipse.paho.mqttv5.client.MqttDisconnectResponse;
+import org.eclipse.paho.mqttv5.common.MqttException;
+import org.eclipse.paho.mqttv5.common.MqttMessage;
+import org.eclipse.paho.mqttv5.common.packet.MqttProperties;
 import org.springframework.stereotype.Component;
+
+import java.time.LocalDateTime;
 
 @Component
 @Slf4j
 @RequiredArgsConstructor
 public class MqttMessageHandler implements MqttCallback {
 
-    private final DeviceService deviceService;
     private final SensorDataService sensorDataService;
     private final ControlService controlService;
+    private final MqttClient mqttClient;
+    private final ObjectMapper objectMapper = new ObjectMapper();
 
     @Override
-    public void connectionLost(Throwable cause) {
-        log.warn("MQTT连接断开: {}", cause.getMessage());
+    public void disconnected(MqttDisconnectResponse disconnectResponse) {
+        log.warn("MQTT连接断开: {}", disconnectResponse.getReasonString());
+    }
+
+    @Override
+    public void mqttErrorOccurred(MqttException exception) {
+        log.warn("MQTT错误: {}", exception.getMessage());
     }
 
     @Override
     public void messageArrived(String topic, MqttMessage message) {
         String payload = new String(message.getPayload());
         log.info("收到MQTT消息 - topic: {}, payload: {}", topic, payload);
-
         try {
-            if (topic.contains("/sensor/data")) {
+            if (topic.contains("sensor/data")) {
                 handleSensorData(payload);
-            } else if (topic.contains("/status")) {
-                handleStatus(payload);
-            } else if (topic.contains("/control/response")) {
+            } else if (topic.contains("control/response")) {
                 handleControlResponse(payload);
             }
         } catch (Exception e) {
@@ -43,26 +53,44 @@ public class MqttMessageHandler implements MqttCallback {
         }
     }
 
-    private void handleSensorData(String payload) {
-        // TODO: 解析JSON -> 保存SensorData -> 触发联动控制
-        // 示例格式: {"deviceId":"SL-001","lightIntensity":125.5,"timestamp":"2026-07-01T10:00:00Z"}
-        log.info("处理传感器数据: {}", payload);
+    private void handleSensorData(String payload) throws JsonProcessingException {
+        JsonNode root = objectMapper.readTree(payload);
+        String deviceId = root.get("deviceId").asText();
+        double lightIntensity = root.get("illuminance").asDouble();
+        LocalDateTime reportedAt = LocalDateTime.now();
+        if (root.has("timestamp") && !root.get("timestamp").isNull()) {
+            reportedAt = LocalDateTime.parse(root.get("timestamp").asText().replace("Z", "").replace(" ", "T"));
+        }
+        sensorDataService.saveAndAutoControl(deviceId, lightIntensity, reportedAt);
     }
 
-    private void handleStatus(String payload) {
-        // TODO: 解析JSON -> 更新心跳 -> 检查在线状态
-        // 示例格式: {"deviceId":"SL-001","status":"online","battery":85}
-        log.info("处理设备状态: {}", payload);
-    }
-
-    private void handleControlResponse(String payload) {
-        // TODO: 解析JSON -> 记录控制结果
-        // 示例格式: {"command":"on","result":"success","timestamp":"2026-07-01T10:00:01Z"}
-        log.info("处理控制响应: {}", payload);
+    private void handleControlResponse(String payload) throws JsonProcessingException {
+        JsonNode root = objectMapper.readTree(payload);
+        String command = root.get("command").asText();
+        String result = root.get("result").asText();
+        String deviceId = root.has("deviceId") ? root.get("deviceId").asText() : "";
+        controlService.updateControlResult(deviceId, command, result);
     }
 
     @Override
-    public void deliveryComplete(IMqttDeliveryToken token) {
-        // 消息送达回调
+    public void deliveryComplete(IMqttToken token) {
+    }
+
+    @Override
+    public void connectComplete(boolean reconnect, String serverURI) {
+        log.info("MQTT连接完成: reconnect={}, server={}", reconnect, serverURI);
+        if (reconnect) {
+            try {
+                mqttClient.subscribe("sensor/data", 1);
+                mqttClient.subscribe("control/response", 1);
+                log.info("MQTT重连后重新订阅主题: sensor/data, control/response");
+            } catch (MqttException e) {
+                log.error("MQTT重连后订阅失败: {}", e.getMessage(), e);
+            }
+        }
+    }
+
+    @Override
+    public void authPacketArrived(int reasonCode, MqttProperties properties) {
     }
 }

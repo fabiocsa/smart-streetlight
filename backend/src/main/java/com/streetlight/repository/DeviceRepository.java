@@ -13,8 +13,6 @@ public interface DeviceRepository extends JpaRepository<Device, Long> {
 
     Optional<Device> findByDeviceId(String deviceId);
 
-    boolean existsByDeviceId(String deviceId);
-
     List<Device> findByStatus(String status);
 
     List<Device> findByStatusAndLastHeartbeatBefore(String status, LocalDateTime time);
