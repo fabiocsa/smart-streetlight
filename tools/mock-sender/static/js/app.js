@@ -1,5 +1,6 @@
 /**
  * 智慧路灯 Mock 数据发送器 - 前端交互逻辑
+ * 适配新版传感器复合键 {deviceId}_{sensorId}
  */
 
 // ============================ 全局状态 ============================
@@ -12,6 +13,7 @@ let pollInterval = null;
 document.addEventListener('DOMContentLoaded', () => {
     loadSensors();
     loadMqttConfig();
+    loadBackendUrl();
     startUptimeTimer();
     startPolling();
     connectLogStream();
@@ -34,41 +36,38 @@ function renderSensorTable(sensors) {
     const tbody = document.getElementById('sensorTableBody');
     if (!sensors || sensors.length === 0) {
         tbody.innerHTML = `<tr id="noSensorsRow">
-            <td colspan="9" class="text-center text-muted py-4">
-                <i class="bi bi-inbox"></i> 暂无传感器，点击右上角添加
+            <td colspan="10" class="text-center text-muted py-4">
+                <i class="bi bi-inbox"></i> 暂无传感器，点击右上角"从后端同步"或"添加传感器"
             </td>
         </tr>`;
         return;
     }
+
+    const typeLabels = { light: '光照', temperature: '温度', humidity: '湿度', power: '功率' };
 
     tbody.innerHTML = sensors.map(s => {
         const statusBadge = s.running
             ? '<span class="badge bg-success status-pulse"><i class="bi bi-check-circle"></i> 运行中</span>'
             : '<span class="badge bg-secondary"><i class="bi bi-pause-circle"></i> 已停止</span>';
 
-        const lightBadge = s.lightStatus === 'on'
-            ? '<span class="badge bg-warning text-dark"><i class="bi bi-lightbulb-fill"></i> 开</span>'
-            : '<span class="badge bg-dark"><i class="bi bi-lightbulb"></i> 关</span>';
-
-        const modeBadge = s.controlMode === 'auto'
-            ? '<span class="badge bg-info"><i class="bi bi-robot"></i> 自动</span>'
-            : '<span class="badge bg-secondary"><i class="bi bi-person"></i> 手动</span>';
+        const typeBadge = `<span class="badge bg-light text-dark">${typeLabels[s.sensorType] || s.sensorType}</span>`;
 
         return `<tr>
+            <td>${escHtml(s.deviceName) || '<span class="text-muted">-</span>'}</td>
+            <td>${escHtml(s.displayName) || '<span class="text-muted">-</span>'}</td>
+            <td>${typeBadge}</td>
             <td><code>${escHtml(s.deviceId)}</code></td>
-            <td>${escHtml(s.name)}</td>
-            <td>${escHtml(s.location)}</td>
+            <td style="display:none"><small class="text-muted">${escHtml(s.sensorKey)}</small></td>
+            <td><small>${escHtml(s.dataTopic) || '-'}</small></td>
             <td>${statusBadge}</td>
             <td>${s.interval}s</td>
-            <td>${lightBadge}</td>
-            <td>${modeBadge}</td>
             <td>${s.publishCount}</td>
             <td class="text-nowrap">
-                <button class="btn btn-sm btn-outline-danger" onclick="removeSensor('${escHtml(s.deviceId)}')"
+                <button class="btn btn-sm btn-outline-danger" onclick="removeSensor('${escHtml(s.sensorKey)}')"
                         title="删除传感器">
                     <i class="bi bi-trash"></i>
                 </button>
-                <button class="btn btn-sm btn-outline-primary" onclick="editSensor('${escHtml(s.deviceId)}')"
+                <button class="btn btn-sm btn-outline-primary" onclick="editSensor('${escHtml(s.sensorKey)}')"
                         title="编辑配置" data-bs-toggle="modal" data-bs-target="#addSensorModal">
                     <i class="bi bi-pencil"></i>
                 </button>
@@ -87,7 +86,11 @@ function addSensor() {
     const form = document.getElementById('addSensorForm');
     const data = {
         deviceId: form.deviceId.value.trim(),
-        name: form.name.value.trim() || form.deviceId.value.trim(),
+        deviceName: form.deviceName.value.trim() || '',
+        displayName: form.displayName.value.trim() || '',
+        sensorType: form.sensorType.value,
+        dataTopic: form.dataTopic.value.trim() || '',
+        name: form.displayName.value.trim() || form.deviceId.value.trim(),
         location: form.location.value.trim(),
         interval: parseInt(form.interval.value) || 5,
         controlMode: form.controlMode.value,
@@ -113,7 +116,6 @@ function addSensor() {
             alert(data.error || '添加失败');
             return;
         }
-        // 关闭模态框
         const modal = bootstrap.Modal.getInstance(document.getElementById('addSensorModal'));
         if (modal) modal.hide();
         form.reset();
@@ -122,41 +124,49 @@ function addSensor() {
     .catch(err => alert('添加失败: ' + err.message));
 }
 
-function removeSensor(deviceId) {
-    if (!confirm(`确定删除传感器 ${deviceId}？`)) return;
+function removeSensor(sensorKey) {
+    if (!confirm(`确定删除传感器 ${sensorKey}？`)) return;
 
-    fetch(`/api/sensors/${encodeURIComponent(deviceId)}`, { method: 'DELETE' })
+    fetch(`/api/sensors/${encodeURIComponent(sensorKey)}`, { method: 'DELETE' })
         .then(r => r.json())
         .then(() => loadSensors())
         .catch(err => alert('删除失败: ' + err.message));
 }
 
-function editSensor(deviceId) {
-    fetch(`/api/sensors/${encodeURIComponent(deviceId)}`)
+function editSensor(sensorKey) {
+    fetch(`/api/sensors/${encodeURIComponent(sensorKey)}`)
         .then(r => r.json())
         .then(s => {
+            if (s.error) { alert(s.error); return; }
             const form = document.getElementById('addSensorForm');
-            form.deviceId.value = s.deviceId;
+            form.deviceId.value = s.deviceId || '';
             form.deviceId.readOnly = true;
-            form.name.value = s.name;
-            form.location.value = s.location;
-            form.interval.value = s.interval;
-            form.controlMode.value = s.controlMode;
+            form.deviceName.value = s.deviceName || '';
+            form.displayName.value = s.displayName || '';
+            form.sensorType.value = s.sensorType || 'light';
+            form.dataTopic.value = s.dataTopic || '';
+            form.location.value = s.location || '';
+            form.interval.value = s.interval || 5;
+            form.controlMode.value = s.controlMode || 'auto';
             form.min.value = s.dataRange?.min || 0;
             form.max.value = s.dataRange?.max || 800;
-            // 改按钮文字
             const btn = document.querySelector('#addSensorModal .btn-primary');
             btn.innerHTML = '<i class="bi bi-check-lg"></i> 保存';
             btn.onclick = updateSensor;
-            btn.dataset.deviceId = deviceId;
-        });
+            btn.dataset.sensorKey = sensorKey;
+        })
+        .catch(err => alert('获取传感器信息失败: ' + err.message));
 }
 
 function updateSensor() {
     const form = document.getElementById('addSensorForm');
-    const deviceId = form.deviceId.value.trim();
+    const sensorKey = document.querySelector('#addSensorModal .btn-primary').dataset.sensorKey;
     const data = {
-        name: form.name.value.trim(),
+        deviceName: form.deviceName.value.trim(),
+        displayName: form.displayName.value.trim(),
+        sensorType: form.sensorType.value,
+        dataTopic: form.dataTopic.value.trim(),
+        name: form.displayName.value.trim(),
         location: form.location.value.trim(),
         interval: parseInt(form.interval.value) || 5,
         controlMode: form.controlMode.value,
@@ -166,7 +176,7 @@ function updateSensor() {
         },
     };
 
-    fetch(`/api/sensors/${encodeURIComponent(deviceId)}/config`, {
+    fetch(`/api/sensors/${encodeURIComponent(sensorKey)}/config`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(data),
@@ -177,12 +187,12 @@ function updateSensor() {
         if (modal) modal.hide();
         form.reset();
         form.deviceId.readOnly = false;
-        // 恢复按钮
         const btn = document.querySelector('#addSensorModal .btn-primary');
         btn.innerHTML = '<i class="bi bi-plus-lg"></i> 添加';
         btn.onclick = addSensor;
         loadSensors();
-    });
+    })
+    .catch(err => alert('更新失败: ' + err.message));
 }
 
 // 重置模态框
@@ -194,6 +204,59 @@ document.getElementById('addSensorModal').addEventListener('hidden.bs.modal', ()
     btn.innerHTML = '<i class="bi bi-plus-lg"></i> 添加';
     btn.onclick = addSensor;
 });
+
+// ============================ 后端同步 ============================
+
+function loadBackendUrl() {
+    fetch('/api/status')
+        .then(r => r.json())
+        .then(status => {
+            if (status.backendUrl) {
+                document.getElementById('backendUrlInput').value = status.backendUrl;
+            }
+        })
+        .catch(() => {});
+}
+
+function saveBackendUrl() {
+    const url = document.getElementById('backendUrlInput').value.trim();
+    if (!url) { alert('请输入后端 URL'); return; }
+    fetch('/api/config/backend-url', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ backendUrl: url }),
+    })
+    .then(r => r.json())
+    .then(resp => {
+        if (resp.error) { alert(resp.error); return; }
+        alert(resp.message);
+    })
+    .catch(err => alert('保存失败: ' + err.message));
+}
+
+function syncFromBackend() {
+    const btn = document.getElementById('btnSyncBackend');
+    btn.disabled = true;
+    btn.innerHTML = '<i class="bi bi-hourglass-split"></i> 同步中...';
+
+    const el = document.getElementById('syncResult');
+    el.innerHTML = '<span class="text-info"><i class="bi bi-arrow-repeat spin"></i> 正在从后端同步...</span>';
+
+    fetch('/api/sensors/sync-from-backend', { method: 'POST' })
+        .then(r => r.json())
+        .then(resp => {
+            el.innerHTML = `<span class="text-success"><i class="bi bi-check-circle"></i> ${resp.message}</span>`;
+            setTimeout(() => el.innerHTML = '', 10000);
+            loadSensors();
+        })
+        .catch(err => {
+            el.innerHTML = `<span class="text-danger">同步失败: ${err.message}</span>`;
+        })
+        .finally(() => {
+            btn.disabled = false;
+            btn.innerHTML = '<i class="bi bi-cloud-download"></i> 从后端同步';
+        });
+}
 
 // ============================ MQTT 配置 ============================
 
@@ -257,7 +320,7 @@ function sendMockConfig() {
     .then(r => r.json())
     .then(resp => {
         const el = document.getElementById('cmdResult');
-        el.innerHTML = `<span class="text-success"><i class="bi bi-check-circle"></i> ${resp.message}</span>`;
+        el.innerHTML = `<span class="text-success"><i class="bi bi-check-circle"></i> ${resp.message || resp.warning}</span>`;
         setTimeout(() => el.innerHTML = '', 3000);
         loadSensors();
     })
@@ -282,7 +345,6 @@ function connectLogStream() {
     };
 
     evtSource.onerror = () => {
-        // 断线自动重连
         setTimeout(connectLogStream, 3000);
     };
 }

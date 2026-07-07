@@ -3,6 +3,7 @@
 智慧路灯 Mock 模拟数据发送器 - Flask Web 应用
 =============================================
 提供 Web UI 管理传感器、配置 MQTT 连接、查看实时日志。
+传感器内部键格式: {deviceId}_{sensorId} (如 SL-001_1)
 """
 
 import json
@@ -15,9 +16,9 @@ from typing import Any, Dict
 
 from flask import Flask, jsonify, render_template, request, Response, stream_with_context
 
-from sender.config_manager import ConfigManager
+from sender.config_manager import ConfigManager, _make_sensor_key
 from sender.mqtt_client import MqttClientManager
-from sender.sensor_manager import SensorManager
+from sender.sensor_manager import SensorManager, _sensor_label
 
 # ---------------------------------------------------------------------------
 # 日志系统 — 同时输出到控制台和内存队列（供 Web UI 实时显示）
@@ -43,7 +44,6 @@ def setup_logging():
     root = logging.getLogger("mock-sender")
     root.setLevel(logging.DEBUG)
 
-    # 控制台输出
     console = logging.StreamHandler()
     console.setLevel(logging.INFO)
     console.setFormatter(logging.Formatter(
@@ -52,7 +52,6 @@ def setup_logging():
     ))
     root.addHandler(console)
 
-    # 队列输出（Web UI）
     qh = QueueHandler()
     qh.setLevel(logging.INFO)
     qh.setFormatter(logging.Formatter("%(message)s"))
@@ -84,7 +83,6 @@ def index():
 
 @app.route("/api/status")
 def api_status():
-    """获取整体运行状态。"""
     mqtt_cfg = config_mgr.get_mqtt_config()
     sensors = sensor_mgr.list_sensors()
     return jsonify({
@@ -97,6 +95,7 @@ def api_status():
             "total": len(sensors),
             "running": sum(1 for s in sensors if s["running"]),
         },
+        "backendUrl": config_mgr.get_backend_url(),
         "uptime": time.time() - _start_time if _start_time else 0,
     })
 
@@ -105,14 +104,12 @@ def api_status():
 
 @app.route("/api/sensors")
 def api_sensors():
-    """获取传感器列表。"""
     return jsonify(sensor_mgr.list_sensors())
 
 
-@app.route("/api/sensors/<device_id>")
-def api_sensor(device_id: str):
-    """获取单个传感器详情。"""
-    s = sensor_mgr.get_sensor(device_id)
+@app.route("/api/sensors/<sensor_key>")
+def api_sensor(sensor_key: str):
+    s = sensor_mgr.get_sensor(sensor_key)
     if not s:
         return jsonify({"error": "传感器不存在"}), 404
     return jsonify(s)
@@ -120,62 +117,69 @@ def api_sensor(device_id: str):
 
 @app.route("/api/sensors", methods=["POST"])
 def api_add_sensor():
-    """添加传感器。"""
+    """手动添加传感器（Web UI 调用）。"""
     data = request.get_json(force=True)
     device_id = data.get("deviceId", "").strip()
     if not device_id:
         return jsonify({"error": "deviceId 不能为空"}), 400
 
-    ok = sensor_mgr.add_sensor(device_id, data)
-    if not ok:
-        return jsonify({"error": f"传感器 {device_id} 已存在"}), 409
-    return jsonify({"message": f"传感器 {device_id} 已添加"}), 201
+    sensor_id = data.get("sensorId") or int(time.time() * 1000) % 100000
+    data["sensorId"] = sensor_id
+
+    key = sensor_mgr.add_sensor(device_id, data)
+    if not key:
+        return jsonify({"error": f"传感器已存在"}), 409
+    return jsonify({"message": "传感器已添加", "sensorKey": key}), 201
 
 
-@app.route("/api/sensors/<device_id>", methods=["DELETE"])
-def api_remove_sensor(device_id: str):
-    """删除传感器。"""
-    ok = sensor_mgr.remove_sensor(device_id)
+@app.route("/api/sensors/<sensor_key>", methods=["DELETE"])
+def api_remove_sensor(sensor_key: str):
+    ok = sensor_mgr.remove_sensor(sensor_key)
     if not ok:
         return jsonify({"error": "传感器不存在"}), 404
-    return jsonify({"message": f"传感器 {device_id} 已删除"})
+    return jsonify({"message": f"传感器 {sensor_key} 已删除"})
 
 
-@app.route("/api/sensors/<device_id>/start", methods=["POST"])
-def api_start_sensor(device_id: str):
-    """启动传感器。"""
-    ok = sensor_mgr.start_sensor(device_id)
+@app.route("/api/sensors/<sensor_key>/start", methods=["POST"])
+def api_start_sensor(sensor_key: str):
+    ok = sensor_mgr.start_sensor(sensor_key)
     if not ok:
         return jsonify({"error": "传感器不存在或已运行"}), 400
-    return jsonify({"message": f"传感器 {device_id} 已启动"})
+    return jsonify({"message": f"传感器 {sensor_key} 已启动"})
 
 
-@app.route("/api/sensors/<device_id>/stop", methods=["POST"])
-def api_stop_sensor(device_id: str):
-    """停止传感器。"""
-    ok = sensor_mgr.stop_sensor(device_id)
+@app.route("/api/sensors/<sensor_key>/stop", methods=["POST"])
+def api_stop_sensor(sensor_key: str):
+    ok = sensor_mgr.stop_sensor(sensor_key)
     if not ok:
         return jsonify({"error": "传感器不存在"}), 400
-    return jsonify({"message": f"传感器 {device_id} 已停止"})
+    return jsonify({"message": f"传感器 {sensor_key} 已停止"})
 
 
-@app.route("/api/sensors/<device_id>/config", methods=["PUT"])
-def api_update_sensor_config(device_id: str):
-    """更新传感器配置。"""
+@app.route("/api/sensors/<sensor_key>/config", methods=["PUT"])
+def api_update_sensor_config(sensor_key: str):
     data = request.get_json(force=True)
-    ok = sensor_mgr.update_sensor_config(device_id, data)
+    ok = sensor_mgr.update_sensor_config(sensor_key, data)
     if not ok:
         return jsonify({"error": "传感器不存在"}), 404
     return jsonify({"message": "配置已更新"})
+
+
+@app.route("/api/sensors/sync-from-backend", methods=["POST"])
+def api_sync_from_backend():
+    """从后端 REST API 同步传感器列表。"""
+    count = sensor_mgr.load_from_backend()
+    return jsonify({
+        "message": f"已从后端同步 {count} 个传感器",
+        "syncedCount": count,
+    })
 
 
 # ================================ API: MQTT 配置 ================================
 
 @app.route("/api/config/mqtt")
 def api_get_mqtt_config():
-    """获取 MQTT 连接配置。"""
     cfg = config_mgr.get_mqtt_config()
-    # 隐藏密码
     cfg = dict(cfg)
     cfg["password"] = "******" if cfg.get("password") else ""
     return jsonify(cfg)
@@ -183,11 +187,9 @@ def api_get_mqtt_config():
 
 @app.route("/api/config/mqtt", methods=["PUT"])
 def api_update_mqtt_config():
-    """更新 MQTT 连接配置并重新连接。"""
     data = request.get_json(force=True)
     current = config_mgr.get_mqtt_config()
 
-    # 保留原有密码（如果前端传了掩码）
     if data.get("password") in ("******", ""):
         data["password"] = current.get("password", "")
 
@@ -195,10 +197,8 @@ def api_update_mqtt_config():
     if not ok:
         return jsonify({"error": "保存配置失败"}), 500
 
-    # 重新连接
     new_cfg = config_mgr.get_mqtt_config()
     mqtt_mgr.connect(new_cfg)
-    # 重连后重新加载传感器
     sensor_mgr.stop_all()
     sensor_mgr.load_from_config()
 
@@ -207,18 +207,27 @@ def api_update_mqtt_config():
 
 @app.route("/api/config/mqtt/reconnect", methods=["POST"])
 def api_reconnect_mqtt():
-    """手动重连 MQTT。"""
     cfg = config_mgr.get_mqtt_config()
     mqtt_mgr.connect(cfg)
     sensor_mgr.load_from_config()
     return jsonify({"message": "MQTT 重连成功" if mqtt_mgr.is_connected else "MQTT 正在后台重连..."})
 
 
+@app.route("/api/config/backend-url", methods=["PUT"])
+def api_update_backend_url():
+    """更新后端 API URL。"""
+    data = request.get_json(force=True)
+    url = data.get("backendUrl", "").strip()
+    if not url:
+        return jsonify({"error": "backendUrl 不能为空"}), 400
+    config_mgr.set_backend_url(url)
+    return jsonify({"message": f"后端 URL 已更新为 {url}"})
+
+
 # ================================ API: 日志流 (SSE) ================================
 
 @app.route("/api/logs")
 def api_get_logs():
-    """获取最近的日志。"""
     logs = []
     while not log_queue.empty():
         try:
@@ -230,9 +239,7 @@ def api_get_logs():
 
 @app.route("/api/logs/stream")
 def api_log_stream():
-    """SSE 实时日志流。"""
     def generate():
-        # 先发送一个初始连接消息
         yield f"data: {json.dumps({'type': 'connected'})}\n\n"
         while True:
             try:
@@ -255,7 +262,6 @@ def api_log_stream():
 
 @app.route("/api/mock-config/send", methods=["POST"])
 def api_send_mock_config():
-    """模拟后端下发配置指令到 Mock Sender。"""
     data = request.get_json(force=True)
     action = data.get("action", "")
     device_id = data.get("deviceId", "")
@@ -264,7 +270,6 @@ def api_send_mock_config():
     if not action:
         return jsonify({"error": "action 不能为空"}), 400
 
-    # 处理配置指令
     ok = _handle_mock_config_command(data)
     if ok:
         return jsonify({"message": f"指令 '{action}' 已执行", "action": action, "deviceId": device_id})
@@ -283,17 +288,23 @@ def _handle_mock_config_command(payload: Dict[str, Any]) -> bool:
     if action == "set_frequency":
         interval = params.get("interval", 5)
         if device_id:
-            return sensor_mgr.update_sensor_config(device_id, {"interval": interval})
-        else:
-            # 全局修改所有传感器
+            # 查找该设备的所有传感器并更新
             for s in sensor_mgr.list_sensors():
-                sensor_mgr.update_sensor_config(s["deviceId"], {"interval": interval})
+                if s["deviceId"] == device_id:
+                    sensor_mgr.update_sensor_config(s["sensorKey"], {"interval": interval})
+            return True
+        else:
+            for s in sensor_mgr.list_sensors():
+                sensor_mgr.update_sensor_config(s["sensorKey"], {"interval": interval})
             return True
 
     elif action == "set_data_range":
         data_range = {"min": params.get("min", 0), "max": params.get("max", 800)}
         if device_id:
-            return sensor_mgr.update_sensor_config(device_id, {"dataRange": data_range})
+            for s in sensor_mgr.list_sensors():
+                if s["deviceId"] == device_id:
+                    sensor_mgr.update_sensor_config(s["sensorKey"], {"dataRange": data_range})
+            return True
         return True
 
     elif action == "set_light_status":
@@ -307,22 +318,52 @@ def _handle_mock_config_command(payload: Dict[str, Any]) -> bool:
 
     elif action == "add_sensor":
         if device_id:
-            return sensor_mgr.add_sensor(device_id, params)
+            # 从 params 提取 sensorId
+            sensor_id = params.get("sensorId", params.get("id"))
+            if sensor_id is None:
+                sensor_id = int(time.time() * 1000) % 100000
+            key = sensor_mgr.add_sensor(device_id, params)
+            return key is not None
         return False
 
     elif action == "remove_sensor":
         if device_id:
-            return sensor_mgr.remove_sensor(device_id)
+            sensor_id = params.get("sensorId")
+            if sensor_id:
+                key = _make_sensor_key(device_id, sensor_id)
+                return sensor_mgr.remove_sensor(key)
+            else:
+                # 移除该设备的所有传感器
+                for s in sensor_mgr.list_sensors():
+                    if s["deviceId"] == device_id:
+                        sensor_mgr.remove_sensor(s["sensorKey"])
+                return True
         return False
 
     elif action == "stop_sensor":
         if device_id:
-            return sensor_mgr.stop_sensor(device_id)
+            sensor_id = params.get("sensorId")
+            if sensor_id:
+                key = _make_sensor_key(device_id, sensor_id)
+                return sensor_mgr.stop_sensor(key)
+            else:
+                for s in sensor_mgr.list_sensors():
+                    if s["deviceId"] == device_id:
+                        sensor_mgr.stop_sensor(s["sensorKey"])
+                return True
         return False
 
     elif action == "start_sensor":
         if device_id:
-            return sensor_mgr.start_sensor(device_id)
+            sensor_id = params.get("sensorId")
+            if sensor_id:
+                key = _make_sensor_key(device_id, sensor_id)
+                return sensor_mgr.start_sensor(key)
+            else:
+                for s in sensor_mgr.list_sensors():
+                    if s["deviceId"] == device_id:
+                        sensor_mgr.start_sensor(s["sensorKey"])
+                return True
         return False
 
     else:
@@ -353,15 +394,26 @@ def main():
     mqtt_cfg = config_mgr.get_mqtt_config()
     mqtt_mgr.connect(mqtt_cfg)
 
-    # 加载传感器
+    # 从本地配置加载传感器
     sensor_mgr.load_from_config()
 
-    # 获取端口（默认 5050，避免与后端 8080/前端 5173 冲突）
+    # 从后端 REST API 同步传感器（异步延迟执行，等待 MQTT 连接就绪）
+    def _sync_from_backend():
+        time.sleep(2)  # 等 MQTT 连接稳定
+        backend_url = config_mgr.get_backend_url()
+        logger.info(f"尝试从后端同步传感器: {backend_url}")
+        sensor_mgr.load_from_backend()
+
+    sync_thread = threading.Thread(target=_sync_from_backend, daemon=True)
+    sync_thread.start()
+
+    # 获取端口
     port = 5050
     logger.info("=" * 55)
     logger.info("  智慧路灯 Mock 模拟数据发送器")
     logger.info(f"  Web UI: http://localhost:{port}")
     logger.info(f"  MQTT:   {mqtt_cfg['broker']}:{mqtt_cfg['port']}")
+    logger.info(f"  后端:   {config_mgr.get_backend_url()}")
     logger.info("=" * 55)
     logger.info("  按 Ctrl+C 停止")
     logger.info("")

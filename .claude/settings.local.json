@@ -56,7 +56,11 @@
       "Bash(tasklist /FI \"PID eq 7224\")",
       "Bash(ps -p 7224 -o comm=)",
       "Bash(taskkill /PID 5956 /F)",
-      "Bash(npx vite *)"
+      "Bash(npx vite *)",
+      "Bash(python -m py_compile sender/config_manager.py)",
+      "Bash(python -m py_compile sender/sensor_manager.py)",
+      "Bash(python -m py_compile sender/mqtt_client.py)",
+      "Bash(python -m py_compile app.py)"
     ]
   }
 }

@@ -155,9 +155,12 @@ class MqttClientManager:
                 logger.error(f"发布异常: {e}")
                 return False
 
-    def publish_sensor_data(self, device_id: str, payload: dict) -> bool:
-        """发布传感器数据到 streetlight/{deviceId}/sensor/data。"""
-        topic = self._topic(TOPIC_SENSOR_DATA, device_id)
+    def publish_sensor_data(self, device_id: str, payload: dict, data_topic: str = "") -> bool:
+        """发布传感器数据到指定主题，若未指定则使用 streetlight/{deviceId}/sensor/data。"""
+        if data_topic:
+            topic = data_topic
+        else:
+            topic = self._topic(TOPIC_SENSOR_DATA, device_id)
         return self.publish(topic, payload)
 
     def publish_heartbeat(self, device_id: str, payload: dict) -> bool:

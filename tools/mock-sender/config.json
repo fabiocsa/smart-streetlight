@@ -8,7 +8,7 @@
     "clientId": "mock-sender-v2"
   },
   "sensors": {
-    "SL-001": {
+    "SL-001_1": {
       "name": "路灯A-01",
       "location": "校门口",
       "enabled": true,
@@ -18,7 +18,71 @@
         "max": 800
       },
       "lightStatus": "off",
-      "controlMode": "auto"
+      "controlMode": "auto",
+      "deviceId": "SL-001",
+      "sensorId": 1,
+      "displayName": "路灯A-01",
+      "sensorType": "light",
+      "deviceName": "",
+      "dataTopic": ""
+    },
+    "SL-001_2": {
+      "deviceId": "SL-001",
+      "sensorId": 2,
+      "displayName": "功率传感器",
+      "sensorType": "power",
+      "deviceName": "路灯A-01",
+      "name": "SL-001",
+      "location": "校门口",
+      "dataTopic": "streetlight/SL-001/sensor/data",
+      "enabled": true,
+      "interval": 10,
+      "dataRange": {
+        "min": 0,
+        "max": 800
+      },
+      "lightStatus": "off",
+      "controlMode": "auto",
+      "configJson": "{\"min\": 0, \"max\": 100}"
+    },
+    "SL-002_3": {
+      "deviceId": "SL-002",
+      "sensorId": 3,
+      "displayName": "光照传感器",
+      "sensorType": "light",
+      "deviceName": "路灯A-02",
+      "name": "SL-002",
+      "location": "图书馆前",
+      "dataTopic": "streetlight/SL-002/sensor/data",
+      "enabled": true,
+      "interval": 5,
+      "dataRange": {
+        "min": 0,
+        "max": 800
+      },
+      "lightStatus": "off",
+      "controlMode": "auto",
+      "configJson": "{\"min\": 0, \"max\": 800}"
+    },
+    "SL-004_4": {
+      "deviceId": "SL-004",
+      "sensorId": 4,
+      "displayName": "光照传感器",
+      "sensorType": "light",
+      "deviceName": "路灯B-01",
+      "name": "SL-004",
+      "location": "行政楼南",
+      "dataTopic": "streetlight/SL-004/sensor/data",
+      "enabled": true,
+      "interval": 5,
+      "dataRange": {
+        "min": 0,
+        "max": 800
+      },
+      "lightStatus": "off",
+      "controlMode": "auto",
+      "configJson": "{\"min\": 0, \"max\": 600}"
     }
-  }
+  },
+  "backendUrl": "http://localhost:8080/api"
 }
