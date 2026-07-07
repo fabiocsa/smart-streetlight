@@ -4,11 +4,12 @@ import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.eclipse.paho.mqttv5.client.MqttClient;
-import org.eclipse.paho.mqttv5.common.MqttException;
-import org.eclipse.paho.mqttv5.common.MqttMessage;
+import org.eclipse.paho.client.mqttv3.MqttClient;
+import org.eclipse.paho.client.mqttv3.MqttException;
+import org.eclipse.paho.client.mqttv3.MqttMessage;
 import org.springframework.stereotype.Service;
 
+import java.nio.charset.StandardCharsets;
 import java.time.LocalDateTime;
 import java.util.LinkedHashMap;
 import java.util.Map;
@@ -29,7 +30,7 @@ public class MqttPublishService {
             payload.put("source", source);
             payload.put("timestamp", LocalDateTime.now().toString());
             String json = objectMapper.writeValueAsString(payload);
-            MqttMessage message = new MqttMessage(json.getBytes());
+            MqttMessage message = new MqttMessage(json.getBytes(StandardCharsets.UTF_8));
             message.setQos(1);
             mqttClient.publish(topic, message);
             log.info("MQTT发布指令 - topic: {}, payload: {}", topic, json);
