@@ -4,6 +4,7 @@ import com.streetlight.common.Result;
 import com.streetlight.dto.ControlRequest;
 import com.streetlight.dto.ControlModeRequest;
 import com.streetlight.dto.ThresholdRequest;
+import com.streetlight.entity.ControlLog;
 import com.streetlight.service.ControlService;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
@@ -11,6 +12,7 @@ import org.springframework.web.bind.annotation.*;
 
 import java.time.LocalDateTime;
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
 
 @RestController
@@ -24,13 +26,19 @@ public class ControlController {
     public Result<Map<String, Object>> sendCommand(
             @PathVariable String deviceId,
             @Valid @RequestBody ControlRequest request) {
-        controlService.sendControlCommand(deviceId, request.getCommand(), "manual");
+        String source = request.getSource() != null ? request.getSource() : "manual";
+        controlService.sendControlCommand(deviceId, request.getCommand(), source);
         Map<String, Object> result = new LinkedHashMap<>();
         result.put("command", request.getCommand());
-        result.put("source", "manual");
+        result.put("source", source);
         result.put("result", "success");
         result.put("createdAt", LocalDateTime.now().toString());
         return Result.success(result);
+    }
+
+    @GetMapping("/{deviceId}/control/logs")
+    public Result<List<ControlLog>> getControlLogs(@PathVariable String deviceId) {
+        return Result.success(controlService.getControlLogs(deviceId));
     }
 
     @PutMapping("/{id}/control-mode")

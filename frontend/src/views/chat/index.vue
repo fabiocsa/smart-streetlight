@@ -177,6 +177,7 @@ import {
 } from '@element-plus/icons-vue'
 import { useWebSocketStore } from '@/stores/websocket'
 import { useChatStore } from '@/stores/chat'
+import request from '@/api/request'
 
 const wsStore = useWebSocketStore()
 const chatStore = useChatStore()
@@ -266,17 +267,10 @@ async function sendMessage() {
   abortController = new AbortController()
 
   try {
-    // Call the AI API (placeholder endpoint - adjust when backend is ready)
-    const response = await fetch('/api/chat', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ question: text }),
+    // Call the AI API via axios
+    const data = await request.post('/chat', { question: text }, {
       signal: abortController.signal
     })
-
-    if (!response.ok) throw new Error('请求失败')
-
-    const data = await response.json()
     const answer = data.answer || data.content || data.message || '暂未获取到回复，请稍后再试'
 
     // Simulate typing effect for realistic feel

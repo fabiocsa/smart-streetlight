@@ -9,7 +9,7 @@ import com.streetlight.service.AlarmService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.domain.Page;
-import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -61,18 +61,17 @@ public class AlarmServiceImpl implements AlarmService {
     }
 
     @Override
-    public Page<AlarmLog> listAlarms(int page, int size, String status, String type) {
-        PageRequest pr = PageRequest.of(page, size);
+    public Page<AlarmLog> listAlarms(Pageable pageable, String status, String type) {
         if (status != null && type != null) {
             return alarmLogRepository.findByStatusAndAlarmType(
                     AlarmStatus.valueOf(status.toUpperCase()),
-                    AlarmType.valueOf(type.toUpperCase()), pr);
+                    AlarmType.valueOf(type.toUpperCase()), pageable);
         } else if (status != null) {
-            return alarmLogRepository.findByStatus(AlarmStatus.valueOf(status.toUpperCase()), pr);
+            return alarmLogRepository.findByStatus(AlarmStatus.valueOf(status.toUpperCase()), pageable);
         } else if (type != null) {
-            return alarmLogRepository.findByAlarmType(AlarmType.valueOf(type.toUpperCase()), pr);
+            return alarmLogRepository.findByAlarmType(AlarmType.valueOf(type.toUpperCase()), pageable);
         }
-        return alarmLogRepository.findAll(pr);
+        return alarmLogRepository.findAll(pageable);
     }
 
     @Override

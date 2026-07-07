@@ -18,7 +18,7 @@ export const useWebSocketStore = defineStore('websocket', () => {
   function connect() {
     if (ws && ws.readyState === WebSocket.OPEN) return
 
-    ws = new WebSocket('ws://localhost:8080/ws/monitor')
+    ws = new WebSocket(`ws://${window.location.host}/ws/monitor`)
 
     ws.onopen = () => {
       console.log('WebSocket connected')

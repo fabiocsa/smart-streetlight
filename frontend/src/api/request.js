@@ -8,7 +8,19 @@ const request = axios.create({
 
 // Response interceptor
 request.interceptors.response.use(
-  response => response.data,
+  response => {
+    const body = response.data
+    // Auto-unwrap Result wrapper: { code, msg, data }
+    if (body && typeof body === 'object' && 'code' in body && 'data' in body) {
+      if (body.code === 0) {
+        return body.data
+      } else {
+        ElMessage.error(body.msg || '请求失败')
+        return Promise.reject(new Error(body.msg || '请求失败'))
+      }
+    }
+    return body
+  },
   error => {
     console.error('API Error:', error)
     const message = error.response?.data?.message || error.message || '请求失败'

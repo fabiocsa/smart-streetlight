@@ -1,6 +1,9 @@
 package com.streetlight.service;
 
+import com.streetlight.entity.ControlLog;
 import com.streetlight.entity.Device;
+
+import java.util.List;
 
 public interface ControlService {
 
@@ -18,4 +21,9 @@ public interface ControlService {
      *            光照 > threshold_off 且灯开 → 关灯
      */
     String evaluateAutoControl(Device device, Double lightIntensity);
+
+    /**
+     * 获取设备的控制日志
+     */
+    List<ControlLog> getControlLogs(String deviceId);
 }

@@ -2,6 +2,7 @@ package com.streetlight.mqtt;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.streetlight.entity.SensorData;
+import com.streetlight.service.AlarmService;
 import com.streetlight.service.ControlService;
 import com.streetlight.service.DeviceService;
 import com.streetlight.service.SensorDataService;
@@ -33,6 +34,7 @@ public class MqttMessageHandler {
     private final SensorDataService sensorDataService;
     private final DeviceService deviceService;
     private final ControlService controlService;
+    private final AlarmService alarmService;
     private final WebSocketHandler webSocketHandler;
 
     @ServiceActivator(inputChannel = "mqttInputChannel")
@@ -83,6 +85,9 @@ public class MqttMessageHandler {
 
         // 更新设备心跳
         deviceService.updateHeartbeat(lightData.getDeviceId());
+
+        // 自动解决离线告警
+        alarmService.autoResolveOfflineAlarm(lightData.getDeviceId());
 
         // 触发自动控制
         deviceService.getDeviceByDeviceId(lightData.getDeviceId()).ifPresent(device -> {

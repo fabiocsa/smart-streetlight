@@ -8,4 +8,6 @@ public class ControlRequest {
 
     @NotBlank(message = "指令不能为空")
     private String command;
+
+    private String source;
 }

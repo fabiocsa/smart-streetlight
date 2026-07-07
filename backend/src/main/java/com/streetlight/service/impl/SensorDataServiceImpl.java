@@ -31,6 +31,12 @@ public class SensorDataServiceImpl implements SensorDataService {
 
     @Override
     @Transactional
+    public SensorData saveSensorData(SensorData sensorData) {
+        return sensorDataRepository.save(sensorData);
+    }
+
+    @Override
+    @Transactional
     public SensorData saveAndAutoControl(String deviceId, Double lightIntensity, LocalDateTime reportedAt) {
         SensorData data = SensorData.builder()
                 .deviceId(deviceId).lightIntensity(lightIntensity).reportedAt(reportedAt).build();
