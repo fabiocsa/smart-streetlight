@@ -80,15 +80,16 @@ def on_message(client, userdata, msg):
                 device_states[device_id]["lightStatus"] = command
                 print(f"    → {device_id} 灯光已{command}")
 
-            # 回复执行结果到 control/response
+            # 回复执行结果到 streetlight/{deviceId}/control/response
             response = {
                 "command": command,
                 "result": "success",
                 "deviceId": device_id,
                 "timestamp": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
             }
-            client.publish("control/response", json.dumps(response), qos=1)
-            print(f"[→] 已回复控制结果: {response}")
+            response_topic = f"streetlight/{device_id}/control/response"
+            client.publish(response_topic, json.dumps(response), qos=1)
+            print(f"[→] 已回复控制结果到 {response_topic}: {response}")
 
     except Exception as e:
         print(f"[!] 处理控制指令失败: {e}")
@@ -148,7 +149,9 @@ def publish_sensor_data(client):
                 "status": light_status,
                 "timestamp": datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
             }
-            client.publish("sensor/data", json.dumps(payload), qos=1)
+            # 使用设备独立主题: streetlight/{deviceId}/sensor/data
+            sensor_topic = f"streetlight/{device_id}/sensor/data"
+            client.publish(sensor_topic, json.dumps(payload), qos=1)
 
         time.sleep(interval)
 

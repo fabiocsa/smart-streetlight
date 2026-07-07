@@ -1,0 +1,229 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>智慧路灯 - Mock 数据发送器</title>
+    <link href="https://cdn.bootcdn.net/ajax/libs/twitter-bootstrap/5.3.3/css/bootstrap.min.css" rel="stylesheet">
+    <link href="https://cdn.bootcdn.net/ajax/libs/bootstrap-icons/1.11.3/font/bootstrap-icons.min.css" rel="stylesheet">
+    <link href="/static/css/style.css" rel="stylesheet">
+</head>
+<body>
+
+<!-- ==================== 顶部导航 ==================== -->
+<nav class="navbar navbar-dark bg-dark sticky-top">
+    <div class="container-fluid">
+        <span class="navbar-brand mb-0">
+            <i class="bi bi-lamp"></i> 智慧路灯 · Mock 数据发送器
+        </span>
+        <div class="d-flex align-items-center gap-3">
+            <span id="mqttStatus" class="badge bg-secondary">
+                <i class="bi bi-plug"></i> MQTT 未连接
+            </span>
+            <span id="sensorCount" class="badge bg-info">
+                <i class="bi bi-cpu"></i> 传感器: 0
+            </span>
+            <span id="uptime" class="text-light small">运行: 00:00:00</span>
+        </div>
+    </div>
+</nav>
+
+<!-- ==================== 主内容区 ==================== -->
+<div class="container-fluid py-3">
+    <div class="row">
+        <!-- 左侧：传感器列表 -->
+        <div class="col-lg-8">
+            <div class="card mb-3">
+                <div class="card-header d-flex justify-content-between align-items-center">
+                    <span><i class="bi bi-list-ul"></i> 传感器管理</span>
+                    <button class="btn btn-sm btn-success" data-bs-toggle="modal" data-bs-target="#addSensorModal">
+                        <i class="bi bi-plus-lg"></i> 添加传感器
+                    </button>
+                </div>
+                <div class="card-body p-0">
+                    <div class="table-responsive">
+                        <table class="table table-hover table-striped mb-0" id="sensorTable">
+                            <thead class="table-dark">
+                                <tr>
+                                    <th>设备 ID</th>
+                                    <th>名称</th>
+                                    <th>位置</th>
+                                    <th>状态</th>
+                                    <th>频率</th>
+                                    <th>灯光</th>
+                                    <th>模式</th>
+                                    <th>发布数</th>
+                                    <th>操作</th>
+                                </tr>
+                            </thead>
+                            <tbody id="sensorTableBody">
+                                <tr id="noSensorsRow">
+                                    <td colspan="9" class="text-center text-muted py-4">
+                                        <i class="bi bi-inbox"></i> 暂无传感器，点击右上角添加
+                                    </td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 配置指令面板 -->
+            <div class="card mb-3">
+                <div class="card-header">
+                    <i class="bi bi-terminal"></i> 配置指令 (MQTT: streetlight/mock-sender/config)
+                </div>
+                <div class="card-body">
+                    <div class="row g-2">
+                        <div class="col-md-3">
+                            <select id="cmdAction" class="form-select form-select-sm">
+                                <option value="set_frequency">设置频率</option>
+                                <option value="set_data_range">设置数据范围</option>
+                                <option value="set_light_status">设置灯光</option>
+                                <option value="add_sensor">添加传感器</option>
+                                <option value="remove_sensor">移除传感器</option>
+                                <option value="stop_sensor">停止传感器</option>
+                                <option value="start_sensor">启动传感器</option>
+                            </select>
+                        </div>
+                        <div class="col-md-3">
+                            <input id="cmdDeviceId" class="form-control form-control-sm" placeholder="设备ID (留空=全部)">
+                        </div>
+                        <div class="col-md-4">
+                            <input id="cmdParams" class="form-control form-control-sm" placeholder='参数 JSON (如 {"interval":3})'>
+                        </div>
+                        <div class="col-md-2">
+                            <button class="btn btn-sm btn-outline-primary w-100" onclick="sendMockConfig()">
+                                <i class="bi bi-send"></i> 发送
+                            </button>
+                        </div>
+                    </div>
+                    <div id="cmdResult" class="mt-2 small"></div>
+                </div>
+            </div>
+        </div>
+
+        <!-- 右侧：配置与日志 -->
+        <div class="col-lg-4">
+            <!-- MQTT 配置 -->
+            <div class="card mb-3">
+                <div class="card-header d-flex justify-content-between align-items-center">
+                    <span><i class="bi bi-gear"></i> MQTT 连接</span>
+                    <button class="btn btn-sm btn-outline-secondary" onclick="loadMqttConfig()">
+                        <i class="bi bi-arrow-clockwise"></i>
+                    </button>
+                </div>
+                <div class="card-body">
+                    <form id="mqttConfigForm">
+                        <div class="mb-2">
+                            <label class="form-label small">Broker</label>
+                            <input name="broker" class="form-control form-control-sm" placeholder="8.130.102.89">
+                        </div>
+                        <div class="row mb-2">
+                            <div class="col-4">
+                                <label class="form-label small">Port</label>
+                                <input name="port" class="form-control form-control-sm" placeholder="1883">
+                            </div>
+                            <div class="col-8">
+                                <label class="form-label small">Client ID</label>
+                                <input name="clientId" class="form-control form-control-sm" placeholder="mock-sender-v2">
+                            </div>
+                        </div>
+                        <div class="row mb-2">
+                            <div class="col-6">
+                                <label class="form-label small">用户名</label>
+                                <input name="username" class="form-control form-control-sm" placeholder="jieshou">
+                            </div>
+                            <div class="col-6">
+                                <label class="form-label small">密码</label>
+                                <input name="password" class="form-control form-control-sm" type="password" placeholder="******">
+                            </div>
+                        </div>
+                        <button type="button" class="btn btn-sm btn-primary w-100" onclick="saveMqttConfig()">
+                            <i class="bi bi-check-lg"></i> 保存并重连
+                        </button>
+                    </form>
+                </div>
+            </div>
+
+            <!-- 实时日志 -->
+            <div class="card mb-3">
+                <div class="card-header d-flex justify-content-between align-items-center">
+                    <span><i class="bi bi-terminal"></i> 实时日志</span>
+                    <div>
+                        <button class="btn btn-sm btn-outline-danger" onclick="clearLogs()">
+                            <i class="bi bi-trash"></i>
+                        </button>
+                    </div>
+                </div>
+                <div class="card-body p-0">
+                    <pre id="logContainer" class="log-container mb-0 p-2">等待日志...</pre>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- ==================== 添加传感器模态框 ==================== -->
+<div class="modal fade" id="addSensorModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title"><i class="bi bi-plus-circle"></i> 添加传感器</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <form id="addSensorForm">
+                    <div class="mb-3">
+                        <label class="form-label">设备 ID <span class="text-danger">*</span></label>
+                        <input name="deviceId" class="form-control" placeholder="如 SL-009" required>
+                        <div class="form-text">唯一标识，格式建议: SL-xxx</div>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">名称</label>
+                        <input name="name" class="form-control" placeholder="如 路灯D-01">
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">位置</label>
+                        <input name="location" class="form-control" placeholder="如 实验楼前">
+                    </div>
+                    <div class="row mb-3">
+                        <div class="col-6">
+                            <label class="form-label">发送频率 (秒)</label>
+                            <input name="interval" class="form-control" type="number" value="5" min="1">
+                        </div>
+                        <div class="col-6">
+                            <label class="form-label">控制模式</label>
+                            <select name="controlMode" class="form-select">
+                                <option value="auto">自动</option>
+                                <option value="manual">手动</option>
+                            </select>
+                        </div>
+                    </div>
+                    <div class="row mb-3">
+                        <div class="col-6">
+                            <label class="form-label">光照最小值</label>
+                            <input name="min" class="form-control" type="number" value="0" min="0">
+                        </div>
+                        <div class="col-6">
+                            <label class="form-label">光照最大值</label>
+                            <input name="max" class="form-control" type="number" value="800" min="1">
+                        </div>
+                    </div>
+                </form>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">取消</button>
+                <button type="button" class="btn btn-primary" onclick="addSensor()">
+                    <i class="bi bi-plus-lg"></i> 添加
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- ==================== 脚本 ==================== -->
+<script src="https://cdn.bootcdn.net/ajax/libs/twitter-bootstrap/5.3.3/js/bootstrap.bundle.min.js"></script>
+<script src="/static/js/app.js"></script>
+</body>
+</html>

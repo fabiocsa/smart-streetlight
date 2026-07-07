@@ -40,8 +40,30 @@ CREATE TABLE device (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='设备表';
 
 -- ============================================================================
--- 3. 传感器数据表 (sensor_data)
---    存储光照传感器上报的历史数据（只追加，不修改）
+-- 3. 传感器定义表 (sensor)
+--    存储传感器的定义信息，每台设备可绑定多个传感器
+-- ============================================================================
+DROP TABLE IF EXISTS sensor;
+CREATE TABLE sensor (
+    id               BIGINT       NOT NULL AUTO_INCREMENT  COMMENT '主键',
+    device_id        VARCHAR(50)  NOT NULL                 COMMENT '所属设备标识(FK → device.device_id)',
+    sensor_type      VARCHAR(30)  NOT NULL DEFAULT 'light' COMMENT '传感器类型: light(光照) / temperature(温度) / humidity(湿度) / power(功率)',
+    display_name     VARCHAR(100) DEFAULT NULL             COMMENT '传感器显示名称(如: 光照传感器A)',
+    data_topic       VARCHAR(200) NOT NULL                 COMMENT '数据上报MQTT主题',
+    report_frequency INT          NOT NULL DEFAULT 5       COMMENT '上报频率(秒)',
+    enabled          TINYINT(1)   NOT NULL DEFAULT 1       COMMENT '是否启用: 1启用 / 0禁用',
+    config_json      VARCHAR(500) DEFAULT NULL             COMMENT '传感器配置JSON(如数据范围、精度等)',
+    created_at       DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+    updated_at       DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
+
+    PRIMARY KEY (id),
+    INDEX idx_device_id (device_id),
+    INDEX idx_device_type (device_id, sensor_type),
+    CONSTRAINT fk_sensor_device FOREIGN KEY (device_id) REFERENCES device(device_id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='传感器定义表';
+
+-- ============================================================================
+-- 4. 传感器数据表 (sensor_data)
 -- ============================================================================
 DROP TABLE IF EXISTS sensor_data;
 CREATE TABLE sensor_data (
@@ -57,7 +79,7 @@ CREATE TABLE sensor_data (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='传感器数据表';
 
 -- ============================================================================
--- 4. 告警日志表 (alarm_log)
+-- 5. 告警日志表 (alarm_log)
 --    记录设备告警信息（离线告警、传感器异常等）
 -- ============================================================================
 DROP TABLE IF EXISTS alarm_log;
@@ -81,7 +103,7 @@ CREATE TABLE alarm_log (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='告警日志表';
 
 -- ============================================================================
--- 5. 控制日志表 (control_log)
+-- 6. 控制日志表 (control_log)
 --    记录每一次开关灯指令的执行记录
 -- ============================================================================
 DROP TABLE IF EXISTS control_log;
@@ -101,7 +123,7 @@ CREATE TABLE control_log (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='控制日志表';
 
 -- ============================================================================
--- 6. 插入示例数据
+-- 7. 插入示例数据
 -- ============================================================================
 INSERT INTO device (name, device_id, status, threshold_on, threshold_off, light_status, control_mode, location, last_heartbeat) VALUES
     ('路灯A-01', 'SL-001', 'online',  50.0, 100.0, 'off', 'auto',   '校门口',      NOW()),
@@ -112,6 +134,13 @@ INSERT INTO device (name, device_id, status, threshold_on, threshold_off, light_
     ('路灯B-03', 'SL-006', 'offline', 50.0, 100.0, 'off', 'auto',   '宿舍区1栋',   DATE_SUB(NOW(), INTERVAL 120 SECOND)),
     ('路灯C-01', 'SL-007', 'online',  40.0,  90.0, 'off', 'auto',   '教学楼A',     NOW()),
     ('路灯C-02', 'SL-008', 'online',  50.0, 100.0, 'off', 'auto',   '教学楼B',     NOW());
+
+-- 插入传感器定义示例数据
+INSERT INTO sensor (device_id, sensor_type, display_name, data_topic, report_frequency, enabled, config_json) VALUES
+    ('SL-001', 'light',    '光照传感器A', 'streetlight/SL-001/sensor/data',  5, 1, '{"min": 0, "max": 800}'),
+    ('SL-001', 'power',    '功率传感器',   'streetlight/SL-001/sensor/data', 10, 1, '{"min": 0, "max": 100}'),
+    ('SL-002', 'light',    '光照传感器',   'streetlight/SL-002/sensor/data',  5, 1, '{"min": 0, "max": 800}'),
+    ('SL-004', 'light',    '光照传感器',   'streetlight/SL-004/sensor/data',  5, 1, '{"min": 0, "max": 600}');
 
 -- 插入传感器示例数据（过去2小时，每5分钟一条，共24条/设备 × 前4个设备）
 INSERT INTO sensor_data (device_id, light_intensity, reported_at) VALUES
@@ -155,7 +184,7 @@ INSERT INTO control_log (device_id, command, source, result, created_at) VALUES
     ('SL-004', 'off', 'manual', 'success', DATE_SUB(NOW(), INTERVAL 1 HOUR));
 
 -- ============================================================================
--- 7. 创建常用视图
+-- 8. 创建常用视图
 -- ============================================================================
 
 -- 7.1 Dashboard总览统计视图
@@ -194,7 +223,7 @@ LEFT JOIN sensor_data s ON s.id = (
 );
 
 -- ============================================================================
--- 8. 验证：查看表结构和示例数据
+-- 9. 验证：查看表结构和示例数据
 -- ============================================================================
 -- 取消注释以验证:
 -- SHOW TABLES;

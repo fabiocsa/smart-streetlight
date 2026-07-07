@@ -1,0 +1,24 @@
+{
+  "mqtt": {
+    "broker": "8.130.102.89",
+    "port": 1883,
+    "username": "jieshou",
+    "password": "jieshou123",
+    "topicPrefix": "streetlight",
+    "clientId": "mock-sender-v2"
+  },
+  "sensors": {
+    "SL-001": {
+      "name": "路灯A-01",
+      "location": "校门口",
+      "enabled": true,
+      "interval": 5,
+      "dataRange": {
+        "min": 0,
+        "max": 800
+      },
+      "lightStatus": "off",
+      "controlMode": "auto"
+    }
+  }
+}

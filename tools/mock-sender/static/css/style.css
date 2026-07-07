@@ -1,0 +1,88 @@
+/* ============================
+   智慧路灯 Mock 数据发送器 - 样式
+   ============================ */
+
+body {
+    background: #f0f2f5;
+    font-size: 0.9rem;
+}
+
+/* 日志容器 */
+.log-container {
+    background: #1e1e1e;
+    color: #d4d4d4;
+    font-family: 'Cascadia Code', 'Fira Code', 'Consolas', monospace;
+    font-size: 0.8rem;
+    line-height: 1.5;
+    height: 300px;
+    overflow-y: auto;
+    white-space: pre-wrap;
+    word-break: break-all;
+}
+
+.log-container .log-info {
+    color: #6bc6ff;
+}
+
+.log-container .log-warning {
+    color: #ffd700;
+}
+
+.log-container .log-error {
+    color: #ff6b6b;
+}
+
+.log-container .log-debug {
+    color: #888;
+}
+
+/* 表格 */
+#sensorTable th {
+    white-space: nowrap;
+    font-size: 0.8rem;
+}
+
+#sensorTable td {
+    vertical-align: middle;
+    font-size: 0.85rem;
+}
+
+/* 状态徽标动画 */
+@keyframes pulse {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.5; }
+}
+
+.status-pulse {
+    animation: pulse 2s infinite;
+}
+
+/* 卡片 */
+.card {
+    box-shadow: 0 1px 3px rgba(0,0,0,0.08);
+    border: none;
+}
+
+.card-header {
+    font-weight: 600;
+    font-size: 0.9rem;
+}
+
+/* 运行时间 */
+#uptime {
+    font-variant-numeric: tabular-nums;
+}
+
+/* 滚动条美化 */
+.log-container::-webkit-scrollbar {
+    width: 6px;
+}
+
+.log-container::-webkit-scrollbar-track {
+    background: #2d2d2d;
+}
+
+.log-container::-webkit-scrollbar-thumb {
+    background: #555;
+    border-radius: 3px;
+}

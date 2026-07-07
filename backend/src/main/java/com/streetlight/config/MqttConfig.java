@@ -8,6 +8,8 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 
+import java.util.UUID;
+
 @Configuration
 public class MqttConfig {
 
@@ -31,21 +33,10 @@ public class MqttConfig {
 
     @Bean
     public MqttClient mqttClient() throws MqttException {
-        MqttClient client = new MqttClient(broker, clientId, new MemoryPersistence());
-        MqttConnectionOptions options = new MqttConnectionOptions();
-        options.setAutomaticReconnect(true);
-        options.setCleanStart(true);
-        options.setConnectionTimeout(connectionTimeout);
-        options.setKeepAliveInterval(keepAliveInterval);
-
-        if (!username.isBlank()) {
-            options.setUserName(username);
-        }
-        if (!password.isBlank()) {
-            options.setPassword(password.getBytes());
-        }
-
-        client.connect(options);
+        // 添加随机后缀避免多实例运行时 clientId 冲突导致 Session Taken Over
+        String uniqueClientId = clientId + "-" + UUID.randomUUID().toString().substring(0, 8);
+        MqttClient client = new MqttClient(broker, uniqueClientId, new MemoryPersistence());
+        // 注意：不在这里连接，由 MqttClientManager 在应用就绪后连接
         return client;
     }
 

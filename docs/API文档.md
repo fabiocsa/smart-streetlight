@@ -62,9 +62,101 @@ PUT /devices/{id}
 
 ---
 
-## 2. 传感器数据
+## 2. 传感器管理
 
-### 2.1 获取设备最新传感器数据
+### 2.1 获取设备的所有传感器
+```
+GET /devices/{deviceId}/sensors
+```
+**响应：**
+```json
+[
+  {
+    "id": 1,
+    "deviceId": "SL-001",
+    "sensorType": "light",
+    "displayName": "光照传感器A",
+    "dataTopic": "streetlight/SL-001/sensor/data",
+    "reportFrequency": 5,
+    "enabled": true,
+    "configJson": "{\"min\": 0, \"max\": 800}",
+    "createdAt": "2026-07-01T09:00:00"
+  }
+]
+```
+
+### 2.2 获取单个传感器
+```
+GET /devices/{deviceId}/sensors/{id}
+```
+
+### 2.3 绑定传感器到设备
+```
+POST /devices/{deviceId}/sensors
+```
+**请求体：**
+```json
+{
+  "sensorType": "light",
+  "displayName": "光照传感器A",
+  "dataTopic": "streetlight/SL-001/sensor/data",
+  "reportFrequency": 5,
+  "configJson": "{\"min\": 0, \"max\": 800}"
+}
+```
+**响应：** 201 Created + 传感器对象
+
+### 2.4 更新传感器配置
+```
+PUT /devices/{deviceId}/sensors/{id}
+```
+**请求体：**
+```json
+{
+  "displayName": "光照传感器A-更新",
+  "dataTopic": "streetlight/SL-001/sensor/data",
+  "reportFrequency": 10,
+  "enabled": true,
+  "configJson": "{\"min\": 0, \"max\": 1000}"
+}
+```
+
+### 2.5 解绑传感器
+```
+DELETE /devices/{deviceId}/sensors/{id}
+```
+**响应：** 204 No Content
+
+### 2.6 调整传感器上报频率
+```
+PUT /devices/{deviceId}/sensors/{id}/frequency
+```
+**请求体：**
+```json
+{
+  "reportFrequency": 3
+}
+```
+
+### 2.7 同步传感器配置到模拟器
+```
+POST /devices/{deviceId}/sensors/sync-to-mock
+```
+**说明：** 将当前设备的传感器配置通过 MQTT 下发到模拟器，通知其调整行为。
+
+**响应：**
+```json
+{
+  "message": "传感器配置已同步到模拟器",
+  "syncedCount": 2
+}
+```
+
+---
+
+## 3. 传感器数据
+
+### 3.1 获取设备最新传感器数据
 ```
 GET /devices/{deviceId}/sensor-data/latest
 ```
@@ -77,7 +169,7 @@ GET /devices/{deviceId}/sensor-data/latest
 }
 ```
 
-### 2.2 获取历史传感器数据
+### 3.2 获取历史传感器数据
 ```
 GET /devices/{deviceId}/sensor-data?start=2026-07-01T00:00:00&end=2026-07-01T23:59:59
 ```
@@ -93,7 +185,7 @@ GET /devices/{deviceId}/sensor-data?start=2026-07-01T00:00:00&end=2026-07-01T23:
 ]
 ```
 
-### 2.3 获取聚合统计
+### 3.3 获取聚合统计
 ```
 GET /devices/{deviceId}/sensor-data/stats?start=...&end=...
 ```
