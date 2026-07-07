@@ -2,6 +2,8 @@ package com.streetlight.controller;
 
 import com.streetlight.entity.AlarmLog;
 import com.streetlight.service.AlarmService;
+import jakarta.validation.Valid;
+import jakarta.validation.constraints.NotBlank;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
 import org.springframework.http.ResponseEntity;
@@ -25,10 +27,11 @@ public class AlarmController {
 
     @PutMapping("/{id}/resolve")
     public ResponseEntity<AlarmLog> resolveAlarm(
-            @PathVariable Long id, @RequestBody ResolveRequest request) {
+            @PathVariable Long id, @Valid @RequestBody ResolveRequest request) {
         AlarmLog resolved = alarmService.resolveAlarm(id, request.resolvedBy());
         return ResponseEntity.ok(resolved);
     }
 
-    public record ResolveRequest(String resolvedBy) {}
+    public record ResolveRequest(
+            @NotBlank(message = "处理人不能为空") String resolvedBy) {}
 }

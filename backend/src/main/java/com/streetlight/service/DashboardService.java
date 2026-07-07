@@ -1,6 +1,7 @@
 package com.streetlight.service;
 
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 
 import java.util.LinkedHashMap;
@@ -8,6 +9,7 @@ import java.util.Map;
 
 @Service
 @RequiredArgsConstructor
+@Slf4j
 public class DashboardService {
 
     private final DeviceService deviceService;
@@ -32,6 +34,8 @@ public class DashboardService {
         stats.put("lightsOff", lightsOff);
         stats.put("pendingAlarms", pendingAlarms);
         stats.put("todayAlarms", todayAlarms);
+
+        log.debug("Dashboard统计 - {}", stats);
         return stats;
     }
 }

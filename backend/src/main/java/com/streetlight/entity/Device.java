@@ -1,6 +1,8 @@
 package com.streetlight.entity;
 
 import jakarta.persistence.*;
+import jakarta.validation.constraints.NotBlank;
+import jakarta.validation.constraints.NotNull;
 import lombok.*;
 import java.time.LocalDateTime;
 
@@ -16,9 +18,11 @@ public class Device {
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
+    @NotBlank(message = "设备名称不能为空")
     @Column(nullable = false, length = 100)
     private String name;
 
+    @NotBlank(message = "设备标识不能为空")
     @Column(name = "device_id", nullable = false, unique = true, length = 50)
     private String deviceId;
 

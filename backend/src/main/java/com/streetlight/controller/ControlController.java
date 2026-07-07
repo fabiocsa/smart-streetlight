@@ -2,6 +2,9 @@ package com.streetlight.controller;
 
 import com.streetlight.entity.ControlLog;
 import com.streetlight.service.ControlService;
+import jakarta.validation.Valid;
+import jakarta.validation.constraints.NotBlank;
+import jakarta.validation.constraints.Pattern;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
@@ -17,7 +20,7 @@ public class ControlController {
 
     @PostMapping
     public ResponseEntity<ControlLog> sendCommand(
-            @PathVariable String deviceId, @RequestBody ControlRequest request) {
+            @PathVariable String deviceId, @Valid @RequestBody ControlRequest request) {
         ControlLog log = controlService.sendCommand(deviceId, request.command(), request.source());
         return ResponseEntity.ok(log);
     }
@@ -27,5 +30,9 @@ public class ControlController {
         return ResponseEntity.ok(controlService.getControlLogs(deviceId));
     }
 
-    public record ControlRequest(String command, String source) {}
+    public record ControlRequest(
+            @NotBlank(message = "指令不能为空")
+            @Pattern(regexp = "on|off", message = "指令只能是 on 或 off") String command,
+            @NotBlank(message = "来源不能为空")
+            @Pattern(regexp = "auto|manual", message = "来源只能是 auto 或 manual") String source) {}
 }
