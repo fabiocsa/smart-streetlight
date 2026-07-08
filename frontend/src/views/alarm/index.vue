@@ -195,7 +195,7 @@
         </template>
 
         <div class="floorplan-container" ref="floorplanRef">
-          <svg class="floorplan-svg" :width="svgWidth" :height="svgHeight">
+          <svg class="floorplan-svg" viewBox="0 0 900 600" preserveAspectRatio="xMidYMid meet">
             <!-- Floor background -->
             <rect x="20" y="20" :width="svgWidth - 40" :height="svgHeight - 40" rx="12" fill="#f8f9fa" stroke="#e8e8e8" stroke-width="1" />
 
@@ -862,8 +862,6 @@ onUnmounted(() => {
   margin: 0 auto;
   width: 100%;
   max-width: 1000px;
-  height: auto;
-  min-height: 500px;
 }
 
 .floor-device {

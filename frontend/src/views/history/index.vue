@@ -265,7 +265,6 @@ const chartOption = computed(() => {
   const thresholdOn = 50
   const thresholdOff = 100
 
-  // Build series from chartSeriesData
   const series = []
   const legendData = []
 
@@ -274,7 +273,6 @@ const chartOption = computed(() => {
     const name = sd.name || sd.deviceId
     legendData.push({ name, icon: 'line' })
 
-    // Light intensity line
     series.push({
       name,
       type: 'line',
@@ -294,81 +292,56 @@ const chartOption = computed(() => {
         }
       }
     })
-
-    // Only show threshold lines for the first device (or when single device)
-    if (idx === 0 || chartSeriesData.value.length === 1) {
-      series.push({
-        name: '开灯阈值',
-        type: 'line',
-        data: sd.time.map(() => thresholdOn),
-        lineStyle: { type: 'dashed', color: '#F56C6C', width: 2 },
-        symbol: 'none',
-        z: 2,
-        markLine: {
-          silent: true,
-          label: { show: true, formatter: '开灯 {c} Lux', color: '#F56C6C', fontSize: 11, position: 'insideEndTop' }
-        }
-      })
-
-      series.push({
-        name: '关灯阈值',
-        type: 'line',
-        data: sd.time.map(() => thresholdOff),
-        lineStyle: { type: 'dashed', color: '#67C23A', width: 2 },
-        symbol: 'none',
-        z: 2,
-        markLine: {
-          silent: true,
-          label: { show: true, formatter: '关灯 {c} Lux', color: '#67C23A', fontSize: 11, position: 'insideEndTop' }
-        }
-      })
-    }
   })
 
-  // Add markArea for "should turn on" only for first device
-  if (chartSeriesData.value.length > 0) {
-    const first = chartSeriesData.value[0]
-    series.unshift({
-      name: '光照强度',
+  // Add threshold lines only when single device
+  if (chartSeriesData.value.length === 1) {
+    const firstTime = chartSeriesData.value[0].time
+    series.push({
+      name: '开灯阈值',
       type: 'line',
-      data: first.values,
-      smooth: true,
-      showSymbol: first.values.length < 50,
-      symbolSize: 3,
-      lineStyle: { width: 2, color: DEVICE_COLORS[0] },
-      areaStyle: {
-        color: {
-          type: 'linear', x: 0, y: 0, x2: 0, y2: 1,
-          colorStops: [
-            { offset: 0, color: 'rgba(64,158,255,0.3)' },
-            { offset: 1, color: 'rgba(64,158,255,0.05)' }
-          ]
-        }
-      },
-      markArea: {
+      data: firstTime.map(() => thresholdOn),
+      lineStyle: { type: 'dashed', color: '#F56C6C', width: 2 },
+      symbol: 'none',
+      z: 2,
+      markLine: {
         silent: true,
-        data: [
-          [{
-            yAxis: 50,
-            itemStyle: { color: 'rgba(245,108,108,0.06)' }
-          }, {
-            yAxis: 0
-          }]
-        ],
-        label: {
-          show: true,
-          position: 'insideBottomRight',
-          color: '#F56C6C',
-          fontSize: 11,
-          formatter: '应开灯时段'
-        }
+        data: [{ yAxis: thresholdOn }],
+        label: { show: true, formatter: '开灯 {c} Lux', color: '#F56C6C', fontSize: 11, position: 'insideEndTop' }
       }
     })
+    series.push({
+      name: '关灯阈值',
+      type: 'line',
+      data: firstTime.map(() => thresholdOff),
+      lineStyle: { type: 'dashed', color: '#67C23A', width: 2 },
+      symbol: 'none',
+      z: 2,
+      markLine: {
+        silent: true,
+        data: [{ yAxis: thresholdOff }],
+        label: { show: true, formatter: '关灯 {c} Lux', color: '#67C23A', fontSize: 11, position: 'insideEndTop' }
+      }
+    })
+    legendData.push({ name: '开灯阈值', icon: 'line' })
+    legendData.push({ name: '关灯阈值', icon: 'line' })
 
-    // Remove the duplicate first device series if it was already added
-    if (series.length > 3) {
-      // Remove the first duplicate (the one without markArea)
-      series.splice(1, 1)
+    // Add "should turn on" markArea on the first device series
+    series[0].markArea = {
+      silent: true,
+      data: [[{
+        yAxis: thresholdOn,
+        itemStyle: { color: 'rgba(245,108,108,0.06)' }
+      }, {
+        yAxis: 0
+      }]],
+      label: {
+        show: true,
+        position: 'insideBottomRight',
+        color: '#F56C6C',
+        fontSize: 11,
+        formatter: '应开灯时段'
+      }
     }
   }
 
