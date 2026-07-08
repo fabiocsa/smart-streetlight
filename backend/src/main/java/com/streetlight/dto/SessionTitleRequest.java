@@ -4,8 +4,7 @@ import jakarta.validation.constraints.NotBlank;
 import lombok.Data;
 
 @Data
-public class ControlRequest {
-
-    @NotBlank(message = "指令不能为空")
-    private String command;
+public class SessionTitleRequest {
+    @NotBlank(message = "标题不能为空")
+    private String title;
 }

@@ -12,8 +12,6 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-import java.util.List;
-
 @Service
 @RequiredArgsConstructor
 @Slf4j
@@ -73,29 +71,5 @@ public class ControlServiceImpl implements ControlService {
         d.setThresholdOff(thresholdOff);
         deviceRepository.save(d);
         log.info("更新阈值: id={}, thresholdOn={}, thresholdOff={}", id, thresholdOn, thresholdOff);
-    }
-
-    @Override
-    public String evaluateAutoControl(Device device, Double lightIntensity) {
-        if (!"auto".equals(device.getControlMode())) {
-            return null;
-        }
-
-        String command = null;
-        if ("off".equals(device.getLightStatus()) && lightIntensity < device.getThresholdOn()) {
-            command = "on";
-        } else if ("on".equals(device.getLightStatus()) && lightIntensity > device.getThresholdOff()) {
-            command = "off";
-        }
-
-        if (command != null) {
-            sendControlCommand(device.getDeviceId(), command, "auto");
-        }
-        return command;
-    }
-
-    @Override
-    public List<ControlLog> getControlLogs(String deviceId) {
-        return controlLogRepository.findByDeviceIdOrderByCreatedAtDesc(deviceId);
     }
 }

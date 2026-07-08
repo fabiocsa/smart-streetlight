@@ -10,7 +10,7 @@ spring:
 
   jpa:
     hibernate:
-      ddl-auto: none
+      ddl-auto: update
     show-sql: true
     properties:
       hibernate:
@@ -29,3 +29,12 @@ mqtt:
 streetlight:
   heartbeat:
     timeout: 30
+
+deepseek:
+  enabled: true
+  base-url: https://api.deepseek.com
+  api-key: sk-bf8442fa885a476d9213c85eb778c1c7
+  model: deepseek-chat
+  system-prompt: 你是一个智慧路灯管理系统的智能助手，可以回答关于路灯设备管理、传感器数据、告警处理等方面的问题。请用中文简洁回答。
+  max-tokens: 2000
+  temperature: 0.7

@@ -2,7 +2,6 @@ package com.streetlight.service;
 
 import com.streetlight.entity.AlarmLog;
 import org.springframework.data.domain.Page;
-import org.springframework.data.domain.Pageable;
 
 public interface AlarmService {
 
@@ -10,7 +9,7 @@ public interface AlarmService {
 
     void autoResolveOfflineAlarm(String deviceId);
 
-    Page<AlarmLog> listAlarms(Pageable pageable, String status, String type);
+    Page<AlarmLog> listAlarms(int page, int size, String status, String type);
 
     void resolveAlarm(Long alarmId, String resolvedBy);
 

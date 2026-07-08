@@ -11,8 +11,6 @@ public interface SensorDataService {
 
     SensorData saveAndAutoControl(String deviceId, Double lightIntensity, LocalDateTime reportedAt);
 
-    SensorData saveSensorData(SensorData sensorData);
-
     Optional<SensorData> getLatestByDeviceId(String deviceId);
 
     List<SensorData> getHistory(String deviceId, LocalDateTime start, LocalDateTime end);

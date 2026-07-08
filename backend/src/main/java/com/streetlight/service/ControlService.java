@@ -1,10 +1,5 @@
 package com.streetlight.service;
 
-import com.streetlight.entity.ControlLog;
-import com.streetlight.entity.Device;
-
-import java.util.List;
-
 public interface ControlService {
 
     void sendControlCommand(String deviceId, String command, String source);
@@ -14,16 +9,4 @@ public interface ControlService {
     void setControlMode(Long deviceId, String mode);
 
     void setThreshold(Long deviceId, Double thresholdOn, Double thresholdOff);
-
-    /**
-     * 光照联动控制逻辑
-     * auto模式下: 光照 < threshold_on 且灯关 → 开灯
-     *            光照 > threshold_off 且灯开 → 关灯
-     */
-    String evaluateAutoControl(Device device, Double lightIntensity);
-
-    /**
-     * 获取设备的控制日志
-     */
-    List<ControlLog> getControlLogs(String deviceId);
 }
