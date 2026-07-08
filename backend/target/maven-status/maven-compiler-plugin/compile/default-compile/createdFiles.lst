@@ -5,6 +5,7 @@ com\streetlight\entity\SensorData$SensorDataBuilder.class
 com\streetlight\entity\ControlLog$ControlLogBuilder.class
 com\streetlight\config\MqttConfig.class
 com\streetlight\dto\SensorFrequencyRequest.class
+com\streetlight\security\PasswordUtil.class
 com\streetlight\mqtt\MqttClientManager.class
 com\streetlight\entity\AlarmRule.class
 com\streetlight\enums\ControlMode.class
@@ -21,8 +22,10 @@ com\streetlight\dto\ControlRequest.class
 com\streetlight\repository\AlarmLogRepository.class
 com\streetlight\service\AlarmService.class
 com\streetlight\mqtt\MqttPublishService.class
+com\streetlight\entity\User.class
 com\streetlight\entity\Device$DeviceBuilder.class
 com\streetlight\dto\SensorRequest.class
+com\streetlight\repository\UserRepository.class
 com\streetlight\entity\Sensor.class
 com\streetlight\service\SensorDataService.class
 com\streetlight\service\HeartbeatChecker.class
@@ -34,6 +37,7 @@ com\streetlight\service\impl\ChatServiceImpl$ToolCall.class
 com\streetlight\controller\DashboardController.class
 com\streetlight\controller\DeviceController.class
 com\streetlight\entity\ChatMessage$ChatMessageBuilder.class
+com\streetlight\controller\AuthController.class
 com\streetlight\repository\ControlLogRepository.class
 com\streetlight\service\impl\SensorDataServiceImpl.class
 com\streetlight\service\impl\SensorServiceImpl.class
@@ -51,16 +55,20 @@ com\streetlight\config\RestTemplateConfig.class
 com\streetlight\service\impl\ChatServiceImpl.class
 com\streetlight\websocket\WebSocketHandler.class
 com\streetlight\controller\SensorDataController.class
+com\streetlight\service\AuthService.class
 com\streetlight\service\impl\ChatServiceImpl$1.class
 com\streetlight\entity\Device.class
 com\streetlight\entity\ControlLog.class
 com\streetlight\entity\AlarmLog.class
 com\streetlight\service\AlarmRuleService.class
+com\streetlight\entity\User$UserBuilder.class
+com\streetlight\security\JwtUtil.class
 com\streetlight\enums\ControlModeConverter.class
 com\streetlight\common\BusinessException.class
 com\streetlight\config\CorsConfig.class
 com\streetlight\dto\ControlModeRequest.class
 com\streetlight\service\ToolExecutor.class
+com\streetlight\config\WebConfig.class
 com\streetlight\dto\ChatRequest.class
 com\streetlight\config\WebSocketConfig.class
 com\streetlight\enums\AlarmStatus.class
@@ -76,5 +84,7 @@ com\streetlight\enums\AlarmType.class
 com\streetlight\mqtt\MqttMessageHandler.class
 com\streetlight\enums\LightStatus.class
 com\streetlight\repository\DeviceRepository.class
+com\streetlight\security\JwtUtil$TokenPayload.class
+com\streetlight\security\AuthInterceptor.class
 com\streetlight\service\ChatService.class
 com\streetlight\repository\ChatSessionRepository.class
