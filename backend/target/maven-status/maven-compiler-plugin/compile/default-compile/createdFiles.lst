@@ -25,6 +25,7 @@ com\streetlight\service\SensorDataService.class
 com\streetlight\service\HeartbeatChecker.class
 com\streetlight\common\GlobalExceptionHandler.class
 com\streetlight\repository\SensorRepository.class
+com\streetlight\service\impl\ChatServiceImpl$ToolCall.class
 com\streetlight\controller\DashboardController.class
 com\streetlight\controller\DeviceController.class
 com\streetlight\repository\ControlLogRepository.class
@@ -35,10 +36,12 @@ com\streetlight\controller\ControlController.class
 com\streetlight\dto\SensorUpdateRequest.class
 com\streetlight\controller\ChatController.class
 com\streetlight\service\SensorService.class
+com\streetlight\config\DeepSeekConfig.class
 com\streetlight\config\RestTemplateConfig.class
 com\streetlight\service\impl\ChatServiceImpl.class
 com\streetlight\websocket\WebSocketHandler.class
 com\streetlight\controller\SensorDataController.class
+com\streetlight\service\impl\ChatServiceImpl$1.class
 com\streetlight\entity\Device.class
 com\streetlight\entity\ControlLog.class
 com\streetlight\entity\AlarmLog.class
@@ -46,6 +49,7 @@ com\streetlight\enums\ControlModeConverter.class
 com\streetlight\common\BusinessException.class
 com\streetlight\config\CorsConfig.class
 com\streetlight\dto\ControlModeRequest.class
+com\streetlight\service\ToolExecutor.class
 com\streetlight\dto\ChatRequest.class
 com\streetlight\config\WebSocketConfig.class
 com\streetlight\enums\AlarmStatus.class

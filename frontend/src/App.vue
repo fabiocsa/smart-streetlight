@@ -20,6 +20,10 @@
           <el-icon><Connection /></el-icon>
           <span>传感器管理</span>
         </el-menu-item>
+        <el-menu-item index="/chat">
+          <el-icon><ChatDotRound /></el-icon>
+          <span>智能问答</span>
+        </el-menu-item>
       </el-menu>
     </el-aside>
     <el-container>
@@ -44,6 +48,7 @@ import { useRoute } from 'vue-router'
 const route = useRoute()
 const activeMenu = computed(() => {
   if (route.path.startsWith('/sensors')) return '/sensors'
+  if (route.path.startsWith('/chat')) return '/chat'
   return '/devices'
 })
 </script>

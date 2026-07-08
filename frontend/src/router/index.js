@@ -22,6 +22,12 @@ const routes = [
     name: 'SensorList',
     component: () => import('../views/SensorList.vue'),
     meta: { title: '传感器管理' }
+  },
+  {
+    path: '/chat',
+    name: 'ChatView',
+    component: () => import('../views/ChatView.vue'),
+    meta: { title: '智能问答' }
   }
 ]
 

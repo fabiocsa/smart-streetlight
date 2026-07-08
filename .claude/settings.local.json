@@ -60,7 +60,9 @@
       "Bash(python -m py_compile sender/config_manager.py)",
       "Bash(python -m py_compile sender/sensor_manager.py)",
       "Bash(python -m py_compile sender/mqtt_client.py)",
-      "Bash(python -m py_compile app.py)"
+      "Bash(python -m py_compile app.py)",
+      "Bash(mvn spring-boot:run -DskipTests -q)",
+      "Bash(taskkill /PID 4936 /F)"
     ]
   }
 }
