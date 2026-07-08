@@ -6,6 +6,8 @@ import com.streetlight.enums.AlarmType;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Query;
+import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
 
 import java.time.LocalDateTime;
@@ -27,4 +29,19 @@ public interface AlarmLogRepository extends JpaRepository<AlarmLog, Long> {
     long countByStatus(AlarmStatus status);
 
     long countByCreatedAtBetween(LocalDateTime start, LocalDateTime end);
+
+    // ===== Dashboard 查询 =====
+
+    /** 最近N条告警 */
+    List<AlarmLog> findTop10ByOrderByCreatedAtDesc();
+
+    /** 按严重级别统计告警数 */
+    @Query("SELECT a.severity, COUNT(a) FROM AlarmLog a WHERE a.createdAt >= :since GROUP BY a.severity")
+    List<Object[]> countBySeveritySince(@Param("since") LocalDateTime since);
+
+    /** 每日告警数（最近N天） */
+    @Query(value = "SELECT DATE(created_at) AS dt, COUNT(*) AS cnt FROM alarm_log " +
+           "WHERE created_at >= :since GROUP BY DATE(created_at) ORDER BY dt",
+           nativeQuery = true)
+    List<Object[]> countByDaySince(@Param("since") LocalDateTime since);
 }

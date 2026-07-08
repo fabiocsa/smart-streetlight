@@ -1,0 +1,38 @@
+import request from './request'
+
+/** 获取总览统计卡片数据 */
+export function getStats() {
+  return request.get('/dashboard/stats')
+}
+
+/** 设备状态分布（饼图） */
+export function getDeviceStatusDistribution() {
+  return request.get('/dashboard/device-status-distribution')
+}
+
+/** 最新传感器数据 */
+export function getLatestSensorData() {
+  return request.get('/dashboard/latest-sensor-data')
+}
+
+/** 光照趋势聚合，可选设备ID + 时间范围(24h/7d/30d) */
+export function getLightTrend(deviceId, range = '24h') {
+  const params = { range }
+  if (deviceId) params.deviceId = deviceId
+  return request.get('/dashboard/light-trend', { params })
+}
+
+/** 告警统计（近7日趋势 + 严重级别） */
+export function getAlarmStats() {
+  return request.get('/dashboard/alarm-stats')
+}
+
+/** 近期告警列表 */
+export function getRecentAlarms() {
+  return request.get('/dashboard/recent-alarms')
+}
+
+/** 近期控制日志 */
+export function getRecentControls() {
+  return request.get('/dashboard/recent-controls')
+}

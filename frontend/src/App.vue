@@ -12,6 +12,10 @@
         text-color="#aeb6c6"
         active-text-color="#409EFF"
       >
+        <el-menu-item index="/dashboard">
+          <el-icon><DataAnalysis /></el-icon>
+          <span>仪表盘</span>
+        </el-menu-item>
         <el-menu-item index="/devices">
           <el-icon><Cpu /></el-icon>
           <span>设备管理</span>
@@ -19,6 +23,10 @@
         <el-menu-item index="/sensors">
           <el-icon><Connection /></el-icon>
           <span>传感器管理</span>
+        </el-menu-item>
+        <el-menu-item index="/light-trend">
+          <el-icon><TrendCharts /></el-icon>
+          <span>光照趋势</span>
         </el-menu-item>
         <el-menu-item index="/chat">
           <el-icon><ChatDotRound /></el-icon>
@@ -47,9 +55,12 @@ import { useRoute } from 'vue-router'
 
 const route = useRoute()
 const activeMenu = computed(() => {
+  if (route.path.startsWith('/dashboard')) return '/dashboard'
+  if (route.path.startsWith('/light-trend')) return '/light-trend'
   if (route.path.startsWith('/sensors')) return '/sensors'
   if (route.path.startsWith('/chat')) return '/chat'
-  return '/devices'
+  if (route.path.startsWith('/devices')) return '/devices'
+  return '/dashboard'
 })
 </script>
 
