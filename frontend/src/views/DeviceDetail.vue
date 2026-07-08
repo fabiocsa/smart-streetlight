@@ -8,9 +8,17 @@
         <h2 style="display: inline; margin-left: 8px">设备详情</h2>
       </div>
       <div>
-        <el-button type="success" @click="handleSync" :loading="syncing">
-          <el-icon><Refresh /></el-icon> 同步传感器到模拟器
-        </el-button>
+        <el-popconfirm
+          title="确定同步传感器到模拟器吗？"
+          confirm-button-text="确定"
+          @confirm="handleSync"
+        >
+          <template #reference>
+            <el-button type="success" :loading="syncing">
+              <el-icon><Refresh /></el-icon> 同步传感器到模拟器
+            </el-button>
+          </template>
+        </el-popconfirm>
         <el-button type="primary" @click="openSensorDialog()">
           <el-icon><Plus /></el-icon> 添加传感器
         </el-button>
@@ -20,7 +28,13 @@
     <!-- 设备信息 -->
     <el-card shadow="never" style="margin-bottom: 16px">
       <template #header><strong>设备基本信息</strong></template>
-      <el-form :model="form" label-width="100px" style="max-width: 600px">
+      <el-form
+        ref="formRef"
+        :model="form"
+        :rules="rules"
+        label-width="100px"
+        style="max-width: 600px"
+      >
         <el-row :gutter="20">
           <el-col :span="12">
             <el-form-item label="设备ID">
@@ -28,14 +42,14 @@
             </el-form-item>
           </el-col>
           <el-col :span="12">
-            <el-form-item label="设备名称">
+            <el-form-item label="设备名称" prop="name">
               <el-input v-model="form.name" placeholder="请输入设备名称" />
             </el-form-item>
           </el-col>
         </el-row>
         <el-row :gutter="20">
           <el-col :span="12">
-            <el-form-item label="安装位置">
+            <el-form-item label="安装位置" prop="location">
               <el-input v-model="form.location" placeholder="请输入安装位置" />
             </el-form-item>
           </el-col>
@@ -86,7 +100,7 @@
     v-model:visible="sensorDialogVisible"
     :device-id="form.deviceId"
     :edit-data="editingSensor"
-    @saved="loadSensors"
+    @saved="handleSensorSaved"
   />
 </template>
 
@@ -104,12 +118,24 @@ const router = useRouter()
 const deviceStore = useDeviceStore()
 const sensorStore = useSensorStore()
 
+const formRef = ref(null)
 const form = ref({})
 const sensors = ref([])
 const saving = ref(false)
 const syncing = ref(false)
 const sensorDialogVisible = ref(false)
 const editingSensor = ref(null)
+
+const rules = {
+  name: [
+    { required: true, message: '请输入设备名称', trigger: 'blur' },
+    { min: 1, max: 100, message: '长度在 1 到 100 个字符', trigger: 'blur' }
+  ],
+  location: [
+    { required: true, message: '请输入安装位置', trigger: 'blur' },
+    { max: 200, message: '长度不超过 200 个字符', trigger: 'blur' }
+  ]
+}
 
 async function loadDevice() {
   const id = route.params.id
@@ -122,6 +148,9 @@ async function loadSensors() {
 }
 
 async function handleUpdateDevice() {
+  const valid = await formRef.value.validate().catch(() => false)
+  if (!valid) return
+
   saving.value = true
   try {
     await deviceStore.update(form.value.id, {
@@ -129,6 +158,8 @@ async function handleUpdateDevice() {
       location: form.value.location
     })
     ElMessage.success('设备信息已更新')
+  } catch {
+    // 错误已在拦截器统一提示
   } finally {
     saving.value = false
   }
@@ -139,6 +170,8 @@ async function handleSync() {
   try {
     const res = await sensorStore.syncToMock(form.value.deviceId)
     ElMessage.success(`已同步 ${res?.syncedCount ?? 0} 个传感器到模拟器`)
+  } catch {
+    // 错误已在拦截器统一提示
   } finally {
     syncing.value = false
   }
@@ -150,15 +183,31 @@ function openSensorDialog(sensor) {
 }
 
 async function handleDeleteSensor(id) {
-  await sensorStore.remove(form.value.deviceId, id)
-  ElMessage.success('传感器已解绑')
-  loadSensors()
+  try {
+    await sensorStore.remove(form.value.deviceId, id)
+    ElMessage.success('传感器已解绑')
+    // store 已局部更新，同步本地数据
+    sensors.value = sensors.value.filter(s => s.id !== id)
+  } catch {
+    // 错误已在拦截器统一提示
+  }
 }
 
 async function handleUpdateFrequency(id, frequency) {
-  await sensorStore.updateFreq(form.value.deviceId, id, { reportFrequency: frequency })
-  ElMessage.success('上报频率已更新')
-  loadSensors()
+  try {
+    await sensorStore.updateFreq(form.value.deviceId, id, { reportFrequency: frequency })
+    ElMessage.success('上报频率已更新')
+    // store 已局部更新，同步本地数据
+    const sensor = sensors.value.find(s => s.id === id)
+    if (sensor) sensor.reportFrequency = frequency
+  } catch {
+    // 错误已在拦截器统一提示
+  }
+}
+
+function handleSensorSaved() {
+  sensorDialogVisible.value = false
+  loadSensors() // 新增传感器需要刷新列表
 }
 
 onMounted(() => {

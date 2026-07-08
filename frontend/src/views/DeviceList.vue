@@ -2,16 +2,25 @@
   <div>
     <div class="page-header">
       <h2>设备管理</h2>
-      <el-button type="primary" @click="openAddDialog">
-        <el-icon><Plus /></el-icon> 添加设备
-      </el-button>
+      <div class="header-actions">
+        <el-button
+          v-if="selectedIds.length > 0"
+          type="danger"
+          @click="handleBatchDelete"
+        >
+          <el-icon><Delete /></el-icon> 批量删除 ({{ selectedIds.length }})
+        </el-button>
+        <el-button type="primary" @click="openAddDialog">
+          <el-icon><Plus /></el-icon> 添加设备
+        </el-button>
+      </div>
     </div>
 
     <!-- 搜索栏 -->
     <el-card shadow="never" style="margin-bottom: 16px">
       <el-row :gutter="16">
         <el-col :span="6">
-          <el-input v-model="searchKeyword" placeholder="搜索名称/设备ID/位置" clearable @input="filterDevices" />
+          <el-input v-model="searchKeyword" placeholder="搜索名称/设备ID/位置" clearable @input="onSearchInput" />
         </el-col>
         <el-col :span="4">
           <el-select v-model="filterStatus" placeholder="设备状态" clearable @change="filterDevices">
@@ -19,15 +28,29 @@
             <el-option label="离线" value="offline" />
           </el-select>
         </el-col>
+        <el-col :span="4">
+          <el-select v-model="filterControlMode" placeholder="控制模式" clearable @change="filterDevices">
+            <el-option label="自动" value="auto" />
+            <el-option label="手动" value="manual" />
+          </el-select>
+        </el-col>
       </el-row>
     </el-card>
 
     <!-- 设备表格 -->
     <el-card shadow="never">
-      <el-table :data="paginatedDevices" v-loading="deviceStore.loading" stripe style="width: 100%">
-        <el-table-column prop="deviceId" label="设备ID" width="120" />
-        <el-table-column prop="name" label="设备名称" min-width="140" />
-        <el-table-column prop="location" label="安装位置" min-width="140" />
+      <el-table
+        ref="tableRef"
+        :data="paginatedDevices"
+        v-loading="deviceStore.loading"
+        stripe
+        style="width: 100%"
+        @selection-change="handleSelectionChange"
+      >
+        <el-table-column type="selection" width="45" />
+        <el-table-column prop="deviceId" label="设备ID" width="120" sortable />
+        <el-table-column prop="name" label="设备名称" min-width="140" sortable />
+        <el-table-column prop="location" label="安装位置" min-width="140" sortable />
         <el-table-column label="状态" width="90">
           <template #default="{ row }">
             <el-tag :type="row.status === 'online' ? 'success' : 'danger'" size="small">
@@ -42,7 +65,7 @@
             </el-tag>
           </template>
         </el-table-column>
-        <el-table-column label="控制模式" width="100">
+        <el-table-column label="控制模式" width="100" sortable prop="controlMode">
           <template #default="{ row }">
             {{ row.controlMode === 'auto' ? '自动' : '手动' }}
           </template>
@@ -54,16 +77,21 @@
             </el-link>
           </template>
         </el-table-column>
-        <el-table-column label="最后心跳" width="170">
+        <el-table-column label="最后心跳" width="170" sortable prop="lastHeartbeat">
           <template #default="{ row }">
-            {{ row.lastHeartbeat ? formatTime(row.lastHeartbeat) : '-' }}
+            {{ formatTime(row.lastHeartbeat) }}
           </template>
         </el-table-column>
         <el-table-column label="操作" width="220" fixed="right">
           <template #default="{ row }">
             <el-button type="primary" link @click="goDetail(row.id)">详情</el-button>
             <el-button type="primary" link @click="openEditDialog(row)">编辑</el-button>
-            <el-popconfirm title="确定删除该设备吗？" @confirm="handleDelete(row.id)">
+            <el-popconfirm
+              title="确定删除该设备吗？"
+              confirm-button-text="确定删除"
+              cancel-button-text="取消"
+              @confirm="handleDelete(row.id)"
+            >
               <template #reference>
                 <el-button type="danger" link>删除</el-button>
               </template>
@@ -71,7 +99,11 @@
           </template>
         </el-table-column>
         <template #empty>
-          <el-empty description="暂无设备数据" />
+          <el-empty :description="searchKeyword || filterStatus || filterControlMode ? '没有匹配的设备' : '暂无设备数据'">
+            <el-button v-if="searchKeyword || filterStatus || filterControlMode" type="primary" @click="clearFilters">
+              清除筛选
+            </el-button>
+          </el-empty>
         </template>
       </el-table>
 
@@ -98,19 +130,26 @@
 <script setup>
 import { ref, computed, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
-import { ElMessage } from 'element-plus'
+import { ElMessage, ElMessageBox } from 'element-plus'
 import { useDeviceStore } from '../store/device'
 import DeviceForm from '../components/DeviceForm.vue'
+import { formatTime, debounce, resetPage } from '../utils/common'
 
 const router = useRouter()
 const deviceStore = useDeviceStore()
+const tableRef = ref(null)
 
 const searchKeyword = ref('')
 const filterStatus = ref('')
+const filterControlMode = ref('')
 const dialogVisible = ref(false)
 const editingDevice = ref(null)
 const currentPage = ref(1)
 const pageSize = 10
+const selectedIds = ref([])
+
+// 防抖搜索
+const onSearchInput = debounce(filterDevices, 300)
 
 const filteredDevices = computed(() => {
   let list = deviceStore.devices
@@ -125,6 +164,9 @@ const filteredDevices = computed(() => {
   if (filterStatus.value) {
     list = list.filter(d => d.status === filterStatus.value)
   }
+  if (filterControlMode.value) {
+    list = list.filter(d => d.controlMode === filterControlMode.value)
+  }
   return list
 })
 
@@ -134,7 +176,18 @@ const paginatedDevices = computed(() => {
 })
 
 function filterDevices() {
-  currentPage.value = 1
+  resetPage(currentPage)
+}
+
+function clearFilters() {
+  searchKeyword.value = ''
+  filterStatus.value = ''
+  filterControlMode.value = ''
+  filterDevices()
+}
+
+function handleSelectionChange(rows) {
+  selectedIds.value = rows.map(r => r.id)
 }
 
 function openAddDialog() {
@@ -152,18 +205,41 @@ function goDetail(id) {
 }
 
 async function handleDelete(id) {
-  await deviceStore.remove(id)
-  ElMessage.success('设备已删除')
+  try {
+    await deviceStore.remove(id)
+    ElMessage.success('设备已删除')
+    selectedIds.value = selectedIds.value.filter(i => i !== id)
+  } catch {
+    // 错误已在拦截器统一提示
+  }
+}
+
+async function handleBatchDelete() {
+  try {
+    await ElMessageBox.confirm(
+      `确定删除选中的 ${selectedIds.value.length} 个设备吗？此操作不可恢复。`,
+      '批量删除确认',
+      { confirmButtonText: '确定删除', cancelButtonText: '取消', type: 'warning' }
+    )
+  } catch {
+    return // 用户取消
+  }
+
+  const results = await deviceStore.removeBatch(selectedIds.value)
+  const successCount = results.filter(r => r.success).length
+  const failCount = results.filter(r => !r.success).length
+
+  if (failCount > 0) {
+    ElMessage.warning(`成功删除 ${successCount} 个，${failCount} 个失败`)
+  } else {
+    ElMessage.success(`成功删除 ${successCount} 个设备`)
+  }
+  selectedIds.value = []
 }
 
 async function handleSaved() {
   dialogVisible.value = false
-  await deviceStore.fetchAll()
-}
-
-function formatTime(t) {
-  if (!t) return '-'
-  return new Date(t).toLocaleString('zh-CN')
+  // store 已局部更新，无需全量刷新
 }
 
 onMounted(() => {
@@ -176,4 +252,7 @@ onMounted(() => {
   display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px;
 }
 .page-header h2 { font-size: 20px; font-weight: 600; }
+.header-actions {
+  display: flex; gap: 8px;
+}
 </style>

@@ -82,10 +82,25 @@ function defaultForm() {
 
 const form = reactive(defaultForm())
 
+// 自定义 JSON 校验
+const validateJson = (_rule, value, callback) => {
+  if (!value || value.trim() === '') {
+    callback() // 允许为空
+    return
+  }
+  try {
+    JSON.parse(value)
+    callback()
+  } catch {
+    callback(new Error('配置JSON格式不正确'))
+  }
+}
+
 const rules = {
   sensorType: [{ required: true, message: '请选择传感器类型', trigger: 'change' }],
   dataTopic: [{ required: true, message: '请输入数据主题', trigger: 'blur' }],
-  reportFrequency: [{ required: true, message: '请输入上报频率', trigger: 'blur' }]
+  reportFrequency: [{ required: true, message: '请输入上报频率', trigger: 'blur' }],
+  configJson: [{ validator: validateJson, trigger: 'blur' }]
 }
 
 watch(() => props.editData, (val) => {
@@ -124,7 +139,7 @@ async function submit() {
       dataTopic: form.dataTopic,
       reportFrequency: form.reportFrequency,
       enabled: form.enabled,
-      configJson: form.configJson || null
+      configJson: form.configJson?.trim() || null
     }
 
     if (isEdit.value) {
@@ -136,6 +151,8 @@ async function submit() {
     }
     emit('saved')
     emit('update:visible', false)
+  } catch {
+    // 错误已在拦截器统一提示
   } finally {
     submitting.value = false
   }

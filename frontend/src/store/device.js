@@ -11,7 +11,6 @@ export const useDeviceStore = defineStore('device', () => {
     loading.value = true
     try {
       const res = await deviceApi.getDevices()
-      // axios 拦截器已解包，但后端返回的是数组直接放在 data 里
       devices.value = Array.isArray(res) ? res : (res.data || [])
     } finally {
       loading.value = false
@@ -26,21 +25,56 @@ export const useDeviceStore = defineStore('device', () => {
 
   async function create(data) {
     const res = await deviceApi.createDevice(data)
-    await fetchAll()
+    const device = res?.data || res
+    // 局部插入，避免全量刷新
+    if (device) {
+      devices.value.push(device)
+    } else {
+      await fetchAll()
+    }
     return res
   }
 
   async function update(id, data) {
     const res = await deviceApi.updateDevice(id, data)
-    currentDevice.value = res || res.data || null
-    await fetchAll()
+    const updated = res?.data || res
+    // 局部更新
+    if (updated) {
+      const idx = devices.value.findIndex(d => d.id === id || d.deviceId === updated.deviceId)
+      if (idx !== -1) {
+        devices.value[idx] = { ...devices.value[idx], ...updated }
+      }
+    }
+    if (currentDevice.value && (currentDevice.value.id === id || currentDevice.value.deviceId === updated?.deviceId)) {
+      currentDevice.value = { ...currentDevice.value, ...updated }
+    }
     return res
   }
 
   async function remove(id) {
     await deviceApi.deleteDevice(id)
-    await fetchAll()
+    // 局部删除
+    devices.value = devices.value.filter(d => d.id !== id && d.deviceId !== id)
   }
 
-  return { devices, currentDevice, loading, fetchAll, fetchOne, create, update, remove }
+  /** 批量删除（串行调用单个删除 API） */
+  async function removeBatch(ids) {
+    const results = []
+    for (const id of ids) {
+      try {
+        await deviceApi.deleteDevice(id)
+        results.push({ id, success: true })
+      } catch (e) {
+        results.push({ id, success: false, error: e.message })
+      }
+    }
+    // 局部批量删除成功的项
+    const successIds = results.filter(r => r.success).map(r => r.id)
+    if (successIds.length > 0) {
+      devices.value = devices.value.filter(d => !successIds.includes(d.id) && !successIds.includes(d.deviceId))
+    }
+    return results
+  }
+
+  return { devices, currentDevice, loading, fetchAll, fetchOne, create, update, remove, removeBatch }
 })

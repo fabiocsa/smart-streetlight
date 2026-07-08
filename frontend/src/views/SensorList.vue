@@ -2,16 +2,42 @@
   <div>
     <div class="page-header">
       <h2>传感器管理</h2>
-      <el-button type="primary" @click="refreshAll">
-        <el-icon><Refresh /></el-icon> 刷新
-      </el-button>
+      <div class="header-actions">
+        <el-button
+          v-if="selectedIds.length > 0"
+          type="success"
+          @click="handleBatchEnable(true)"
+        >
+          批量启用 ({{ selectedIds.length }})
+        </el-button>
+        <el-button
+          v-if="selectedIds.length > 0"
+          type="warning"
+          @click="handleBatchEnable(false)"
+        >
+          批量停用 ({{ selectedIds.length }})
+        </el-button>
+        <el-button
+          v-if="selectedIds.length > 0"
+          type="danger"
+          @click="handleBatchDelete"
+        >
+          <el-icon><Delete /></el-icon> 批量解绑 ({{ selectedIds.length }})
+        </el-button>
+        <el-button type="primary" @click="refreshAll">
+          <el-icon><Refresh /></el-icon> 刷新
+        </el-button>
+      </div>
     </div>
 
     <!-- 筛选 -->
     <el-card shadow="never" style="margin-bottom: 16px">
       <el-row :gutter="16">
         <el-col :span="6">
-          <el-select v-model="filterDeviceId" placeholder="按设备筛选" clearable>
+          <el-input v-model="searchKeyword" placeholder="搜索传感器名称/主题" clearable @input="onSearchInput" />
+        </el-col>
+        <el-col :span="4">
+          <el-select v-model="filterDeviceId" placeholder="按设备筛选" clearable @change="filterSensors">
             <el-option
               v-for="d in deviceStore.devices"
               :key="d.deviceId"
@@ -21,7 +47,7 @@
           </el-select>
         </el-col>
         <el-col :span="4">
-          <el-select v-model="filterType" placeholder="传感器类型" clearable>
+          <el-select v-model="filterType" placeholder="传感器类型" clearable @change="filterSensors">
             <el-option label="光照" value="light" />
             <el-option label="温度" value="temperature" />
             <el-option label="湿度" value="humidity" />
@@ -29,7 +55,7 @@
           </el-select>
         </el-col>
         <el-col :span="4">
-          <el-select v-model="filterEnabled" placeholder="启用状态" clearable>
+          <el-select v-model="filterEnabled" placeholder="启用状态" clearable @change="filterSensors">
             <el-option label="已启用" :value="true" />
             <el-option label="已停用" :value="false" />
           </el-select>
@@ -39,21 +65,29 @@
 
     <!-- 传感器表格 -->
     <el-card shadow="never">
-      <el-table :data="paginatedSensors" v-loading="sensorStore.loading" stripe style="width: 100%">
-        <el-table-column prop="id" label="ID" width="60" />
+      <el-table
+        ref="tableRef"
+        :data="paginatedSensors"
+        v-loading="sensorStore.loading"
+        stripe
+        style="width: 100%"
+        @selection-change="handleSelectionChange"
+      >
+        <el-table-column type="selection" width="45" />
+        <el-table-column prop="id" label="ID" width="60" sortable />
         <el-table-column label="所属设备" width="150">
           <template #default="{ row }">
             <el-tag size="small">{{ row.deviceId }}</el-tag>
           </template>
         </el-table-column>
-        <el-table-column prop="displayName" label="传感器名称" min-width="140" />
-        <el-table-column prop="sensorType" label="类型" width="90">
+        <el-table-column prop="displayName" label="传感器名称" min-width="140" sortable />
+        <el-table-column prop="sensorType" label="类型" width="90" sortable>
           <template #default="{ row }">
             {{ typeLabel(row.sensorType) }}
           </template>
         </el-table-column>
         <el-table-column prop="dataTopic" label="数据主题" min-width="200" show-overflow-tooltip />
-        <el-table-column label="上报频率" width="100">
+        <el-table-column label="上报频率" width="120" sortable prop="reportFrequency">
           <template #default="{ row }">
             <el-input-number
               :model-value="row.reportFrequency"
@@ -63,9 +97,10 @@
               style="width: 80px"
               @change="(v) => handleFrequencyChange(row, v)"
             />
+            <span style="margin-left: 2px; font-size: 12px; color: #909399">秒</span>
           </template>
         </el-table-column>
-        <el-table-column label="状态" width="80">
+        <el-table-column label="启用" width="80">
           <template #default="{ row }">
             <el-switch
               :model-value="row.enabled"
@@ -78,15 +113,20 @@
             {{ row.configJson || '-' }}
           </template>
         </el-table-column>
-        <el-table-column label="更新时间" width="170">
+        <el-table-column label="更新时间" width="170" sortable prop="updatedAt">
           <template #default="{ row }">
-            {{ row.updatedAt ? formatTime(row.updatedAt) : '-' }}
+            {{ formatTime(row.updatedAt) }}
           </template>
         </el-table-column>
         <el-table-column label="操作" width="160" fixed="right">
           <template #default="{ row }">
             <el-button type="primary" link @click="openEditDialog(row)">编辑</el-button>
-            <el-popconfirm title="确定解绑该传感器吗？" @confirm="handleDelete(row)">
+            <el-popconfirm
+              title="确定解绑该传感器吗？"
+              confirm-button-text="确定"
+              cancel-button-text="取消"
+              @confirm="handleDelete(row)"
+            >
               <template #reference>
                 <el-button type="danger" link>解绑</el-button>
               </template>
@@ -94,7 +134,9 @@
           </template>
         </el-table-column>
         <template #empty>
-          <el-empty description="暂无传感器数据" />
+          <el-empty :description="hasFilter ? '没有匹配的传感器' : '暂无传感器数据'">
+            <el-button v-if="hasFilter" type="primary" @click="clearFilters">清除筛选</el-button>
+          </el-empty>
         </template>
       </el-table>
 
@@ -114,21 +156,23 @@
       v-model:visible="dialogVisible"
       :device-id="editingSensor?.deviceId"
       :edit-data="editingSensor"
-      @saved="refreshAll"
+      @saved="handleSaved"
     />
   </div>
 </template>
 
 <script setup>
 import { ref, computed, onMounted } from 'vue'
-import { ElMessage } from 'element-plus'
+import { ElMessage, ElMessageBox } from 'element-plus'
 import { useDeviceStore } from '../store/device'
 import { useSensorStore } from '../store/sensor'
 import SensorForm from '../components/SensorForm.vue'
+import { formatTime, typeLabel, debounce, resetPage } from '../utils/common'
 
 const deviceStore = useDeviceStore()
 const sensorStore = useSensorStore()
 
+const searchKeyword = ref('')
 const filterDeviceId = ref('')
 const filterType = ref('')
 const filterEnabled = ref('')
@@ -136,13 +180,26 @@ const dialogVisible = ref(false)
 const editingSensor = ref(null)
 const currentPage = ref(1)
 const pageSize = 10
+const selectedIds = ref([])
+const tableRef = ref(null)
+
+const hasFilter = computed(() =>
+  !!(searchKeyword.value || filterDeviceId.value || filterType.value || filterEnabled.value !== '')
+)
 
 const filteredSensors = computed(() => {
   let list = sensorStore.allSensors
   if (filterDeviceId.value) list = list.filter(s => s.deviceId === filterDeviceId.value)
   if (filterType.value) list = list.filter(s => s.sensorType === filterType.value)
-  if (filterEnabled.value !== '' && filterEnabled.value !== null) {
+  if (filterEnabled.value !== '' && filterEnabled.value !== null && filterEnabled.value !== undefined) {
     list = list.filter(s => !!s.enabled === filterEnabled.value)
+  }
+  if (searchKeyword.value) {
+    const kw = searchKeyword.value.toLowerCase()
+    list = list.filter(s =>
+      s.displayName?.toLowerCase().includes(kw) ||
+      s.dataTopic?.toLowerCase().includes(kw)
+    )
   }
   return list
 })
@@ -152,17 +209,28 @@ const paginatedSensors = computed(() => {
   return filteredSensors.value.slice(start, start + pageSize)
 })
 
-function typeLabel(t) {
-  const map = { light: '光照', temperature: '温度', humidity: '湿度', power: '功率' }
-  return map[t] || t
+// 防抖搜索
+const onSearchInput = debounce(filterSensors, 300)
+
+function filterSensors() {
+  resetPage(currentPage)
 }
 
-function formatTime(t) {
-  return new Date(t).toLocaleString('zh-CN')
+function clearFilters() {
+  searchKeyword.value = ''
+  filterDeviceId.value = ''
+  filterType.value = ''
+  filterEnabled.value = ''
+  filterSensors()
+}
+
+function handleSelectionChange(rows) {
+  selectedIds.value = rows.map(r => r.id)
 }
 
 async function refreshAll() {
   await sensorStore.fetchAll()
+  selectedIds.value = []
 }
 
 function openEditDialog(sensor) {
@@ -170,22 +238,109 @@ function openEditDialog(sensor) {
   dialogVisible.value = true
 }
 
+function handleSaved() {
+  dialogVisible.value = false
+  // store 已局部更新
+}
+
 async function handleDelete(row) {
-  await sensorStore.remove(row.deviceId, row.id)
-  ElMessage.success('传感器已解绑')
-  refreshAll()
+  try {
+    await sensorStore.remove(row.deviceId, row.id)
+    ElMessage.success('传感器已解绑')
+  } catch {
+    // 错误已在拦截器统一提示
+  }
 }
 
 async function handleToggleEnabled(row, enabled) {
-  await sensorStore.update(row.deviceId, row.id, { enabled })
-  ElMessage.success(enabled ? '传感器已启用' : '传感器已停用')
-  refreshAll()
+  try {
+    await sensorStore.update(row.deviceId, row.id, { enabled })
+    ElMessage.success(enabled ? '传感器已启用' : '传感器已停用')
+  } catch {
+    // 错误已在拦截器统一提示
+  }
 }
 
 async function handleFrequencyChange(row, val) {
   if (!val || val < 1) return
-  await sensorStore.updateFreq(row.deviceId, row.id, { reportFrequency: val })
-  ElMessage.success(`上报频率已更新为 ${val} 秒`)
+  try {
+    await sensorStore.updateFreq(row.deviceId, row.id, { reportFrequency: val })
+    ElMessage.success(`上报频率已更新为 ${val} 秒`)
+  } catch {
+    // 错误已在拦截器统一提示
+  }
+}
+
+async function handleBatchDelete() {
+  // 按 deviceId 分组
+  const groups = {}
+  for (const s of filteredSensors.value) {
+    if (selectedIds.value.includes(s.id)) {
+      if (!groups[s.deviceId]) groups[s.deviceId] = []
+      groups[s.deviceId].push(s.id)
+    }
+  }
+
+  try {
+    await ElMessageBox.confirm(
+      `确定解绑选中的 ${selectedIds.value.length} 个传感器吗？此操作不可恢复。`,
+      '批量解绑确认',
+      { confirmButtonText: '确定解绑', cancelButtonText: '取消', type: 'warning' }
+    )
+  } catch {
+    return
+  }
+
+  let totalSuccess = 0
+  let totalFail = 0
+  for (const [deviceId, ids] of Object.entries(groups)) {
+    const results = await sensorStore.removeBatch(deviceId, ids)
+    totalSuccess += results.filter(r => r.success).length
+    totalFail += results.filter(r => !r.success).length
+  }
+
+  if (totalFail > 0) {
+    ElMessage.warning(`成功解绑 ${totalSuccess} 个，${totalFail} 个失败`)
+  } else {
+    ElMessage.success(`成功解绑 ${totalSuccess} 个传感器`)
+  }
+  selectedIds.value = []
+}
+
+async function handleBatchEnable(enabled) {
+  const groups = {}
+  for (const s of filteredSensors.value) {
+    if (selectedIds.value.includes(s.id)) {
+      if (!groups[s.deviceId]) groups[s.deviceId] = []
+      groups[s.deviceId].push(s.id)
+    }
+  }
+
+  const label = enabled ? '启用' : '停用'
+  try {
+    await ElMessageBox.confirm(
+      `确定批量${label}选中的 ${selectedIds.value.length} 个传感器吗？`,
+      `批量${label}确认`,
+      { confirmButtonText: `确定${label}`, cancelButtonText: '取消', type: 'warning' }
+    )
+  } catch {
+    return
+  }
+
+  let totalSuccess = 0
+  let totalFail = 0
+  for (const [deviceId, ids] of Object.entries(groups)) {
+    const results = await sensorStore.updateBatch(deviceId, ids, { enabled })
+    totalSuccess += results.filter(r => r.success).length
+    totalFail += results.filter(r => !r.success).length
+  }
+
+  if (totalFail > 0) {
+    ElMessage.warning(`成功${label} ${totalSuccess} 个，${totalFail} 个失败`)
+  } else {
+    ElMessage.success(`成功${label} ${totalSuccess} 个传感器`)
+  }
+  selectedIds.value = []
 }
 
 onMounted(() => {
@@ -196,6 +351,10 @@ onMounted(() => {
 <style scoped>
 .page-header {
   display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px;
+  flex-wrap: wrap; gap: 8px;
 }
 .page-header h2 { font-size: 20px; font-weight: 600; }
+.header-actions {
+  display: flex; gap: 8px; flex-wrap: wrap;
+}
 </style>
