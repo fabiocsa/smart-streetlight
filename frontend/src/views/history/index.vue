@@ -227,18 +227,28 @@ const DEVICE_COLORS = [
   '#8E44AD', '#16A085', '#D35400', '#2980B9', '#27AE60'
 ]
 
-// Select first device on mount
+// Select first device on mount or when devices load
 onMounted(() => {
-  if (deviceStore.devices.length > 0 && filters.deviceIds.length === 0) {
-    filters.deviceIds = [deviceStore.devices[0].deviceId]
-    loadData()
-  }
+  tryAutoSelectDevice()
 })
 
-// Auto load when device changes
+// Auto load when device selection changes
 watch(() => filters.deviceIds.length, () => {
   if (filters.deviceIds.length > 0) loadData()
 })
+
+// Watch for devices to finish loading, then auto-select first
+watch(() => deviceStore.devices.length, (count) => {
+  if (count > 0 && filters.deviceIds.length === 0) {
+    tryAutoSelectDevice()
+  }
+})
+
+function tryAutoSelectDevice() {
+  if (deviceStore.devices.length > 0 && filters.deviceIds.length === 0) {
+    filters.deviceIds = [deviceStore.devices[0].deviceId]
+  }
+}
 
 const loadingOption = computed(() => ({
   title: {

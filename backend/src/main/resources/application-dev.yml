@@ -1,5 +1,10 @@
 server:
   port: 8080
+  servlet:
+    encoding:
+      charset: UTF-8
+      enabled: true
+      force: true
 
 spring:
   datasource:
@@ -7,6 +12,7 @@ spring:
     username: sa
     password:
     driver-class-name: org.h2.Driver
+    sql-script-encoding: UTF-8
 
   jpa:
     hibernate:
