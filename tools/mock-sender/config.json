@@ -85,5 +85,17 @@
       "configJson": "{\"min\": 0, \"max\": 600}"
     }
   },
-  "backendUrl": "http://localhost:8080/api"
+  "backendUrl": "http://localhost:8080/api",
+  "simulation": {
+    "latitude": 29.5,
+    "longitude": 106.5,
+    "timezoneOffset": 8,
+    "cloudCoverMax": 0.8,
+    "cloudChangeInterval": 1800,
+    "temperature": {
+      "annualMean": 21.5,
+      "annualAmplitude": 13.5,
+      "dailyAmplitude": 5.0
+    }
+  }
 }
