@@ -3,40 +3,122 @@ package com.streetlight.service.impl;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.streetlight.config.DeepSeekConfig;
+import com.streetlight.entity.ChatMessage;
+import com.streetlight.entity.ChatSession;
+import com.streetlight.repository.ChatMessageRepository;
+import com.streetlight.repository.ChatSessionRepository;
 import com.streetlight.service.ChatService;
 import com.streetlight.service.ToolExecutor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.*;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.client.RestTemplate;
 
-import java.util.List;
-import java.util.Map;
+import java.util.*;
 
 @Slf4j
 @Service
 public class ChatServiceImpl implements ChatService {
 
+    private static final int MAX_HISTORY = 20;
+
     private final RestTemplate restTemplate;
     private final DeepSeekConfig config;
     private final ToolExecutor toolExecutor;
     private final ObjectMapper objectMapper;
+    private final ChatSessionRepository sessionRepo;
+    private final ChatMessageRepository messageRepo;
 
     public ChatServiceImpl(RestTemplate restTemplate, DeepSeekConfig config,
-                           ToolExecutor toolExecutor, ObjectMapper objectMapper) {
+                           ToolExecutor toolExecutor, ObjectMapper objectMapper,
+                           ChatSessionRepository sessionRepo, ChatMessageRepository messageRepo) {
         this.restTemplate = restTemplate;
         this.config = config;
         this.toolExecutor = toolExecutor;
         this.objectMapper = objectMapper;
+        this.sessionRepo = sessionRepo;
+        this.messageRepo = messageRepo;
+    }
+
+    // ==================== 会话管理 ====================
+
+    @Override
+    public List<ChatSession> getSessions(String userId) {
+        return sessionRepo.findByUserIdOrderByUpdatedAtDesc(userId);
     }
 
     @Override
-    public String answer(String question) {
+    public ChatSession createSession(String userId, String title) {
+        ChatSession session = ChatSession.builder()
+                .userId(userId)
+                .title(title != null ? title : "新对话")
+                .build();
+        return sessionRepo.save(session);
+    }
+
+    @Override
+    @Transactional
+    public void deleteSession(Long sessionId) {
+        messageRepo.deleteBySessionId(sessionId);
+        sessionRepo.deleteById(sessionId);
+    }
+
+    @Override
+    public ChatSession renameSession(Long sessionId, String title) {
+        ChatSession session = sessionRepo.findById(sessionId)
+                .orElseThrow(() -> new RuntimeException("会话不存在, id=" + sessionId));
+        session.setTitle(title);
+        return sessionRepo.save(session);
+    }
+
+    // ==================== 消息 ====================
+
+    @Override
+    public List<ChatMessage> getMessages(Long sessionId) {
+        return messageRepo.findBySessionIdOrderByCreatedAtAsc(sessionId);
+    }
+
+    @Override
+    @Transactional
+    public Map<String, Object> sendMessage(Long sessionId, String question) {
+        ChatSession session = sessionRepo.findById(sessionId)
+                .orElseThrow(() -> new RuntimeException("会话不存在, id=" + sessionId));
+
+        // 1. 保存用户消息
+        messageRepo.save(ChatMessage.builder()
+                .sessionId(sessionId).role("user").content(question).build());
+
+        // 2. 获取历史消息上下文（最近 N 条）
+        List<ChatMessage> history = messageRepo.findBySessionIdOrderByCreatedAtAsc(sessionId);
+        List<Map<String, String>> context = buildContext(history, MAX_HISTORY);
+
+        // 3. 工具选择 + LLM 调用
+        String answer;
         if (!config.isEnabled()) {
-            return "AI 问答服务未启用，请联系管理员。";
+            answer = "AI 问答服务未启用，请联系管理员。";
+        } else {
+            answer = generateAnswer(question, context);
         }
 
-        // 第一步：意图识别 + 工具选择
+        // 4. 保存 AI 回复
+        ChatMessage saved = messageRepo.save(ChatMessage.builder()
+                .sessionId(sessionId).role("assistant").content(answer).build());
+
+        // 5. 自动命名：第一条消息时用 question 作为标题
+        if (history.size() == 1) {
+            String title = question.length() > 20 ? question.substring(0, 20) : question;
+            session.setTitle(title);
+            sessionRepo.save(session);
+        }
+
+        return Map.of("sessionId", sessionId, "answer", answer, "messageId", saved.getId());
+    }
+
+    // ==================== LLM 调用 ====================
+
+    private String generateAnswer(String question, List<Map<String, String>> context) {
+        // 第一步：工具选择
         ToolCall toolCall = null;
         try {
             toolCall = selectTool(question);
@@ -44,19 +126,15 @@ public class ChatServiceImpl implements ChatService {
             log.warn("工具选择失败，降级为通用问答", e);
         }
 
-        // 第二步：根据工具选择执行查询并生成最终回答
+        // 第二步：生成回答（带上下文）
         if (toolCall != null && toolCall.tool != null) {
-            return answerWithData(question, toolCall);
+            return answerWithData(question, context, toolCall);
         }
-        return answerDirect(question);
+        return answerDirect(question, context);
     }
 
-    /**
-     * 第一步：将工具列表 + 用户问题发送给 LLM，获取 JSON 格式的工具调用
-     */
     private ToolCall selectTool(String question) {
         String url = config.getBaseUrl() + "/v1/chat/completions";
-
         Map<String, Object> body = Map.of(
                 "model", config.getModel(),
                 "messages", List.of(
@@ -70,33 +148,24 @@ public class ChatServiceImpl implements ChatService {
         HttpEntity<Map<String, Object>> request = buildRequest(body);
         ResponseEntity<Map> response = restTemplate.postForEntity(url, request, Map.class);
         String content = extractContent(response);
-
-        // 尝试从返回内容中提取 JSON
         String json = extractJson(content);
         log.info("LLM 工具选择: {}", json);
 
         Map<String, Object> parsed;
         try {
-            parsed = objectMapper.readValue(json,
-                    new TypeReference<Map<String, Object>>() {});
+            parsed = objectMapper.readValue(json, new TypeReference<Map<String, Object>>() {});
         } catch (Exception e) {
             log.warn("解析工具选择 JSON 失败: {}", json, e);
             return new ToolCall(null, null);
         }
         String toolName = (String) parsed.get("tool");
-        if (toolName == null) {
-            return new ToolCall(null, null);
-        }
+        if (toolName == null) return new ToolCall(null, null);
         @SuppressWarnings("unchecked")
         Map<String, Object> params = (Map<String, Object>) parsed.get("params");
-        if (params == null) params = Map.of();
-        return new ToolCall(toolName, params);
+        return new ToolCall(toolName, params != null ? params : Map.of());
     }
 
-    /**
-     * 第二步：用工具返回的数据 + 用户问题，让 LLM 生成自然语言回答
-     */
-    private String answerWithData(String question, ToolCall toolCall) {
+    private String answerWithData(String question, List<Map<String, String>> context, ToolCall toolCall) {
         log.info("执行工具: {} params={}", toolCall.tool, toolCall.params);
         String toolResult = toolExecutor.execute(toolCall.tool, toolCall.params);
 
@@ -108,39 +177,30 @@ public class ChatServiceImpl implements ChatService {
 
         String userPrompt = "用户问题：" + question + "\n\n系统查询数据：" + toolResult;
 
-        String url = config.getBaseUrl() + "/v1/chat/completions";
-        Map<String, Object> body = Map.of(
-                "model", config.getModel(),
-                "messages", List.of(
-                        Map.of("role", "system", "content", systemPrompt),
-                        Map.of("role", "user", "content", userPrompt)
-                ),
-                "temperature", config.getTemperature(),
-                "max_tokens", config.getMaxTokens()
-        );
+        // 构造 messages：system + 历史上下文 + 当前数据问题
+        List<Map<String, String>> messages = new ArrayList<>();
+        messages.add(Map.of("role", "system", "content", systemPrompt));
+        messages.addAll(context);
+        messages.add(Map.of("role", "user", "content", userPrompt));
 
-        try {
-            HttpEntity<Map<String, Object>> request = buildRequest(body);
-            ResponseEntity<Map> response = restTemplate.postForEntity(url, request, Map.class);
-            return extractContent(response);
-        } catch (Exception e) {
-            log.error("LLM 生成回答失败", e);
-            // 降级：直接返回数据结构给用户
-            return "查询到以下数据（AI 生成回答失败）：\n" + toolResult;
-        }
+        return callLLM(messages);
     }
 
-    /**
-     * 直接问答（不涉及内部数据）
-     */
-    private String answerDirect(String question) {
+    private String answerDirect(String question, List<Map<String, String>> context) {
+        List<Map<String, String>> messages = new ArrayList<>();
+        messages.add(Map.of("role", "system", "content", config.getSystemPrompt()));
+        messages.addAll(context);
+        messages.add(Map.of("role", "user", "content", question));
+
+        return callLLM(messages);
+    }
+
+    @SuppressWarnings("unchecked")
+    private String callLLM(List<Map<String, String>> messages) {
         String url = config.getBaseUrl() + "/v1/chat/completions";
         Map<String, Object> body = Map.of(
                 "model", config.getModel(),
-                "messages", List.of(
-                        Map.of("role", "system", "content", config.getSystemPrompt()),
-                        Map.of("role", "user", "content", question)
-                ),
+                "messages", messages,
                 "temperature", config.getTemperature(),
                 "max_tokens", config.getMaxTokens()
         );
@@ -153,6 +213,24 @@ public class ChatServiceImpl implements ChatService {
             log.error("LLM 调用失败", e);
             return "AI 服务暂时不可用，请稍后重试";
         }
+    }
+
+    // ==================== 工具方法 ====================
+
+    /** 将数据库中的历史消息转为 LLM 所需的 messages 格式，只保留最近 maxCount 条 */
+    private List<Map<String, String>> buildContext(List<ChatMessage> history, int maxCount) {
+        List<ChatMessage> recent = history;
+        if (history.size() > maxCount) {
+            // 保留最后一条（当前用户消息）以及之前最近的消息
+            recent = history.subList(history.size() - maxCount, history.size());
+        }
+        // 去掉刚保存的当前用户消息（最后一条），它会在调用方单独加入
+        List<Map<String, String>> context = new ArrayList<>();
+        for (int i = 0; i < recent.size() - 1; i++) {
+            ChatMessage msg = recent.get(i);
+            context.add(Map.of("role", msg.getRole(), "content", msg.getContent()));
+        }
+        return context;
     }
 
     @SuppressWarnings("unchecked")
@@ -173,7 +251,6 @@ public class ChatServiceImpl implements ChatService {
     private String extractJson(String content) {
         if (content == null) return "{\"tool\": null}";
         content = content.trim();
-        // 去掉 markdown 代码块包裹
         if (content.startsWith("```")) {
             int start = content.indexOf("\n");
             int end = content.lastIndexOf("```");

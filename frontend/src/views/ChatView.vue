@@ -1,144 +1,102 @@
 <template>
-  <div class="chat-container">
-    <div class="chat-header">
-      <h2>智能问答</h2>
-      <el-button text type="danger" @click="clearHistory">清空对话</el-button>
+  <div class="chat-layout">
+    <!-- 左侧历史会话栏 -->
+    <div class="chat-sidebar">
+      <Sidebar
+        :sessions="store.sessions"
+        :currentId="store.currentSessionId"
+        @new="handleNew"
+        @select="handleSelect"
+        @delete="handleDelete"
+      />
     </div>
 
-    <div class="chat-messages" ref="messagesRef">
-      <div v-if="messages.length === 0" class="chat-placeholder">
-        <el-icon :size="48" color="#c0c4cc"><ChatDotRound /></el-icon>
-        <p>请输入问题，智能助手将为您解答</p>
+    <!-- 右侧主区域 -->
+    <div class="chat-main">
+      <!-- 无会话时显示占位 -->
+      <div v-if="!store.currentSessionId" class="chat-placeholder">
+        <el-icon :size="56" color="#c0c4cc"><ChatDotRound /></el-icon>
+        <p>选择或新建一个对话</p>
+        <el-button type="primary" @click="handleNew">新建对话</el-button>
       </div>
 
-      <div
-        v-for="(msg, idx) in messages"
-        :key="idx"
-        :class="['message-row', msg.role === 'user' ? 'message-user' : 'message-assistant']"
-      >
-        <div class="message-avatar">
-          <el-avatar
-            :size="36"
-            :icon="msg.role === 'user' ? UserFilled : Service"
-            :style="{ background: msg.role === 'user' ? '#409EFF' : '#67C23A' }"
-          />
+      <!-- 有会话时显示聊天区 -->
+      <template v-else>
+        <div class="chat-topbar">
+          <span class="session-label">{{ store.currentSession?.title || '对话' }}</span>
         </div>
-        <div class="message-bubble">
-          <div class="message-role">{{ msg.role === 'user' ? '我' : '智能助手' }}</div>
-          <div class="message-text">{{ msg.content }}</div>
-        </div>
-      </div>
-
-      <div v-if="loading" class="message-row message-assistant">
-        <div class="message-avatar">
-          <el-avatar :size="36" :icon="Service" style="background: #67C23A" />
-        </div>
-        <div class="message-bubble">
-          <div class="message-role">智能助手</div>
-          <div class="message-text typing-indicator">
-            <span class="dot"></span><span class="dot"></span><span class="dot"></span>
-          </div>
-        </div>
-      </div>
-    </div>
-
-    <div class="chat-input">
-      <el-input
-        v-model="inputText"
-        placeholder="输入您的问题..."
-        :disabled="loading"
-        clearable
-        @keyup.enter="handleSend"
-        @clear="inputText = ''"
-      >
-        <template #append>
-          <el-button
-            type="primary"
-            :disabled="!inputText.trim() || loading"
-            :loading="loading"
-            @click="handleSend"
-          >
-            <span v-if="!loading">发送</span>
-          </el-button>
-        </template>
-      </el-input>
+        <MessageList
+          :messages="store.currentMessages"
+          :loading="store.isLoading"
+        />
+        <MessageInput
+          :disabled="!store.currentSessionId"
+          :loading="store.isLoading"
+          @send="handleSend"
+        />
+      </template>
     </div>
   </div>
 </template>
 
 <script setup>
-import { ref, nextTick, watch } from 'vue'
-import { ChatDotRound, UserFilled, Service } from '@element-plus/icons-vue'
-import { sendMessage } from '../api/chat'
-import { ElMessage } from 'element-plus'
+import { onMounted } from 'vue'
+import { ChatDotRound } from '@element-plus/icons-vue'
+import { useChatStore } from '../stores/chatStore'
+import Sidebar from '../components/chat/Sidebar.vue'
+import MessageList from '../components/chat/MessageList.vue'
+import MessageInput from '../components/chat/MessageInput.vue'
 
-const inputText = ref('')
-const loading = ref(false)
-const messages = ref([])
-const messagesRef = ref(null)
+const store = useChatStore()
 
-function scrollToBottom() {
-  nextTick(() => {
-    if (messagesRef.value) {
-      messagesRef.value.scrollTop = messagesRef.value.scrollHeight
-    }
-  })
-}
-
-watch(messages, () => scrollToBottom(), { deep: true })
-
-async function handleSend() {
-  const text = inputText.value.trim()
-  if (!text || loading.value) return
-
-  messages.value.push({ role: 'user', content: text })
-  inputText.value = ''
-  loading.value = true
-
-  try {
-    const data = await sendMessage(text)
-    messages.value.push({ role: 'assistant', content: data.answer })
-  } catch {
-    messages.value.push({ role: 'assistant', content: '抱歉，问答服务暂不可用，请稍后再试。' })
-  } finally {
-    loading.value = false
+onMounted(async () => {
+  await store.loadSessions()
+  if (store.sessions.length > 0) {
+    await store.selectSession(store.sessions[0].id)
   }
+})
+
+async function handleNew() {
+  await store.newSession()
 }
 
-function clearHistory() {
-  messages.value = []
+async function handleSelect(id) {
+  await store.selectSession(id)
+}
+
+async function handleDelete(id) {
+  await store.removeSession(id)
+}
+
+async function handleSend(text) {
+  if (!store.currentSessionId) {
+    await store.newSession()
+  }
+  await store.send(text)
 }
 </script>
 
 <style scoped>
-.chat-container {
+.chat-layout {
+  display: flex;
+  height: calc(100vh - 120px);
+  border: 1px solid #e4e7ed;
+  border-radius: 8px;
+  overflow: hidden;
+  background: #fff;
+}
+
+.chat-sidebar {
+  width: 260px;
+  flex-shrink: 0;
+  border-right: 1px solid #e4e7ed;
+}
+
+.chat-main {
+  flex: 1;
   display: flex;
   flex-direction: column;
-  height: calc(100vh - 120px);
-  max-width: 900px;
-  margin: 0 auto;
-}
-
-.chat-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 12px 0 16px;
-  border-bottom: 1px solid #e4e7ed;
-  margin-bottom: 16px;
-  flex-shrink: 0;
-}
-
-.chat-header h2 {
-  font-size: 18px;
-  font-weight: 600;
-  color: #303133;
-}
-
-.chat-messages {
-  flex: 1;
-  overflow-y: auto;
-  padding: 0 4px 16px;
+  min-width: 0;
 }
 
 .chat-placeholder {
@@ -146,91 +104,23 @@ function clearHistory() {
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  height: 100%;
-  color: #909399;
+  flex: 1;
   gap: 12px;
-  font-size: 14px;
-}
-
-.message-row {
-  display: flex;
-  gap: 10px;
-  margin-bottom: 18px;
-}
-
-.message-user {
-  flex-direction: row-reverse;
-}
-
-.message-user .message-bubble {
-  align-items: flex-end;
-}
-
-.message-user .message-text {
-  background: #409EFF;
-  color: #fff;
-  border-radius: 12px 4px 12px 12px;
-}
-
-.message-avatar {
-  flex-shrink: 0;
-  padding-top: 2px;
-}
-
-.message-bubble {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-  max-width: 70%;
-}
-
-.message-role {
-  font-size: 12px;
   color: #909399;
-  padding: 0 4px;
-}
-
-.message-text {
-  padding: 10px 14px;
-  background: #f0f2f5;
-  border-radius: 4px 12px 12px 12px;
   font-size: 14px;
-  line-height: 1.6;
-  color: #303133;
-  white-space: pre-wrap;
-  word-break: break-word;
 }
 
-.chat-input {
-  flex-shrink: 0;
-  padding: 16px 0 8px;
-  border-top: 1px solid #e4e7ed;
-  background: #fff;
-}
-
-/* 正在输入动画 */
-.typing-indicator {
+.chat-topbar {
+  height: 48px;
   display: flex;
   align-items: center;
-  gap: 4px;
-  padding: 14px 18px;
-  min-width: 56px;
+  padding: 0 20px;
+  border-bottom: 1px solid #e4e7ed;
+  flex-shrink: 0;
 }
-
-.dot {
-  width: 7px;
-  height: 7px;
-  border-radius: 50%;
-  background: #909399;
-  animation: blink 1.4s infinite ease-in-out both;
-}
-
-.dot:nth-child(1) { animation-delay: 0s; }
-.dot:nth-child(2) { animation-delay: 0.2s; }
-.dot:nth-child(3) { animation-delay: 0.4s; }
-
-@keyframes blink {
-  0%, 80%, 100% { transform: scale(0.6); opacity: 0.4; }
-  40% { transform: scale(1); opacity: 1; }
+.session-label {
+  font-size: 14px;
+  font-weight: 600;
+  color: #303133;
 }
 </style>
