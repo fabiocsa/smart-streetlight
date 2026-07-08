@@ -41,6 +41,7 @@ com\streetlight\controller\ControlController.class
 com\streetlight\dto\SensorUpdateRequest.class
 com\streetlight\controller\ChatController.class
 com\streetlight\service\SensorService.class
+com\streetlight\dto\BatchControlRequest.class
 com\streetlight\config\DeepSeekConfig.class
 com\streetlight\config\RestTemplateConfig.class
 com\streetlight\service\impl\ChatServiceImpl.class

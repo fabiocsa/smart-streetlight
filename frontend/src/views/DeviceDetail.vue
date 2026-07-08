@@ -83,6 +83,9 @@
       </el-form>
     </el-card>
 
+    <!-- 设备控制面板 -->
+    <ControlPanel :device="form" @updated="loadDevice" />
+
     <!-- 传感器列表 -->
     <SensorTable
       :device-id="form.deviceId"
@@ -112,6 +115,7 @@ import { useDeviceStore } from '../store/device'
 import { useSensorStore } from '../store/sensor'
 import SensorTable from '../components/SensorTable.vue'
 import SensorForm from '../components/SensorForm.vue'
+import ControlPanel from '../components/ControlPanel.vue'
 
 const route = useRoute()
 const router = useRouter()

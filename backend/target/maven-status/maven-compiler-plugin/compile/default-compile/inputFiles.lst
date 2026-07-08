@@ -13,6 +13,7 @@ D:\文文又档档\111实训\smart-streetlight\backend\src\main\java\com\streetlight\co
 D:\文文又档档\111实训\smart-streetlight\backend\src\main\java\com\streetlight\config\CorsConfig.java
 D:\文文又档档\111实训\smart-streetlight\backend\src\main\java\com\streetlight\repository\ChatSessionRepository.java
 D:\文文又档档\111实训\smart-streetlight\backend\src\main\java\com\streetlight\controller\DashboardController.java
+D:\文文又档档\111实训\smart-streetlight\backend\src\main\java\com\streetlight\dto\BatchControlRequest.java
 D:\文文又档档\111实训\smart-streetlight\backend\src\main\java\com\streetlight\mqtt\MqttPublishService.java
 D:\文文又档档\111实训\smart-streetlight\backend\src\main\java\com\streetlight\repository\SensorDataRepository.java
 D:\文文又档档\111实训\smart-streetlight\backend\src\main\java\com\streetlight\dto\ControlModeRequest.java

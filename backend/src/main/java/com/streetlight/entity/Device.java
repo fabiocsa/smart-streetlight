@@ -46,6 +46,9 @@ public class Device {
     @Builder.Default
     private String controlMode = "auto";
 
+    @Column(name = "brightness")
+    private Integer brightness;
+
     @Column(length = 200)
     private String location;
 

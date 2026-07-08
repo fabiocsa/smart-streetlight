@@ -18,6 +18,7 @@ def generate_sensor_data(
     elapsed_seconds: float,
     data_range: Optional[Dict[str, float]] = None,
     extra_fields: Optional[Dict[str, Any]] = None,
+    brightness: Optional[int] = None,
 ) -> Dict[str, Any]:
     """
     生成一条完整的传感器数据 payload。
@@ -28,6 +29,7 @@ def generate_sensor_data(
         elapsed_seconds: 从启动开始的运行秒数，用于模拟一天的光照变化
         data_range: 光照范围 {min, max}，默认 0~800
         extra_fields: 额外字段会合并到返回值中
+        brightness: 亮度百分比 0-100，仅在 light_status=on 时生效
 
     返回:
         符合 MQTT sensor/data topic 的 dict
@@ -35,8 +37,19 @@ def generate_sensor_data(
     if data_range is None:
         data_range = {"min": 0, "max": 800}
 
-    illuminance = _calc_illuminance(device_id, elapsed_seconds, data_range)
     light_on = light_status.lower() == "on"
+    max_lux = data_range.get("max", 800)
+
+    if light_on and brightness is not None:
+        # 手动亮度模式：光照 = 自然光照 + 亮度贡献
+        natural = _calc_illuminance(device_id, elapsed_seconds, data_range)
+        # 亮度贡献：brightness 百分比映射到 0 ~ max_lux 的范围
+        brightness_contrib = (brightness / 100.0) * max_lux
+        # 混合：亮度占主导，自然光占次要
+        illuminance = round(brightness_contrib * 0.7 + natural * 0.3 + random.uniform(-5, 5), 1)
+        illuminance = max(0, min(illuminance, max_lux * 1.1))
+    else:
+        illuminance = _calc_illuminance(device_id, elapsed_seconds, data_range)
 
     payload = {
         "deviceId": device_id,
@@ -47,6 +60,9 @@ def generate_sensor_data(
         "status": "ON" if light_on else "OFF",
         "timestamp": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
     }
+
+    if brightness is not None:
+        payload["brightness"] = brightness
 
     if extra_fields:
         payload.update(extra_fields)

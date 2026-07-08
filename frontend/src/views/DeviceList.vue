@@ -5,6 +5,20 @@
       <div class="header-actions">
         <el-button
           v-if="selectedIds.length > 0"
+          type="success"
+          @click="handleBatchControl('on')"
+        >
+          <el-icon><Sunny /></el-icon> 批量开灯 ({{ selectedIds.length }})
+        </el-button>
+        <el-button
+          v-if="selectedIds.length > 0"
+          type="warning"
+          @click="handleBatchControl('off')"
+        >
+          <el-icon><Moon /></el-icon> 批量关灯 ({{ selectedIds.length }})
+        </el-button>
+        <el-button
+          v-if="selectedIds.length > 0"
           type="danger"
           @click="handleBatchDelete"
         >
@@ -82,6 +96,22 @@
             {{ formatTime(row.lastHeartbeat) }}
           </template>
         </el-table-column>
+        <el-table-column label="快捷控制" width="130">
+          <template #default="{ row }">
+            <el-button
+              v-if="row.status === 'online'"
+              :type="row.lightStatus === 'on' ? 'warning' : 'success'"
+              size="small"
+              :loading="controllingId === row.deviceId"
+              @click="handleQuickControl(row)"
+            >
+              {{ row.lightStatus === 'on' ? '关灯' : '开灯' }}
+            </el-button>
+            <el-tooltip v-else content="设备离线，无法控制" placement="top">
+              <el-button size="small" disabled type="info">不可控</el-button>
+            </el-tooltip>
+          </template>
+        </el-table-column>
         <el-table-column label="操作" width="220" fixed="right">
           <template #default="{ row }">
             <el-button type="primary" link @click="goDetail(row.id)">详情</el-button>
@@ -131,8 +161,10 @@
 import { ref, computed, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
+import { Sunny, Moon } from '@element-plus/icons-vue'
 import { useDeviceStore } from '../store/device'
 import DeviceForm from '../components/DeviceForm.vue'
+import { sendControl, sendBatchControl } from '../api/control'
 import { formatTime, debounce, resetPage } from '../utils/common'
 
 const router = useRouter()
@@ -147,6 +179,7 @@ const editingDevice = ref(null)
 const currentPage = ref(1)
 const pageSize = 10
 const selectedIds = ref([])
+const controllingId = ref('')   // 当前正在控制的设备ID
 
 // 防抖搜索
 const onSearchInput = debounce(filterDevices, 300)
@@ -235,6 +268,59 @@ async function handleBatchDelete() {
     ElMessage.success(`成功删除 ${successCount} 个设备`)
   }
   selectedIds.value = []
+}
+
+/** 单行快捷控制（开关灯） */
+async function handleQuickControl(row) {
+  const newCmd = row.lightStatus === 'on' ? 'off' : 'on'
+  const actionText = newCmd === 'on' ? '开灯' : '关灯'
+
+  try {
+    await ElMessageBox.confirm(
+      `确定要${actionText}设备「${row.name || row.deviceId}」吗？`,
+      `${actionText}确认`,
+      { confirmButtonText: actionText, cancelButtonText: '取消', type: newCmd === 'on' ? 'warning' : 'info' }
+    )
+  } catch { return }
+
+  controllingId.value = row.deviceId
+  try {
+    await sendControl(row.deviceId, { command: newCmd })
+    row.lightStatus = newCmd
+    row.controlMode = 'manual'  // ★ 手动控制后切换为手动模式
+    ElMessage.success(`设备「${row.name || row.deviceId}」已${actionText}，已切换为手动模式`)
+  } catch {
+    // 错误已拦截
+  } finally {
+    controllingId.value = ''
+  }
+}
+
+/** 批量控制（开关灯） */
+async function handleBatchControl(command) {
+  const actionText = command === 'on' ? '开灯' : '关灯'
+  try {
+    await ElMessageBox.confirm(
+      `确定要对选中的 ${selectedIds.value.length} 个设备执行批量${actionText}吗？`,
+      `批量${actionText}确认`,
+      { confirmButtonText: actionText, cancelButtonText: '取消', type: 'warning' }
+    )
+  } catch { return }
+
+  // 获取选中的设备ID列表
+  const selectedDevices = deviceStore.devices.filter(d => selectedIds.value.includes(d.id))
+  const deviceIds = selectedDevices.map(d => d.deviceId)
+
+  try {
+    const res = await sendBatchControl({ deviceIds, command })
+    const result = res?.data || res
+    ElMessage.success(`批量${actionText}: 成功 ${result?.successCount ?? deviceIds.length} 个，已切换为手动模式`)
+    // 局部更新设备状态
+    selectedDevices.forEach(d => { d.lightStatus = command; d.controlMode = 'manual' })
+    selectedIds.value = []
+  } catch {
+    // 错误已拦截
+  }
 }
 
 async function handleSaved() {

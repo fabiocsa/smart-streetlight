@@ -23,6 +23,10 @@ public class MqttPublishService {
     private final ObjectMapper objectMapper = new ObjectMapper();
 
     public void publishCommand(String deviceId, String command, String source) {
+        publishCommand(deviceId, command, source, null);
+    }
+
+    public void publishCommand(String deviceId, String command, String source, Integer brightness) {
         if (!mqttClient.isConnected()) {
             log.warn("MQTT 未连接，跳过发布指令 - deviceId: {}, command: {}", deviceId, command);
             return;
@@ -33,6 +37,9 @@ public class MqttPublishService {
             payload.put("command", command);
             payload.put("source", source);
             payload.put("timestamp", LocalDateTime.now().toString());
+            if (brightness != null) {
+                payload.put("brightness", brightness);
+            }
             String json = objectMapper.writeValueAsString(payload);
             MqttMessage message = new MqttMessage(json.getBytes());
             message.setQos(1);
