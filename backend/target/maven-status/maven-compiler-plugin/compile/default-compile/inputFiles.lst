@@ -1,3 +1,4 @@
+D:\文文又档档\111实训\smart-streetlight\backend\src\main\java\com\streetlight\dto\SessionTitleRequest.java
 D:\文文又档档\111实训\smart-streetlight\backend\src\main\java\com\streetlight\enums\DeviceStatus.java
 D:\文文又档档\111实训\smart-streetlight\backend\src\main\java\com\streetlight\config\WebSocketConfig.java
 D:\文文又档档\111实训\smart-streetlight\backend\src\main\java\com\streetlight\dto\ThresholdRequest.java
@@ -10,6 +11,7 @@ D:\文文又档档\111实训\smart-streetlight\backend\src\main\java\com\streetlight\en
 D:\文文又档档\111实训\smart-streetlight\backend\src\main\java\com\streetlight\repository\DeviceRepository.java
 D:\文文又档档\111实训\smart-streetlight\backend\src\main\java\com\streetlight\config\RestTemplateConfig.java
 D:\文文又档档\111实训\smart-streetlight\backend\src\main\java\com\streetlight\config\CorsConfig.java
+D:\文文又档档\111实训\smart-streetlight\backend\src\main\java\com\streetlight\repository\ChatSessionRepository.java
 D:\文文又档档\111实训\smart-streetlight\backend\src\main\java\com\streetlight\controller\DashboardController.java
 D:\文文又档档\111实训\smart-streetlight\backend\src\main\java\com\streetlight\mqtt\MqttPublishService.java
 D:\文文又档档\111实训\smart-streetlight\backend\src\main\java\com\streetlight\repository\SensorDataRepository.java
@@ -39,12 +41,15 @@ D:\文文又档档\111实训\smart-streetlight\backend\src\main\java\com\streetlight\dt
 D:\文文又档档\111实训\smart-streetlight\backend\src\main\java\com\streetlight\service\impl\ChatServiceImpl.java
 D:\文文又档档\111实训\smart-streetlight\backend\src\main\java\com\streetlight\dto\ChatRequest.java
 D:\文文又档档\111实训\smart-streetlight\backend\src\main\java\com\streetlight\service\ToolExecutor.java
+D:\文文又档档\111实训\smart-streetlight\backend\src\main\java\com\streetlight\entity\ChatMessage.java
 D:\文文又档档\111实训\smart-streetlight\backend\src\main\java\com\streetlight\controller\SensorDataController.java
 D:\文文又档档\111实训\smart-streetlight\backend\src\main\java\com\streetlight\config\DeepSeekConfig.java
 D:\文文又档档\111实训\smart-streetlight\backend\src\main\java\com\streetlight\service\impl\ControlServiceImpl.java
 D:\文文又档档\111实训\smart-streetlight\backend\src\main\java\com\streetlight\service\impl\SensorDataServiceImpl.java
+D:\文文又档档\111实训\smart-streetlight\backend\src\main\java\com\streetlight\entity\ChatSession.java
 D:\文文又档档\111实训\smart-streetlight\backend\src\main\java\com\streetlight\service\ControlService.java
 D:\文文又档档\111实训\smart-streetlight\backend\src\main\java\com\streetlight\controller\ControlController.java
+D:\文文又档档\111实训\smart-streetlight\backend\src\main\java\com\streetlight\repository\ChatMessageRepository.java
 D:\文文又档档\111实训\smart-streetlight\backend\src\main\java\com\streetlight\entity\Sensor.java
 D:\文文又档档\111实训\smart-streetlight\backend\src\main\java\com\streetlight\dto\SensorRequest.java
 D:\文文又档档\111实训\smart-streetlight\backend\src\main\java\com\streetlight\enums\ControlMode.java
