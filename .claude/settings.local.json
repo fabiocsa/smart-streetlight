@@ -62,7 +62,8 @@
       "Bash(python -m py_compile sender/mqtt_client.py)",
       "Bash(python -m py_compile app.py)",
       "Bash(mvn spring-boot:run -DskipTests -q)",
-      "Bash(taskkill /PID 4936 /F)"
+      "Bash(taskkill /PID 4936 /F)",
+      "Bash(cmd *)"
     ]
   }
 }

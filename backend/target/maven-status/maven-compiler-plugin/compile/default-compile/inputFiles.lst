@@ -2,6 +2,7 @@ E:\JAVA\下\smart-streetlight\backend\src\main\java\com\streetlight\entity\Senso
 E:\JAVA\下\smart-streetlight\backend\src\main\java\com\streetlight\service\ChatService.java
 E:\JAVA\下\smart-streetlight\backend\src\main\java\com\streetlight\service\impl\ChatServiceImpl.java
 E:\JAVA\下\smart-streetlight\backend\src\main\java\com\streetlight\dto\ResolveAlarmRequest.java
+E:\JAVA\下\smart-streetlight\backend\src\main\java\com\streetlight\entity\ChatMessage.java
 E:\JAVA\下\smart-streetlight\backend\src\main\java\com\streetlight\service\ControlService.java
 E:\JAVA\下\smart-streetlight\backend\src\main\java\com\streetlight\enums\ControlMode.java
 E:\JAVA\下\smart-streetlight\backend\src\main\java\com\streetlight\repository\AlarmLogRepository.java
@@ -11,6 +12,7 @@ E:\JAVA\下\smart-streetlight\backend\src\main\java\com\streetlight\common\Globa
 E:\JAVA\下\smart-streetlight\backend\src\main\java\com\streetlight\enums\LightStatus.java
 E:\JAVA\下\smart-streetlight\backend\src\main\java\com\streetlight\repository\SensorRepository.java
 E:\JAVA\下\smart-streetlight\backend\src\main\java\com\streetlight\websocket\WebSocketHandler.java
+E:\JAVA\下\smart-streetlight\backend\src\main\java\com\streetlight\entity\ChatSession.java
 E:\JAVA\下\smart-streetlight\backend\src\main\java\com\streetlight\mqtt\MqttClientManager.java
 E:\JAVA\下\smart-streetlight\backend\src\main\java\com\streetlight\enums\AlarmType.java
 E:\JAVA\下\smart-streetlight\backend\src\main\java\com\streetlight\dto\SensorUpdateRequest.java
@@ -36,13 +38,16 @@ E:\JAVA\下\smart-streetlight\backend\src\main\java\com\streetlight\entity\Alarm
 E:\JAVA\下\smart-streetlight\backend\src\main\java\com\streetlight\mqtt\MqttPublishService.java
 E:\JAVA\下\smart-streetlight\backend\src\main\java\com\streetlight\entity\SensorData.java
 E:\JAVA\下\smart-streetlight\backend\src\main\java\com\streetlight\dto\SensorFrequencyRequest.java
+E:\JAVA\下\smart-streetlight\backend\src\main\java\com\streetlight\dto\SessionTitleRequest.java
 E:\JAVA\下\smart-streetlight\backend\src\main\java\com\streetlight\config\DeepSeekConfig.java
+E:\JAVA\下\smart-streetlight\backend\src\main\java\com\streetlight\repository\ChatMessageRepository.java
 E:\JAVA\下\smart-streetlight\backend\src\main\java\com\streetlight\service\impl\AlarmServiceImpl.java
 E:\JAVA\下\smart-streetlight\backend\src\main\java\com\streetlight\enums\ControlModeConverter.java
 E:\JAVA\下\smart-streetlight\backend\src\main\java\com\streetlight\controller\ControlController.java
 E:\JAVA\下\smart-streetlight\backend\src\main\java\com\streetlight\repository\SensorDataRepository.java
 E:\JAVA\下\smart-streetlight\backend\src\main\java\com\streetlight\dto\ThresholdRequest.java
 E:\JAVA\下\smart-streetlight\backend\src\main\java\com\streetlight\service\impl\SensorServiceImpl.java
+E:\JAVA\下\smart-streetlight\backend\src\main\java\com\streetlight\repository\ChatSessionRepository.java
 E:\JAVA\下\smart-streetlight\backend\src\main\java\com\streetlight\service\HeartbeatChecker.java
 E:\JAVA\下\smart-streetlight\backend\src\main\java\com\streetlight\service\ToolExecutor.java
 E:\JAVA\下\smart-streetlight\backend\src\main\java\com\streetlight\entity\Device.java
