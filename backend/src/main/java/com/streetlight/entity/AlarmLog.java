@@ -50,4 +50,12 @@ public class AlarmLog {
 
     @Column(name = "resolved_by", length = 50)
     private String resolvedBy;
+
+    /** 处理备注 */
+    @Column(length = 500)
+    private String notes;
+
+    /** 关联的告警规则ID */
+    @Column(name = "rule_id")
+    private Long ruleId;
 }

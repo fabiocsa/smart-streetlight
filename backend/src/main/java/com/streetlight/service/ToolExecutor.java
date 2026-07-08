@@ -179,7 +179,7 @@ public class ToolExecutor {
     private String getAlarms(Map<String, Object> params) {
         String status = (String) params.get("status");
         int limit = getIntParam(params, "limit", 5);
-        Page<AlarmLog> page = alarmService.listAlarms(0, limit, status, null);
+        Page<AlarmLog> page = alarmService.listAlarms(0, limit, status, null, null, null, null);
         List<Map<String, Object>> list = page.getContent().stream().map(a -> {
             Map<String, Object> m = new LinkedHashMap<>();
             m.put("id", a.getId());

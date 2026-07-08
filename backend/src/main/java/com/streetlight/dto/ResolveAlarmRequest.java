@@ -8,4 +8,7 @@ public class ResolveAlarmRequest {
 
     @NotBlank(message = "处理人不能为空")
     private String resolvedBy;
+
+    /** 处理备注 */
+    private String notes;
 }
