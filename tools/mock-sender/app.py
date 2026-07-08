@@ -165,6 +165,44 @@ def api_update_sensor_config(sensor_key: str):
     return jsonify({"message": "配置已更新"})
 
 
+@app.route("/api/sensors/<sensor_key>/publish-once", methods=["POST"])
+def api_publish_once(sensor_key: str):
+    """手动触发一次传感器数据发送。"""
+    ok = sensor_mgr.publish_once(sensor_key)
+    if not ok:
+        return jsonify({"error": "传感器不存在"}), 404
+    return jsonify({"message": f"传感器 {sensor_key} 已发送一次数据"})
+
+
+@app.route("/api/sensors/stop-all", methods=["POST"])
+def api_stop_all_sensors():
+    """停止所有传感器的自动发送（不删除传感器）。"""
+    count = sensor_mgr.stop_all_sending()
+    return jsonify({"message": f"已停止 {count} 个传感器", "stoppedCount": count})
+
+
+@app.route("/api/sensors/start-all", methods=["POST"])
+def api_start_all_sensors():
+    """启动所有已停止的传感器。"""
+    count = sensor_mgr.start_all()
+    return jsonify({"message": f"已启动 {count} 个传感器", "startedCount": count})
+
+
+@app.route("/api/sensors/history", methods=["GET"])
+def api_get_history():
+    """获取发送历史，可按 sensorKey 筛选。"""
+    filter_key = request.args.get("key", "")
+    history = sensor_mgr.get_history(filter_key)
+    return jsonify(history)
+
+
+@app.route("/api/sensors/history", methods=["DELETE"])
+def api_clear_history():
+    """清空发送历史。"""
+    sensor_mgr.clear_history()
+    return jsonify({"message": "发送历史已清空"})
+
+
 @app.route("/api/sensors/sync-from-backend", methods=["POST"])
 def api_sync_from_backend():
     """从后端 REST API 同步传感器列表。"""

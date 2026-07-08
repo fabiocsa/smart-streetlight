@@ -11,6 +11,7 @@
 import logging
 import threading
 import time
+from collections import deque
 from datetime import datetime
 from typing import Any, Callable, Dict, List, Optional
 
@@ -62,12 +63,14 @@ class SensorWorker:
         config: Dict[str, Any],
         mqtt_client: MqttClientManager,
         on_stopped: Optional[Callable] = None,
+        on_publish: Optional[Callable] = None,
     ):
         self.sensor_key = sensor_key
         self.device_id = config.get("deviceId", "")
         self.config = dict(config)
         self._mqtt = mqtt_client
         self._on_stopped = on_stopped
+        self._on_publish = on_publish
 
         self._running = False
         self._thread: Optional[threading.Thread] = None
@@ -145,8 +148,18 @@ class SensorWorker:
             self._on_stopped(self.sensor_key)
 
     def update_config(self, updates: Dict[str, Any]) -> None:
+        old_mode = self._control_mode
         self.config.update(updates)
         self._label = _sensor_label(self.config)
+        # 同步运行时字段：_control_mode 和 _light_status 需与 config 保持一致
+        if "controlMode" in updates:
+            self._control_mode = updates["controlMode"]
+        if "lightStatus" in updates:
+            self._light_status = updates["lightStatus"]
+        # 模式切换日志
+        new_mode = self._control_mode
+        if "controlMode" in updates and old_mode != new_mode:
+            logger.info(f"传感器 [{self._label}] 模式切换: {old_mode} → {new_mode}")
 
     def set_light_status(self, status: str) -> None:
         self._light_status = status
@@ -154,9 +167,43 @@ class SensorWorker:
     def set_control_mode(self, mode: str) -> None:
         self._control_mode = mode
 
+    def publish_once(self) -> bool:
+        """手动触发一次数据发送（用于手动模式下的单次发送）。"""
+        return self._do_publish()
+
     # ------------------------------------------------------------------
     # 内部循环
     # ------------------------------------------------------------------
+
+    def _do_publish(self) -> bool:
+        """执行一次传感器数据发布，返回是否成功。"""
+        now = time.time()
+        elapsed = now - self._start_time
+
+        data_range = self.config.get("dataRange", {"min": 0, "max": 800})
+        data_topic = self.config.get("dataTopic", "")
+        actual_topic = data_topic or f"streetlight/{self.device_id}/sensor/data"
+        extra = {
+            "location": self.config.get("location", ""),
+            "controlMode": self._control_mode,
+            "sensorType": self.sensor_type,
+            "displayName": self.display_name,
+        }
+        payload = generate_sensor_data(
+            self.device_id, self._light_status, elapsed, data_range, extra
+        )
+        ok = self._mqtt.publish_sensor_data(self.device_id, payload, data_topic)
+        if ok:
+            self.publish_count += 1
+            self.last_publish_time = now
+            # 记录发送历史
+            if self._on_publish:
+                self._on_publish(
+                    self.sensor_key, self.device_id,
+                    self.device_name, self.display_name,
+                    actual_topic, payload,
+                )
+        return ok
 
     def _run_loop(self) -> None:
         last_heartbeat_time = 0.0
@@ -164,24 +211,14 @@ class SensorWorker:
 
         while self._running:
             now = time.time()
-            elapsed = now - self._start_time
 
-            # 发布传感器数据（使用 sensor 的数据主题）
-            data_range = self.config.get("dataRange", {"min": 0, "max": 800})
-            data_topic = self.config.get("dataTopic", "")
-            extra = {
-                "location": self.config.get("location", ""),
-                "controlMode": self._control_mode,
-                "sensorType": self.sensor_type,
-                "displayName": self.display_name,
-            }
-            payload = generate_sensor_data(
-                self.device_id, self._light_status, elapsed, data_range, extra
-            )
-            ok = self._mqtt.publish_sensor_data(self.device_id, payload, data_topic)
-            if ok:
-                self.publish_count += 1
-                self.last_publish_time = now
+            # 手动模式：只响应手动触发，不自动发送
+            if self._control_mode == 'manual':
+                time.sleep(0.5)
+                continue
+
+            # 自动发送传感器数据
+            self._do_publish()
 
             # 定时发布心跳
             if now - last_heartbeat_time >= heartbeat_interval:
@@ -202,6 +239,10 @@ class SensorManager:
         self._mqtt_mgr = mqtt_mgr
         self._workers: Dict[str, SensorWorker] = {}
         self._lock = threading.Lock()
+
+        # 发送历史记录（最近 200 条）
+        self._history: deque = deque(maxlen=200)
+        self._history_lock = threading.Lock()
 
     # ------------------------------------------------------------------
     # 传感器列表
@@ -286,7 +327,8 @@ class SensorManager:
             if not cfg:
                 return None
 
-            worker = SensorWorker(saved_key, cfg, self._mqtt_mgr)
+            worker = SensorWorker(saved_key, cfg, self._mqtt_mgr,
+                                  on_publish=self._record_publish)
             self._workers[saved_key] = worker
 
         # 订阅控制主题
@@ -384,7 +426,8 @@ class SensorManager:
         count = 0
         for sensor_key, cfg in sensors.items():
             if cfg.get("enabled", True) and sensor_key not in self._workers:
-                worker = SensorWorker(sensor_key, cfg, self._mqtt_mgr)
+                worker = SensorWorker(sensor_key, cfg, self._mqtt_mgr,
+                                      on_publish=self._record_publish)
                 with self._lock:
                     self._workers[sensor_key] = worker
                 self._mqtt_mgr.subscribe_device(cfg.get("deviceId", ""))
@@ -463,6 +506,80 @@ class SensorManager:
 
         logger.info(f"从后端同步了 {total_added} 个传感器")
         return total_added
+
+    # ------------------------------------------------------------------
+    # 发送历史
+    # ------------------------------------------------------------------
+
+    def _record_publish(self, sensor_key: str, device_id: str,
+                        device_name: str, display_name: str,
+                        topic: str, payload: Dict[str, Any]) -> None:
+        """记录一次成功发送到历史队列。"""
+        try:
+            with self._history_lock:
+                self._history.append({
+                    "time": datetime.now().strftime("%H:%M:%S"),
+                    "sensorKey": sensor_key,
+                    "deviceId": device_id,
+                    "deviceName": device_name,
+                    "displayName": display_name,
+                    "topic": topic,
+                    "payload": payload,
+                })
+        except Exception:
+            pass
+
+    def get_history(self, filter_key: str = "") -> List[Dict[str, Any]]:
+        """获取发送历史，可按 sensorKey 筛选。"""
+        with self._history_lock:
+            history = list(self._history)
+        if filter_key:
+            history = [h for h in history if h["sensorKey"] == filter_key]
+        return list(reversed(history))  # 最新的在前
+
+    def clear_history(self) -> None:
+        """清空发送历史。"""
+        with self._history_lock:
+            self._history.clear()
+        logger.info("发送历史已清空")
+
+    # ------------------------------------------------------------------
+    # 批量启停（不删除传感器）
+    # ------------------------------------------------------------------
+
+    def stop_all_sending(self) -> int:
+        """停止所有传感器的自动发送（保留 worker，可恢复）。"""
+        count = 0
+        with self._lock:
+            for worker in self._workers.values():
+                if worker.is_running:
+                    worker.stop()
+                    count += 1
+        logger.info(f"已停止 {count} 个传感器的发送")
+        return count
+
+    def start_all(self) -> int:
+        """启动所有已停止的传感器。"""
+        count = 0
+        with self._lock:
+            for worker in self._workers.values():
+                if not worker.is_running:
+                    if worker.start():
+                        count += 1
+        logger.info(f"已启动 {count} 个传感器")
+        return count
+
+    def publish_once(self, sensor_key: str) -> bool:
+        """手动触发单次发送。"""
+        with self._lock:
+            worker = self._workers.get(sensor_key)
+            if not worker:
+                return False
+        return worker.publish_once()
+
+    # ------------------------------------------------------------------
+    # 全局停止（删除传感器）
+    # ------------------------------------------------------------------
 
     def stop_all(self) -> None:
         with self._lock:

@@ -5,9 +5,16 @@
 
 // ============================ 全局状态 ============================
 let sensorList = [];
+let historyList = [];
 let uptimeSeconds = 0;
 let uptimeInterval = null;
 let pollInterval = null;
+
+// 排序状态
+let sortState = { field: null, order: 'asc' };  // null | 'asc' | 'desc'
+
+// 历史面板未读新消息计数
+let newHistoryCount = 0;
 
 // ============================ 页面初始化 ============================
 document.addEventListener('DOMContentLoaded', () => {
@@ -36,21 +43,56 @@ function renderSensorTable(sensors) {
     const tbody = document.getElementById('sensorTableBody');
     if (!sensors || sensors.length === 0) {
         tbody.innerHTML = `<tr id="noSensorsRow">
-            <td colspan="10" class="text-center text-muted py-4">
+            <td colspan="11" class="text-center text-muted py-4">
                 <i class="bi bi-inbox"></i> 暂无传感器，点击右上角"从后端同步"或"添加传感器"
             </td>
         </tr>`;
+        updateSortArrows();
         return;
     }
 
+    // 排序
+    const sorted = [...sensors];
+    if (sortState.field) {
+        sorted.sort((a, b) => {
+            let va = a[sortState.field], vb = b[sortState.field];
+            if (typeof va === 'string') va = va.toLowerCase();
+            if (typeof vb === 'string') vb = vb.toLowerCase();
+            if (va == null) va = '';
+            if (vb == null) vb = '';
+            if (va < vb) return sortState.order === 'asc' ? -1 : 1;
+            if (va > vb) return sortState.order === 'asc' ? 1 : -1;
+            return 0;
+        });
+    }
+
     const typeLabels = { light: '光照', temperature: '温度', humidity: '湿度', power: '功率' };
+    const typeIcons = { light: '☀️', temperature: '🌡️', humidity: '💧', power: '⚡' };
 
-    tbody.innerHTML = sensors.map(s => {
-        const statusBadge = s.running
-            ? '<span class="badge bg-success status-pulse"><i class="bi bi-check-circle"></i> 运行中</span>'
-            : '<span class="badge bg-secondary"><i class="bi bi-pause-circle"></i> 已停止</span>';
+    tbody.innerHTML = sorted.map(s => {
+        // 状态圆点 + 文本
+        let statusDotClass, statusText;
+        if (s.running && s.controlMode === 'auto') {
+            statusDotClass = 'status-dot-active';
+            statusText = '发送中';
+        } else if (s.running && s.controlMode === 'manual') {
+            statusDotClass = 'status-dot-manual';
+            statusText = '待命';
+        } else {
+            statusDotClass = 'status-dot-stopped';
+            statusText = '已停止';
+        }
+        const statusIndicator = `<span class="status-dot ${statusDotClass}"></span> ${statusText}`;
 
-        const typeBadge = `<span class="badge bg-light text-dark">${typeLabels[s.sensorType] || s.sensorType}</span>`;
+        const typeIcon = typeIcons[s.sensorType] || '';
+        const typeBadge = `<span class="badge bg-light text-dark">${typeIcon} ${typeLabels[s.sensorType] || s.sensorType}</span>`;
+
+        // 行内模式切换下拉框
+        const modeSelect = `<select class="form-select form-select-sm mode-select"
+                onchange="changeSensorMode('${escHtml(s.sensorKey)}', this.value)">
+            <option value="auto" ${s.controlMode === 'auto' ? 'selected' : ''}>自动</option>
+            <option value="manual" ${s.controlMode === 'manual' ? 'selected' : ''}>手动</option>
+        </select>`;
 
         return `<tr>
             <td>${escHtml(s.deviceName) || '<span class="text-muted">-</span>'}</td>
@@ -59,21 +101,28 @@ function renderSensorTable(sensors) {
             <td><code>${escHtml(s.deviceId)}</code></td>
             <td style="display:none"><small class="text-muted">${escHtml(s.sensorKey)}</small></td>
             <td><small>${escHtml(s.dataTopic) || '-'}</small></td>
-            <td>${statusBadge}</td>
             <td>${s.interval}s</td>
             <td>${s.publishCount}</td>
+            <td class="status-cell">${statusIndicator}</td>
+            <td>${modeSelect}</td>
             <td class="text-nowrap">
-                <button class="btn btn-sm btn-outline-danger" onclick="removeSensor('${escHtml(s.sensorKey)}')"
-                        title="删除传感器">
-                    <i class="bi bi-trash"></i>
+                <button class="btn btn-sm btn-outline-success" onclick="publishOnce('${escHtml(s.sensorKey)}')"
+                        title="手动发送一次">
+                    <i class="bi bi-send"></i>
                 </button>
                 <button class="btn btn-sm btn-outline-primary" onclick="editSensor('${escHtml(s.sensorKey)}')"
                         title="编辑配置" data-bs-toggle="modal" data-bs-target="#addSensorModal">
                     <i class="bi bi-pencil"></i>
                 </button>
+                <button class="btn btn-sm btn-outline-danger" onclick="removeSensor('${escHtml(s.sensorKey)}')"
+                        title="删除传感器">
+                    <i class="bi bi-trash"></i>
+                </button>
             </td>
         </tr>`;
     }).join('');
+
+    updateSortArrows();
 }
 
 function updateSensorCount(sensors) {
@@ -204,6 +253,247 @@ document.getElementById('addSensorModal').addEventListener('hidden.bs.modal', ()
     btn.innerHTML = '<i class="bi bi-plus-lg"></i> 添加';
     btn.onclick = addSensor;
 });
+
+// ============================ 传感器控制 ============================
+
+function publishOnce(sensorKey) {
+    const btn = event.target.closest('button');
+    if (btn) {
+        btn.disabled = true;
+        btn.innerHTML = '<i class="bi bi-hourglass-split"></i>';
+    }
+    fetch(`/api/sensors/${encodeURIComponent(sensorKey)}/publish-once`, { method: 'POST' })
+        .then(r => r.json())
+        .then(resp => {
+            if (resp.error) {
+                alert(resp.error);
+            }
+            loadSensors();
+            loadHistory();
+        })
+        .catch(err => alert('发送失败: ' + err.message))
+        .finally(() => {
+            if (btn) {
+                btn.disabled = false;
+                btn.innerHTML = '<i class="bi bi-send"></i>';
+            }
+        });
+}
+
+function stopAllSensors() {
+    const btn = document.getElementById('btnStopAll');
+    btn.disabled = true;
+    btn.innerHTML = '<i class="bi bi-hourglass-split"></i> 停止中...';
+    fetch('/api/sensors/stop-all', { method: 'POST' })
+        .then(r => r.json())
+        .then(resp => {
+            alert(resp.message || '已停止所有传感器');
+            loadSensors();
+        })
+        .catch(err => alert('停止失败: ' + err.message))
+        .finally(() => {
+            btn.disabled = false;
+            btn.innerHTML = '<i class="bi bi-stop-fill"></i> 全部停止';
+        });
+}
+
+function startAllSensors() {
+    const btn = document.getElementById('btnStartAll');
+    btn.disabled = true;
+    btn.innerHTML = '<i class="bi bi-hourglass-split"></i> 启动中...';
+    fetch('/api/sensors/start-all', { method: 'POST' })
+        .then(r => r.json())
+        .then(resp => {
+            alert(resp.message || '已启动所有传感器');
+            loadSensors();
+        })
+        .catch(err => alert('启动失败: ' + err.message))
+        .finally(() => {
+            btn.disabled = false;
+            btn.innerHTML = '<i class="bi bi-play-fill"></i> 全部启动';
+        });
+}
+
+function changeSensorMode(sensorKey, newMode) {
+    // 乐观更新：立即修改本地状态并重绘
+    const sensor = sensorList.find(s => s.sensorKey === sensorKey);
+    if (sensor) {
+        sensor.controlMode = newMode;
+        // 切换到手动模式时，自动发送被跳过，状态圆点需同步更新
+        if (newMode === 'manual') {
+            sensor.statusText = '待命';
+        }
+        renderSensorTable(sensorList);
+        updateSensorCount(sensorList);
+    }
+
+    // 异步持久化到后端
+    fetch(`/api/sensors/${encodeURIComponent(sensorKey)}/config`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ controlMode: newMode }),
+    })
+    .catch(err => {
+        console.error('模式切换持久化失败:', err);
+        // 失败时回滚：从 API 重新加载
+        setTimeout(() => loadSensors(), 500);
+    });
+}
+
+// ============================ 排序 ============================
+
+function toggleSort(field) {
+    if (sortState.field === field) {
+        // 同一字段: asc → desc → 取消
+        if (sortState.order === 'asc') {
+            sortState.order = 'desc';
+        } else {
+            sortState.field = null;
+            sortState.order = 'asc';
+        }
+    } else {
+        sortState.field = field;
+        sortState.order = 'asc';
+    }
+    renderSensorTable(sensorList);
+}
+
+function updateSortArrows() {
+    // 清除所有箭头
+    document.querySelectorAll('.sort-arrow').forEach(el => el.textContent = '');
+    if (sortState.field) {
+        const arrow = document.getElementById('sort-' + sortState.field);
+        if (arrow) {
+            arrow.textContent = sortState.order === 'asc' ? ' ▲' : ' ▼';
+        }
+    }
+}
+
+// ============================ 发送历史 ============================
+
+function loadHistory() {
+    const filter = document.getElementById('historyFilter');
+    const key = filter ? filter.value : '';
+    let url = '/api/sensors/history';
+    if (key) url += '?key=' + encodeURIComponent(key);
+
+    fetch(url)
+        .then(r => r.json())
+        .then(data => {
+            historyList = Array.isArray(data) ? data : [];
+            renderHistory();
+            updateHistoryFilter();
+        })
+        .catch(err => console.error('加载历史失败:', err));
+}
+
+function renderHistory() {
+    const container = document.getElementById('historyContainer');
+    const filter = document.getElementById('historyFilter');
+    const filterKey = filter ? filter.value : '';
+
+    let items = historyList;
+    if (filterKey) {
+        items = items.filter(h => h.sensorKey === filterKey);
+    }
+
+    // ---- 保存滚动状态（在 innerHTML 替换前） ----
+    const prevCount = parseInt(container.dataset.itemCount || '0');
+    const currentCount = items.length;
+    // 判断用户是否在底部附近（50px 内视为"在底部"）
+    const atBottom = container.scrollHeight - container.scrollTop - container.clientHeight < 50;
+
+    if (!items || items.length === 0) {
+        container.innerHTML = '<div class="text-center text-muted py-3 small"><i class="bi bi-hourglass-split"></i> 等待数据发送...</div>';
+        container.dataset.itemCount = '0';
+        newHistoryCount = 0;
+        updateNewHistoryBadge();
+        return;
+    }
+
+    container.innerHTML = items.slice(0, 50).map((h, i) => {
+        const label = `${escHtml(h.deviceName || h.deviceId)} / ${escHtml(h.displayName || h.sensorKey)}`;
+        const payloadStr = JSON.stringify(h.payload, null, 2);
+        const collapseId = `hist-${i}-${Date.now()}`;
+
+        return `<div class="history-item">
+            <div class="history-header" data-bs-toggle="collapse" data-bs-target="#${collapseId}"
+                 aria-expanded="false" aria-controls="${collapseId}">
+                <span class="history-time">[${escHtml(h.time)}]</span>
+                <span class="history-label">${label}</span>
+                <i class="bi bi-chevron-down history-chevron ms-auto"></i>
+            </div>
+            <div class="collapse" id="${collapseId}">
+                <div class="history-topic"><small class="text-muted">主题: ${escHtml(h.topic)}</small></div>
+                <pre class="history-payload">${escHtml(payloadStr)}</pre>
+            </div>
+        </div>`;
+    }).join('');
+
+    if (items.length > 50) {
+        container.innerHTML += `<div class="text-center text-muted py-1 small">显示最新 50 条，共 ${items.length} 条</div>`;
+    }
+
+    // ---- 恢复滚动位置 ----
+    if (prevCount === 0 || atBottom) {
+        // 首次加载 或 用户本来在底部 → 跟到最新
+        container.scrollTop = container.scrollHeight;
+        newHistoryCount = 0;
+    } else if (currentCount > prevCount) {
+        // 用户在浏览历史，有新消息到达 → 保留位置，计数
+        newHistoryCount += currentCount - prevCount;
+    }
+    container.dataset.itemCount = currentCount;
+    updateNewHistoryBadge();
+}
+
+function scrollToHistoryBottom() {
+    const container = document.getElementById('historyContainer');
+    container.scrollTop = container.scrollHeight;
+    newHistoryCount = 0;
+    updateNewHistoryBadge();
+}
+
+function updateNewHistoryBadge() {
+    const badge = document.getElementById('newHistoryBadge');
+    if (!badge) return;
+    if (newHistoryCount > 0) {
+        badge.textContent = `${newHistoryCount} 条新`;
+        badge.style.display = 'inline-block';
+    } else {
+        badge.style.display = 'none';
+    }
+}
+
+function clearHistory() {
+    if (!confirm('确定清空所有发送历史？')) return;
+    fetch('/api/sensors/history', { method: 'DELETE' })
+        .then(r => r.json())
+        .then(() => {
+            historyList = [];
+            renderHistory();
+        })
+        .catch(err => alert('清空失败: ' + err.message));
+}
+
+function updateHistoryFilter() {
+    const filter = document.getElementById('historyFilter');
+    if (!filter) return;
+    const currentVal = filter.value;
+    // 收集所有传感器
+    const sensors = sensorList || [];
+    filter.innerHTML = '<option value="">全部传感器</option>' +
+        sensors.map(s => `<option value="${escHtml(s.sensorKey)}">${escHtml(s.displayName || s.sensorKey)}</option>`).join('');
+    filter.value = currentVal;
+}
+
+function onHistoryFilterChange() {
+    // 切换筛选条件时，重置滚动状态和计数
+    newHistoryCount = 0;
+    const container = document.getElementById('historyContainer');
+    container.dataset.itemCount = '0';
+    renderHistory();
+}
 
 // ============================ 后端同步 ============================
 
@@ -368,6 +658,7 @@ function clearLogs() {
 function startPolling() {
     pollInterval = setInterval(() => {
         loadSensors();
+        loadHistory();
         fetch('/api/status')
             .then(r => r.json())
             .then(status => {

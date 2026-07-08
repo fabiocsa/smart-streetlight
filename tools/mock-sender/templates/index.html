@@ -37,6 +37,14 @@
                 <div class="card-header d-flex justify-content-between align-items-center">
                     <span><i class="bi bi-list-ul"></i> 传感器管理</span>
                     <div class="d-flex gap-2">
+                        <button class="btn btn-sm btn-outline-danger" onclick="stopAllSensors()" id="btnStopAll"
+                                title="停止所有传感器发送">
+                            <i class="bi bi-stop-fill"></i> 全部停止
+                        </button>
+                        <button class="btn btn-sm btn-outline-success" onclick="startAllSensors()" id="btnStartAll"
+                                title="启动所有已停止的传感器">
+                            <i class="bi bi-play-fill"></i> 全部启动
+                        </button>
                         <button class="btn btn-sm btn-outline-info" onclick="syncFromBackend()" id="btnSyncBackend">
                             <i class="bi bi-cloud-download"></i> 从后端同步
                         </button>
@@ -50,21 +58,32 @@
                         <table class="table table-hover table-striped mb-0" id="sensorTable">
                             <thead class="table-dark">
                                 <tr>
-                                    <th>设备名称</th>
-                                    <th>传感器名称</th>
-                                    <th>类型</th>
+                                    <th class="sortable" onclick="toggleSort('deviceName')">
+                                        设备名称 <span class="sort-arrow" id="sort-deviceName"></span>
+                                    </th>
+                                    <th class="sortable" onclick="toggleSort('displayName')">
+                                        传感器名称 <span class="sort-arrow" id="sort-displayName"></span>
+                                    </th>
+                                    <th class="sortable" onclick="toggleSort('sensorType')">
+                                        类型 <span class="sort-arrow" id="sort-sensorType"></span>
+                                    </th>
                                     <th>设备ID</th>
                                     <th style="display:none">Key</th>
                                     <th>数据主题</th>
+                                    <th class="sortable" onclick="toggleSort('interval')">
+                                        频率 <span class="sort-arrow" id="sort-interval"></span>
+                                    </th>
+                                    <th class="sortable" onclick="toggleSort('publishCount')">
+                                        发布数 <span class="sort-arrow" id="sort-publishCount"></span>
+                                    </th>
                                     <th>状态</th>
-                                    <th>频率</th>
-                                    <th>发布数</th>
+                                    <th>模式</th>
                                     <th>操作</th>
                                 </tr>
                             </thead>
                             <tbody id="sensorTableBody">
                                 <tr id="noSensorsRow">
-                                    <td colspan="10" class="text-center text-muted py-4">
+                                    <td colspan="11" class="text-center text-muted py-4">
                                         <i class="bi bi-inbox"></i> 暂无传感器，点击右上角"从后端同步"或"添加传感器"
                                     </td>
                                 </tr>
@@ -168,6 +187,37 @@
                             <i class="bi bi-check-lg"></i> 保存并重连
                         </button>
                     </form>
+                </div>
+            </div>
+
+            <!-- 发送历史 -->
+            <div class="card mb-3">
+                <div class="card-header d-flex justify-content-between align-items-center">
+                    <span><i class="bi bi-clock-history"></i> 发送历史</span>
+                    <div class="d-flex gap-1 align-items-center">
+                        <span id="newHistoryBadge" class="badge bg-warning text-dark me-1"
+                              style="display:none;cursor:pointer" onclick="scrollToHistoryBottom()"
+                              title="点击跳转到最新"></span>
+                        <button class="btn btn-sm btn-outline-secondary" onclick="scrollToHistoryBottom()"
+                                title="跳到最新">
+                            <i class="bi bi-arrow-down"></i>
+                        </button>
+                        <select id="historyFilter" class="form-select form-select-sm" style="width:auto"
+                                onchange="onHistoryFilterChange()">
+                            <option value="">全部传感器</option>
+                        </select>
+                        <button class="btn btn-sm btn-outline-danger" onclick="clearHistory()"
+                                title="清空历史">
+                            <i class="bi bi-trash"></i>
+                        </button>
+                    </div>
+                </div>
+                <div class="card-body p-0">
+                    <div id="historyContainer" class="history-container">
+                        <div class="text-center text-muted py-3 small">
+                            <i class="bi bi-hourglass-split"></i> 等待数据发送...
+                        </div>
+                    </div>
                 </div>
             </div>
 

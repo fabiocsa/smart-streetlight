@@ -9,8 +9,14 @@
   },
   "sensors": {
     "SL-001_1": {
-      "name": "路灯A-01",
+      "deviceId": "SL-001",
+      "sensorId": 1,
+      "displayName": "光照传感器A",
+      "sensorType": "light",
+      "deviceName": "路灯A-01",
+      "name": "光照传感器A",
       "location": "校门口",
+      "dataTopic": "streetlight/SL-001/sensor/data",
       "enabled": true,
       "interval": 5,
       "dataRange": {
@@ -19,12 +25,7 @@
       },
       "lightStatus": "off",
       "controlMode": "auto",
-      "deviceId": "SL-001",
-      "sensorId": 1,
-      "displayName": "路灯A-01",
-      "sensorType": "light",
-      "deviceName": "",
-      "dataTopic": ""
+      "configJson": "{\"min\": 0, \"max\": 800}"
     },
     "SL-001_2": {
       "deviceId": "SL-001",
