@@ -182,6 +182,7 @@ class SensorWorker:
 
         data_range = self.config.get("dataRange", {"min": 0, "max": 800})
         data_topic = self.config.get("dataTopic", "")
+        brightness = self.config.get("brightness")
         actual_topic = data_topic or f"streetlight/{self.device_id}/sensor/data"
         extra = {
             "location": self.config.get("location", ""),
@@ -190,7 +191,7 @@ class SensorWorker:
             "displayName": self.display_name,
         }
         payload = generate_sensor_data(
-            self.device_id, self._light_status, elapsed, data_range, extra
+            self.device_id, self._light_status, elapsed, data_range, extra, brightness
         )
         ok = self._mqtt.publish_sensor_data(self.device_id, payload, data_topic)
         if ok:
@@ -389,9 +390,16 @@ class SensorManager:
     # ------------------------------------------------------------------
 
     def handle_control_command(self, device_id: str, payload: Dict[str, Any]) -> None:
-        """处理下发的开关灯控制指令（作用于设备的所有传感器）。"""
+        """处理下发的开关灯控制指令（作用于设备的所有传感器）。
+
+        关键设计：
+          - 手动指令(source=manual) → worker 切换为手动模式，停止自动上报传感器数据
+          - 自动指令(source=auto)   → worker 保持/恢复自动模式，继续周期性上报
+        这样确保手动控制后不会被自动联动覆盖。
+        """
         command = payload.get("command", "")
         source = payload.get("source", "manual")
+        brightness = payload.get("brightness")  # 可选，0-100
 
         affected = []
         with self._lock:
@@ -399,21 +407,39 @@ class SensorManager:
                 if worker.device_id == device_id:
                     if command == "on":
                         worker.set_light_status("on")
+                        if brightness is not None:
+                            worker.config["brightness"] = brightness
                     elif command == "off":
                         worker.set_light_status("off")
+                        worker.config.pop("brightness", None)
                     else:
                         logger.warning(f"未知控制指令: {command}")
                         return
+
+                    # ★ 修复：根据指令来源同步控制模式
+                    # 手动指令 → 切换为手动模式（停止自动上报，防止自动联动覆盖）
+                    # 自动指令 → 保持自动模式
+                    new_mode = "manual" if source == "manual" else "auto"
+                    old_mode = worker.control_mode
+                    if old_mode != new_mode:
+                        worker.set_control_mode(new_mode)
+                        worker.config["controlMode"] = new_mode
+                        logger.info(f"传感器 [{_sensor_label(worker.config)}] 模式随指令切换: "
+                                    f"{old_mode} → {new_mode} (指令来源: {source})")
+
                     affected.append(sensor_key)
 
         if not affected:
             logger.warning(f"控制指令: 未知设备 {device_id}")
             return
 
-        logger.info(f"设备 {device_id} 灯光 -> {command} (来源: {source}, 影响 {len(affected)} 个传感器)")
+        brightness_info = f", 亮度={brightness}%" if brightness is not None else ""
+        logger.info(f"设备 {device_id} 灯光 -> {command}{brightness_info} (来源: {source}, 影响 {len(affected)} 个传感器)")
 
         response = generate_control_response(device_id, command, "success")
         response["source"] = source
+        if brightness is not None:
+            response["brightness"] = brightness
         self._mqtt_mgr.publish_control_response(device_id, response)
 
     # ------------------------------------------------------------------

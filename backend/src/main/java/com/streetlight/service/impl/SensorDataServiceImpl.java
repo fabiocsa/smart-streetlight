@@ -8,6 +8,7 @@ import com.streetlight.repository.DeviceRepository;
 import com.streetlight.repository.SensorDataRepository;
 import com.streetlight.service.AlarmService;
 import com.streetlight.service.SensorDataService;
+import jakarta.persistence.EntityManager;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.context.ApplicationContext;
 import org.springframework.stereotype.Service;
@@ -28,17 +29,20 @@ public class SensorDataServiceImpl implements SensorDataService {
     private final ApplicationContext applicationContext;
     private final AlarmService alarmService;
     private final MqttPublishService mqttPublishService;
+    private final EntityManager entityManager;
 
     public SensorDataServiceImpl(SensorDataRepository sensorDataRepository,
                                   DeviceRepository deviceRepository,
                                   ApplicationContext applicationContext,
                                   AlarmService alarmService,
-                                  MqttPublishService mqttPublishService) {
+                                  MqttPublishService mqttPublishService,
+                                  EntityManager entityManager) {
         this.sensorDataRepository = sensorDataRepository;
         this.deviceRepository = deviceRepository;
         this.applicationContext = applicationContext;
         this.alarmService = alarmService;
         this.mqttPublishService = mqttPublishService;
+        this.entityManager = entityManager;
     }
 
     /**
@@ -84,11 +88,18 @@ public class SensorDataServiceImpl implements SensorDataService {
         }
         deviceRepository.save(device);
 
-        if ("auto".equals(device.getControlMode())) {
+        // ★ 防御性重读：手动控制可能在另一个事务中刚把模式切为 "manual"。
+        //    flush() 确保本事务的 pending changes 写入 DB，
+        //    clear() 清除 JPA 一级缓存，强制下一个 findByDeviceId() 真正读库。
+        entityManager.flush();
+        entityManager.clear();
+        Device freshDevice = deviceRepository.findByDeviceId(deviceId).orElse(device);
+
+        if ("auto".equals(freshDevice.getControlMode())) {
             String cmd = null;
-            if ("off".equals(device.getLightStatus()) && lightIntensity < device.getThresholdOn()) {
+            if ("off".equals(freshDevice.getLightStatus()) && lightIntensity < freshDevice.getThresholdOn()) {
                 cmd = "on";
-            } else if ("on".equals(device.getLightStatus()) && lightIntensity > device.getThresholdOff()) {
+            } else if ("on".equals(freshDevice.getLightStatus()) && lightIntensity > freshDevice.getThresholdOff()) {
                 cmd = "off";
             }
             if (cmd != null) {

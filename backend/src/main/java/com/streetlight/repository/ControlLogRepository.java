@@ -1,6 +1,8 @@
 package com.streetlight.repository;
 
 import com.streetlight.entity.ControlLog;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.stereotype.Repository;
 
@@ -17,4 +19,7 @@ public interface ControlLogRepository extends JpaRepository<ControlLog, Long> {
 
     /** 最近N条控制日志 */
     List<ControlLog> findTop20ByOrderByCreatedAtDesc();
+
+    /** 按设备ID分页查询控制日志 */
+    Page<ControlLog> findByDeviceIdOrderByCreatedAtDesc(String deviceId, Pageable pageable);
 }
