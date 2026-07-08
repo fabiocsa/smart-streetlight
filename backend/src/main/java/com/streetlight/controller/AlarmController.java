@@ -18,11 +18,12 @@ public class AlarmController {
 
     @GetMapping
     public Result<Page<AlarmLog>> getAlarms(
+            @RequestParam(required = false) String deviceId,
             @RequestParam(required = false) String status,
             @RequestParam(required = false) String type,
             @RequestParam(defaultValue = "0") int page,
             @RequestParam(defaultValue = "20") int size) {
-        return Result.success(alarmService.listAlarms(page, size, status, type));
+        return Result.success(alarmService.listAlarms(page, size, status, type, deviceId));
     }
 
     @PutMapping("/{id}/resolve")

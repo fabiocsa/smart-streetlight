@@ -17,4 +17,7 @@ public interface ControlLogRepository extends JpaRepository<ControlLog, Long> {
 
     /** 最近N条控制日志 */
     List<ControlLog> findTop20ByOrderByCreatedAtDesc();
+
+    /** 按设备获取控制日志 */
+    List<ControlLog> findTop20ByDeviceIdOrderByCreatedAtDesc(String deviceId);
 }

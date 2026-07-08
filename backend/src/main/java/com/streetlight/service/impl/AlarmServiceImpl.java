@@ -61,8 +61,19 @@ public class AlarmServiceImpl implements AlarmService {
     }
 
     @Override
-    public Page<AlarmLog> listAlarms(int page, int size, String status, String type) {
+    public Page<AlarmLog> listAlarms(int page, int size, String status, String type, String deviceId) {
         PageRequest pr = PageRequest.of(page, size);
+        if (deviceId != null) {
+            if (status != null && type != null) {
+                return alarmLogRepository.findByDeviceIdAndStatusAndAlarmType(
+                        deviceId, AlarmStatus.valueOf(status.toUpperCase()), AlarmType.valueOf(type.toUpperCase()), pr);
+            } else if (status != null) {
+                return alarmLogRepository.findByDeviceIdAndStatus(deviceId, AlarmStatus.valueOf(status.toUpperCase()), pr);
+            } else if (type != null) {
+                return alarmLogRepository.findByDeviceIdAndAlarmType(deviceId, AlarmType.valueOf(type.toUpperCase()), pr);
+            }
+            return alarmLogRepository.findByDeviceId(deviceId, pr);
+        }
         if (status != null && type != null) {
             return alarmLogRepository.findByStatusAndAlarmType(
                     AlarmStatus.valueOf(status.toUpperCase()),

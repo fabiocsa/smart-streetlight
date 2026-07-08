@@ -12,6 +12,8 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.util.List;
+
 @Service
 @RequiredArgsConstructor
 @Slf4j
@@ -47,6 +49,11 @@ public class ControlServiceImpl implements ControlService {
                 deviceRepository.save(d);
             });
         }
+    }
+
+    @Override
+    public List<ControlLog> getControlLogs(String deviceId) {
+        return controlLogRepository.findTop20ByDeviceIdOrderByCreatedAtDesc(deviceId);
     }
 
     @Override

@@ -3,8 +3,51 @@
     <!-- Device Selection -->
     <el-card shadow="hover" class="device-select-card">
       <template #header>
-        <span>选择设备</span>
+        <div class="card-header">
+          <span>选择设备</span>
+          <div class="card-header-actions">
+            <el-switch
+              v-model="batchMode"
+              active-text="批量操作"
+              inactive-text="单设备"
+              size="small"
+              @change="handleBatchModeChange"
+            />
+          </div>
+        </div>
       </template>
+
+      <!-- Batch Action Bar -->
+      <div v-if="batchMode && selectedBatchDevices.length > 0" class="batch-bar">
+        <el-checkbox
+          :model-value="allDevicesSelected"
+          :indeterminate="indeterminateSelected"
+          @change="handleSelectAll"
+          size="small"
+        >
+          已选 {{ selectedBatchDevices.length }} / {{ deviceStore.devices.length }} 台设备
+        </el-checkbox>
+        <div class="batch-actions">
+          <el-button size="small" type="warning" :icon="View" :loading="batchLoading" @click="handleBatchCommand('on')">
+            批量开灯
+          </el-button>
+          <el-button size="small" type="info" :icon="Hide" :loading="batchLoading" @click="handleBatchCommand('off')">
+            批量关灯
+          </el-button>
+          <el-dropdown trigger="click" @command="handleBatchModeAction">
+            <el-button size="small" type="primary">
+              批量切换模式 <el-icon><ArrowDown /></el-icon>
+            </el-button>
+            <template #dropdown>
+              <el-dropdown-menu>
+                <el-dropdown-item command="auto"><el-icon><CircleCheck /></el-icon> 切换为自动模式</el-dropdown-item>
+                <el-dropdown-item command="manual"><el-icon><Remove /></el-icon> 切换为手动模式</el-dropdown-item>
+              </el-dropdown-menu>
+            </template>
+          </el-dropdown>
+        </div>
+      </div>
+
       <el-row :gutter="12">
         <el-col
           v-for="device in deviceStore.devices"
@@ -12,36 +55,47 @@
           :xs="12" :sm="8" :md="6" :lg="4"
           style="margin-bottom: 12px"
         >
-          <el-card
-            :class="['device-option', {
-              'selected': selectedDevice?.deviceId === device.deviceId,
-              'disabled': device.status === 'offline'
-            }]"
-            shadow="hover"
-            @click="selectDevice(device)"
-          >
-            <div class="device-option-content">
-              <div class="device-option-name">{{ device.name }}</div>
-              <div class="device-option-status">
-                <el-tag
-                  :type="device.status === 'online' ? 'success' : 'info'"
-                  size="small"
-                >
-                  {{ device.status === 'online' ? '在线' : '离线' }}
-                </el-tag>
-                <el-tag
-                  :type="device.controlMode === 'auto' ? 'success' : 'info'"
-                  size="small"
-                  effect="plain"
-                >
-                  {{ device.controlMode === 'auto' ? '自动' : '手动' }}
-                </el-tag>
+          <div class="device-card-wrapper" :class="{ 'batch-mode': batchMode }">
+            <el-checkbox
+              v-if="batchMode"
+              v-model="selectedBatchDeviceIds"
+              :label="device.id"
+              :value="device.id"
+              class="device-checkbox"
+              size="small"
+            />
+            <el-card
+              :class="['device-option', {
+                'selected': !batchMode && selectedDevice?.deviceId === device.deviceId,
+                'batch-selected': batchMode && selectedBatchDeviceIds.includes(device.id),
+                'disabled': device.status === 'offline'
+              }]"
+              shadow="hover"
+              @click="selectDevice(device)"
+            >
+              <div class="device-option-content">
+                <div class="device-option-name">{{ device.name }}</div>
+                <div class="device-option-status">
+                  <el-tag
+                    :type="device.status === 'online' ? 'success' : 'info'"
+                    size="small"
+                  >
+                    {{ device.status === 'online' ? '在线' : '离线' }}
+                  </el-tag>
+                  <el-tag
+                    :type="device.controlMode === 'auto' ? 'success' : 'info'"
+                    size="small"
+                    effect="plain"
+                  >
+                    {{ device.controlMode === 'auto' ? '自动' : '手动' }}
+                  </el-tag>
+                </div>
+                <div class="device-option-light">
+                  {{ device.lightStatus === 'on' ? '💡 已开灯' : '🌑 已关灯' }}
+                </div>
               </div>
-              <div class="device-option-light">
-                {{ device.lightStatus === 'on' ? '💡 已开灯' : '🌑 已关灯' }}
-              </div>
-            </div>
-          </el-card>
+            </el-card>
+          </div>
         </el-col>
       </el-row>
     </el-card>
@@ -241,11 +295,11 @@
 <script setup>
 import { ref, computed, onMounted, onUnmounted } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { View, Hide, Pointer } from '@element-plus/icons-vue'
+import { View, Hide, Pointer, ArrowDown, CircleCheck, Remove } from '@element-plus/icons-vue'
 import { useDeviceStore } from '@/stores/device'
 import { useWebSocketStore } from '@/stores/websocket'
 import { getLatestSensorData } from '@/api/sensor'
-import { sendCommand as apiSendCommand, getControlLogs } from '@/api/control'
+import { sendCommand as apiSendCommand, getControlLogs, batchSendCommand, batchSetControlMode } from '@/api/control'
 import { setControlMode } from '@/api/device'
 
 const deviceStore = useDeviceStore()
@@ -262,6 +316,23 @@ const lastOperationTime = ref('--')
 let cmdTimeout = null
 let lastCmdTime = 0 // For debounce
 const DEBOUNCE_MS = 500
+
+// Batch mode
+const batchMode = ref(false)
+const selectedBatchDeviceIds = ref([])
+const batchLoading = ref(false)
+
+const selectedBatchDevices = computed(() =>
+  deviceStore.devices.filter(d => selectedBatchDeviceIds.value.includes(d.id))
+)
+
+const allDevicesSelected = computed(() =>
+  deviceStore.devices.length > 0 && selectedBatchDeviceIds.value.length === deviceStore.devices.length
+)
+
+const indeterminateSelected = computed(() =>
+  selectedBatchDeviceIds.value.length > 0 && !allDevicesSelected.value
+)
 
 onMounted(() => {
   wsStore.on('SENSOR_DATA', handleSensorData)
@@ -294,7 +365,97 @@ const thresholdOffPercent = computed(() => {
   return (t / 2000) * 100
 })
 
+function handleBatchModeChange(val) {
+  if (!val) {
+    selectedBatchDeviceIds.value = []
+  }
+}
+
+function handleSelectAll(checked) {
+  if (checked) {
+    selectedBatchDeviceIds.value = deviceStore.devices.map(d => d.id)
+  } else {
+    selectedBatchDeviceIds.value = []
+  }
+}
+
+async function handleBatchCommand(command) {
+  if (selectedBatchDeviceIds.value.length === 0) {
+    ElMessage.warning('请先选择设备')
+    return
+  }
+
+  const label = command === 'on' ? '开灯' : '关灯'
+  const onlineDevices = selectedBatchDevices.value.filter(d => d.status === 'online')
+  if (onlineDevices.length === 0) {
+    ElMessage.warning('所选设备均处于离线状态，无法控制')
+    return
+  }
+
+  try {
+    await ElMessageBox.confirm(
+      `确认对 ${onlineDevices.length} 台在线设备执行「${label}」操作？`,
+      '批量操作确认',
+      { confirmButtonText: '确认', cancelButtonText: '取消', type: 'warning' }
+    )
+  } catch {
+    return
+  }
+
+  batchLoading.value = true
+  try {
+    const deviceIds = onlineDevices.map(d => d.deviceId)
+    const res = await batchSendCommand(deviceIds, command)
+    const msg = `批量${label}完成：成功 ${res.successCount} 台`
+    if (res.failCount > 0) {
+      ElMessage.success(`${msg}，失败 ${res.failCount} 台`)
+    } else {
+      ElMessage.success(msg)
+    }
+  } catch (e) {
+    ElMessage.error('批量操作失败')
+  } finally {
+    batchLoading.value = false
+  }
+}
+
+async function handleBatchModeAction(command) {
+  if (selectedBatchDeviceIds.value.length === 0) {
+    ElMessage.warning('请先选择设备')
+    return
+  }
+
+  const modeLabel = command === 'auto' ? '自动' : '手动'
+  try {
+    await ElMessageBox.confirm(
+      `确认将 ${selectedBatchDeviceIds.value.length} 台设备切换为「${modeLabel}」模式？`,
+      '批量切换模式确认',
+      { confirmButtonText: '确认', cancelButtonText: '取消', type: 'warning' }
+    )
+  } catch {
+    return
+  }
+
+  batchLoading.value = true
+  try {
+    const res = await batchSetControlMode(selectedBatchDeviceIds.value, command)
+    const msg = `批量切换${modeLabel}模式完成：成功 ${res.successCount} 台`
+    if (res.failCount > 0) {
+      ElMessage.success(`${msg}，失败 ${res.failCount} 台`)
+    } else {
+      ElMessage.success(msg)
+    }
+    // Refresh device list to get updated modes
+    deviceStore.fetchDevices()
+  } catch (e) {
+    ElMessage.error('批量切换模式失败')
+  } finally {
+    batchLoading.value = false
+  }
+}
+
 function selectDevice(device) {
+  if (batchMode.value) return // In batch mode, clicking selects via checkbox
   selectedDevice.value = device
   loadDeviceData()
 }
@@ -443,6 +604,50 @@ function formatTime(t) {
   margin-bottom: 16px;
 }
 
+.card-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.card-header-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.batch-bar {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 8px 12px;
+  background: #ecf5ff;
+  border-radius: 4px;
+  margin-bottom: 12px;
+  flex-wrap: wrap;
+}
+
+.batch-actions {
+  display: flex;
+  gap: 8px;
+  margin-left: auto;
+}
+
+.device-card-wrapper {
+  position: relative;
+}
+
+.device-card-wrapper.batch-mode .device-option {
+  padding-left: 8px;
+}
+
+.device-checkbox {
+  position: absolute;
+  top: 8px;
+  left: 8px;
+  z-index: 2;
+}
+
 .device-option {
   cursor: pointer;
   transition: all 0.2s;
@@ -455,6 +660,11 @@ function formatTime(t) {
 .device-option.selected {
   border-color: #409EFF;
   background-color: #ecf5ff;
+}
+
+.device-option.batch-selected {
+  border-color: #E6A23C;
+  background-color: #fdf6ec;
 }
 
 .device-option.disabled {

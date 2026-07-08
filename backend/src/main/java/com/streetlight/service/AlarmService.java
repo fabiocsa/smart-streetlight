@@ -9,7 +9,7 @@ public interface AlarmService {
 
     void autoResolveOfflineAlarm(String deviceId);
 
-    Page<AlarmLog> listAlarms(int page, int size, String status, String type);
+    Page<AlarmLog> listAlarms(int page, int size, String status, String type, String deviceId);
 
     void resolveAlarm(Long alarmId, String resolvedBy);
 

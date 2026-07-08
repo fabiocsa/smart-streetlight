@@ -4,7 +4,15 @@
     <el-card shadow="hover" class="filter-card">
       <el-form :inline="true" :model="filters" size="small">
         <el-form-item label="设备">
-          <el-select v-model="filters.deviceId" placeholder="选择设备" style="width: 160px">
+          <el-select
+            v-model="filters.deviceIds"
+            multiple
+            collapse-tags
+            collapse-tags-tooltip
+            placeholder="选择设备（可多选）"
+            style="width: 240px"
+            @change="handleDeviceChange"
+          >
             <el-option
               v-for="d in deviceStore.devices"
               :key="d.id"
@@ -12,6 +20,13 @@
               :value="d.deviceId"
             />
           </el-select>
+        </el-form-item>
+        <el-form-item label="对比模式" v-if="filters.deviceIds.length > 1">
+          <el-switch
+            v-model="comparisonMode"
+            active-text="叠加对比"
+            inactive-text="分图对比"
+          />
         </el-form-item>
         <el-form-item label="时间范围">
           <el-radio-group v-model="filters.timePreset" @change="handlePresetChange">
@@ -42,18 +57,17 @@
         </el-form-item>
         <el-form-item>
           <el-button type="primary" @click="loadData">查询</el-button>
+          <el-button v-if="filters.deviceIds.length > 0" @click="clearDevices">清空设备</el-button>
         </el-form-item>
       </el-form>
     </el-card>
 
-    <!-- Stats Summary -->
-    <el-row :gutter="16" class="stats-row">
-      <el-col :xs="12" :sm="6" v-for="stat in stats" :key="stat.label">
+    <!-- Comparison Stats -->
+    <el-row :gutter="16" class="stats-row" v-if="chartSeriesData.length > 0">
+      <el-col :xs="12" :sm="6" v-for="(stat, idx) in comparisonStats" :key="idx">
         <el-card shadow="hover" class="stat-card">
-          <div class="stat-label">{{ stat.label }}</div>
-          <div class="stat-value" :style="{ color: stat.color }">
-            {{ stat.value ?? '--' }}
-          </div>
+          <div class="stat-label" :style="{ color: stat.color }">{{ stat.label }}</div>
+          <div class="stat-value" :style="{ color: stat.color }">{{ stat.value ?? '--' }}</div>
           <div class="stat-unit">{{ stat.unit }}</div>
         </el-card>
       </el-col>
@@ -63,7 +77,12 @@
     <el-card shadow="hover" class="chart-card">
       <template #header>
         <div class="chart-header">
-          <span>光照强度趋势</span>
+          <span>
+            光照强度趋势
+            <el-tag v-if="filters.deviceIds.length > 1" type="warning" size="small" style="margin-left: 8px">
+              对比模式 ({{ filters.deviceIds.length }} 台设备)
+            </el-tag>
+          </span>
           <div class="chart-header-right">
             <el-tag v-if="downsampled" type="info" size="small">
               已降采样 ({{ originalCount }}→{{ displayCount }})
@@ -77,14 +96,14 @@
           </div>
         </div>
       </template>
-      <div class="chart-wrapper" style="height: 400px">
+      <div class="chart-wrapper" style="height: 420px">
         <template v-if="chartLoading">
           <v-chart :option="loadingOption" autoresize style="height: 100%" />
         </template>
         <template v-else-if="noData">
           <div class="no-chart-data">
             <el-empty description="暂无数据">
-              <span class="no-data-hint">请选择其他时间段</span>
+              <span class="no-data-hint">请选择其他设备或时间段</span>
             </el-empty>
           </div>
         </template>
@@ -137,6 +156,11 @@
               {{ formatTime(row.reportedAt) }}
             </template>
           </el-table-column>
+          <el-table-column label="设备" width="120">
+            <template #default="{ row }">
+              {{ getDeviceName(row.deviceId) }}
+            </template>
+          </el-table-column>
           <el-table-column prop="lightIntensity" label="光照强度(Lux)" width="140" />
         </el-table>
         <div class="pagination-wrapper" v-if="totalElements > pageSize">
@@ -170,13 +194,14 @@ use([LineChart, TitleComponent, TooltipComponent, LegendComponent, GridComponent
 const deviceStore = useDeviceStore()
 
 const filters = reactive({
-  deviceId: '',
+  deviceIds: [],
   timePreset: '1h',
   granularity: 'raw',
   start: '',
   end: ''
 })
 
+const comparisonMode = ref(true) // true=叠加, false=分图(not implemented yet, default to overlay)
 const customRange = ref(null)
 const chartLoading = ref(false)
 const chartError = ref(false)
@@ -189,36 +214,30 @@ const currentPage = ref(1)
 const pageSize = ref(20)
 const totalElements = ref(0)
 
-const chartTime = ref([])
-const chartValues = ref([])
-const stats = reactive({
-  avg: { label: '平均值', value: null, color: '#409EFF', unit: 'Lux' },
-  max: { label: '最大值', value: null, color: '#F56C6C', unit: 'Lux' },
-  min: { label: '最小值', value: null, color: '#67C23A', unit: 'Lux' },
-  count: { label: '数据点数', value: null, color: '#909399', unit: '条' }
-})
-
+// Chart data per device
+const chartSeriesData = ref([]) // [{deviceId, name, time[], values[]}]
+const comparisonStats = ref([])
 const tableData = ref([])
 const chartRef = ref(null)
 
-// Chart legend selected state
-const legendSelected = ref({
-  '光照强度': true,
-  '开灯阈值': true,
-  '关灯阈值': true
-})
+// Chart colors for multiple devices
+const DEVICE_COLORS = [
+  '#409EFF', '#F56C6C', '#67C23A', '#E6A23C', '#9B59B6',
+  '#1ABC9C', '#E74C3C', '#3498DB', '#F39C12', '#2ECC71',
+  '#8E44AD', '#16A085', '#D35400', '#2980B9', '#27AE60'
+]
 
 // Select first device on mount
 onMounted(() => {
-  if (deviceStore.devices.length > 0 && !filters.deviceId) {
-    filters.deviceId = deviceStore.devices[0].deviceId
+  if (deviceStore.devices.length > 0 && filters.deviceIds.length === 0) {
+    filters.deviceIds = [deviceStore.devices[0].deviceId]
     loadData()
   }
 })
 
 // Auto load when device changes
-watch(() => filters.deviceId, () => {
-  if (filters.deviceId) loadData()
+watch(() => filters.deviceIds.length, () => {
+  if (filters.deviceIds.length > 0) loadData()
 })
 
 const loadingOption = computed(() => ({
@@ -231,42 +250,148 @@ const loadingOption = computed(() => ({
 }))
 
 const chartOption = computed(() => {
+  if (chartSeriesData.value.length === 0) return {}
+
   const thresholdOn = 50
   const thresholdOff = 100
+
+  // Build series from chartSeriesData
+  const series = []
+  const legendData = []
+
+  chartSeriesData.value.forEach((sd, idx) => {
+    const color = DEVICE_COLORS[idx % DEVICE_COLORS.length]
+    const name = sd.name || sd.deviceId
+    legendData.push({ name, icon: 'line' })
+
+    // Light intensity line
+    series.push({
+      name,
+      type: 'line',
+      data: sd.values,
+      smooth: true,
+      showSymbol: sd.values.length < 50,
+      symbolSize: 3,
+      lineStyle: { width: 2, color },
+      itemStyle: { color },
+      areaStyle: {
+        color: {
+          type: 'linear', x: 0, y: 0, x2: 0, y2: 1,
+          colorStops: [
+            { offset: 0, color: color + '4D' },
+            { offset: 1, color: color + '0D' }
+          ]
+        }
+      }
+    })
+
+    // Only show threshold lines for the first device (or when single device)
+    if (idx === 0 || chartSeriesData.value.length === 1) {
+      series.push({
+        name: '开灯阈值',
+        type: 'line',
+        data: sd.time.map(() => thresholdOn),
+        lineStyle: { type: 'dashed', color: '#F56C6C', width: 2 },
+        symbol: 'none',
+        z: 2,
+        markLine: {
+          silent: true,
+          label: { show: true, formatter: '开灯 {c} Lux', color: '#F56C6C', fontSize: 11, position: 'insideEndTop' }
+        }
+      })
+
+      series.push({
+        name: '关灯阈值',
+        type: 'line',
+        data: sd.time.map(() => thresholdOff),
+        lineStyle: { type: 'dashed', color: '#67C23A', width: 2 },
+        symbol: 'none',
+        z: 2,
+        markLine: {
+          silent: true,
+          label: { show: true, formatter: '关灯 {c} Lux', color: '#67C23A', fontSize: 11, position: 'insideEndTop' }
+        }
+      })
+    }
+  })
+
+  // Add markArea for "should turn on" only for first device
+  if (chartSeriesData.value.length > 0) {
+    const first = chartSeriesData.value[0]
+    series.unshift({
+      name: '光照强度',
+      type: 'line',
+      data: first.values,
+      smooth: true,
+      showSymbol: first.values.length < 50,
+      symbolSize: 3,
+      lineStyle: { width: 2, color: DEVICE_COLORS[0] },
+      areaStyle: {
+        color: {
+          type: 'linear', x: 0, y: 0, x2: 0, y2: 1,
+          colorStops: [
+            { offset: 0, color: 'rgba(64,158,255,0.3)' },
+            { offset: 1, color: 'rgba(64,158,255,0.05)' }
+          ]
+        }
+      },
+      markArea: {
+        silent: true,
+        data: [
+          [{
+            yAxis: 50,
+            itemStyle: { color: 'rgba(245,108,108,0.06)' }
+          }, {
+            yAxis: 0
+          }]
+        ],
+        label: {
+          show: true,
+          position: 'insideBottomRight',
+          color: '#F56C6C',
+          fontSize: 11,
+          formatter: '应开灯时段'
+        }
+      }
+    })
+
+    // Remove the duplicate first device series if it was already added
+    if (series.length > 3) {
+      // Remove the first duplicate (the one without markArea)
+      series.splice(1, 1)
+    }
+  }
 
   return {
     tooltip: {
       trigger: 'axis',
       formatter: (params) => {
         if (!params || params.length === 0) return ''
-        let html = `<div>${params[0].axisValue}</div>`
+        let html = `<div style="font-weight:600;margin-bottom:4px">${params[0].axisValue}</div>`
         params.forEach(p => {
           const color = p.color || p.seriesColor || '#333'
-          html += `<div style="display:flex;align-items:center;gap:4px;font-weight:${p.seriesName === '光照强度' ? '600' : '400'}">
+          html += `<div style="display:flex;align-items:center;gap:4px;margin:2px 0">
             <span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:${color}"></span>
-            ${p.seriesName}: ${p.value} Lux
+            <span style="flex:1">${p.seriesName}</span>
+            <span style="font-weight:${p.seriesName.includes('阈值') ? '400' : '600'}">${p.value} Lux</span>
           </div>`
         })
         return html
       }
     },
     legend: {
-      data: [
-        { name: '光照强度', icon: 'line' },
-        { name: '开灯阈值', icon: 'line' },
-        { name: '关灯阈值', icon: 'line' }
-      ],
+      data: legendData,
       bottom: 0,
-      selected: legendSelected.value
+      type: 'scroll'
     },
-    grid: { left: 50, right: 20, bottom: 40, top: 10 },
+    grid: { left: 50, right: 20, bottom: 50, top: 10 },
     dataZoom: [
       { type: 'inside', start: 0, end: 100 },
       { type: 'slider', start: 0, end: 100, bottom: 35, height: 20 }
     ],
     xAxis: {
       type: 'category',
-      data: chartTime.value,
+      data: chartSeriesData.value.length > 0 ? chartSeriesData.value[0].time : [],
       boundaryGap: false,
       axisLabel: { fontSize: 11 }
     },
@@ -277,76 +402,29 @@ const chartOption = computed(() => {
       max: 2000,
       splitLine: { lineStyle: { type: 'dashed', color: '#e8e8e8' } }
     },
-    series: [
-      {
-        name: '光照强度',
-        type: 'line',
-        data: chartValues.value,
-        smooth: true,
-        showSymbol: chartValues.value.length < 50,
-        symbolSize: 3,
-        lineStyle: { width: 2, color: '#409EFF' },
-        areaStyle: {
-          color: {
-            type: 'linear', x: 0, y: 0, x2: 0, y2: 1,
-            colorStops: [
-              { offset: 0, color: 'rgba(64,158,255,0.3)' },
-              { offset: 1, color: 'rgba(64,158,255,0.05)' }
-            ]
-          }
-        },
-        markArea: {
-          silent: true,
-          data: [
-            [{
-              yAxis: 50,
-              itemStyle: {
-                color: 'rgba(245,108,108,0.06)'
-              }
-            }, {
-              yAxis: 0
-            }]
-          ],
-          label: {
-            show: true,
-            position: 'insideBottomRight',
-            color: '#F56C6C',
-            fontSize: 11,
-            formatter: '应开灯时段'
-          }
-        }
-      },
-      {
-        name: '开灯阈值',
-        type: 'line',
-        data: chartTime.value.map(() => thresholdOn),
-        lineStyle: { type: 'dashed', color: '#F56C6C', width: 2 },
-        symbol: 'none',
-        z: 2,
-        markLine: {
-          silent: true,
-          label: { show: true, formatter: '开灯 {c} Lux', color: '#F56C6C', fontSize: 11, position: 'insideEndTop' }
-        }
-      },
-      {
-        name: '关灯阈值',
-        type: 'line',
-        data: chartTime.value.map(() => thresholdOff),
-        lineStyle: { type: 'dashed', color: '#67C23A', width: 2 },
-        symbol: 'none',
-        z: 2,
-        markLine: {
-          silent: true,
-          label: { show: true, formatter: '关灯 {c} Lux', color: '#67C23A', fontSize: 11, position: 'insideEndTop' }
-        }
-      }
-    ]
+    series
   }
 })
+
+function getDeviceName(deviceId) {
+  const d = deviceStore.devices.find(d => d.deviceId === deviceId)
+  return d ? d.name : deviceId
+}
 
 function formatTime(t) {
   if (!t) return '--'
   return new Date(t).toLocaleString('zh-CN')
+}
+
+function handleDeviceChange() {
+  // loadData is triggered by watch on length
+}
+
+function clearDevices() {
+  filters.deviceIds = []
+  chartSeriesData.value = []
+  comparisonStats.value = []
+  noData.value = true
 }
 
 function handlePresetChange(preset) {
@@ -371,8 +449,6 @@ function lttb(data, threshold) {
   let a = 0
   for (let i = 0; i < threshold - 2; i++) {
     const center = Math.floor((i + 1) * bucketSize) + 1
-    const avgX = (data[center].reportedAt || center)
-    const avgY = data[center].lightIntensity
     const points = []
     for (let j = Math.floor(i * bucketSize) + 1; j <= Math.floor((i + 1) * bucketSize) + 1; j++) {
       if (j < data.length) points.push(data[j])
@@ -401,8 +477,8 @@ function lttb(data, threshold) {
 }
 
 async function loadData() {
-  if (!filters.deviceId) {
-    ElMessage.warning('请选择设备')
+  if (filters.deviceIds.length === 0) {
+    ElMessage.warning('请选择至少一个设备')
     return
   }
 
@@ -410,6 +486,8 @@ async function loadData() {
   chartError.value = false
   noData.value = false
   downsampled.value = false
+  chartSeriesData.value = []
+  comparisonStats.value = []
 
   const now = new Date()
   let start, end
@@ -425,61 +503,104 @@ async function loadData() {
   }
 
   try {
-    // Include granularity in API params
-    const historyParams = {
-      start: start.toISOString(),
-      end: end.toISOString()
-    }
-    if (filters.granularity !== 'raw') {
-      historyParams.granularity = filters.granularity
-    }
+    // Load data for each device in parallel
+    const promises = filters.deviceIds.map(async (deviceId) => {
+      try {
+        const [historyData, statsData] = await Promise.all([
+          getSensorHistory(deviceId, start.toISOString(), end.toISOString()),
+          getSensorStats(deviceId, start.toISOString(), end.toISOString())
+        ])
+        return { deviceId, history: Array.isArray(historyData) ? historyData : [], stats: statsData }
+      } catch (e) {
+        return { deviceId, history: [], stats: null }
+      }
+    })
 
-    const [historyData, statsData] = await Promise.all([
-      getSensorHistory(filters.deviceId, start.toISOString(), end.toISOString()),
-      getSensorStats(filters.deviceId, start.toISOString(), end.toISOString())
-    ])
+    const results = await Promise.all(promises)
+    const allData = []
+    let hasAnyData = false
+    let totalOriginal = 0
+    let totalDisplay = 0
+    let needsDownsample = false
 
-    const data = Array.isArray(historyData) ? historyData : []
+    results.forEach((r, idx) => {
+      const deviceName = getDeviceName(r.deviceId)
+      const data = r.history
 
-    if (data.length === 0) {
+      if (data.length > 0) {
+        hasAnyData = true
+        totalOriginal += data.length
+
+        // Downsample if > 1000 points
+        let displayData = data
+        if (data.length > 1000) {
+          displayData = lttb(data, 1000)
+          needsDownsample = true
+          totalDisplay += displayData.length
+        } else {
+          totalDisplay += data.length
+        }
+
+        chartSeriesData.value.push({
+          deviceId: r.deviceId,
+          name: deviceName,
+          time: displayData.map(d => new Date(d.reportedAt).toLocaleString('zh-CN')),
+          values: displayData.map(d => d.lightIntensity)
+        })
+
+        allData.push(...data)
+
+        // Per-device stats
+        if (r.stats) {
+          const color = DEVICE_COLORS[idx % DEVICE_COLORS.length]
+          comparisonStats.value.push({
+            label: `${deviceName} 平均值`,
+            value: r.stats.avg?.toFixed(1) ?? '--',
+            color,
+            unit: 'Lux'
+          })
+          comparisonStats.value.push({
+            label: `${deviceName} 最大值`,
+            value: r.stats.max?.toFixed(1) ?? '--',
+            color,
+            unit: 'Lux'
+          })
+        } else {
+          const vals = data.map(d => d.lightIntensity)
+          if (vals.length > 0) {
+            const color = DEVICE_COLORS[idx % DEVICE_COLORS.length]
+            comparisonStats.value.push({
+              label: `${deviceName} 平均值`,
+              value: (vals.reduce((s, v) => s + v, 0) / vals.length).toFixed(1),
+              color,
+              unit: 'Lux'
+            })
+            comparisonStats.value.push({
+              label: `${deviceName} 最大值`,
+              value: Math.max(...vals).toFixed(1),
+              color,
+              unit: 'Lux'
+            })
+          }
+        }
+      }
+    })
+
+    if (!hasAnyData) {
       noData.value = true
-      chartTime.value = []
-      chartValues.value = []
-      tableData.value = []
-      resetStats()
       return
     }
 
-    originalCount.value = data.length
+    originalCount.value = totalOriginal
+    displayCount.value = totalDisplay
+    downsampled.value = needsDownsample
 
-    // Downsample if > 1000 points
-    let displayData = data
-    if (data.length > 1000) {
-      displayData = lttb(data, 1000)
-      downsampled.value = true
-      displayCount.value = displayData.length
-    }
+    // Table data: mix all devices' data, sorted by time
+    tableData.value = allData
+      .sort((a, b) => new Date(b.reportedAt).getTime() - new Date(a.reportedAt).getTime())
+      .slice(0, 100)
+    totalElements.value = allData.length
 
-    chartTime.value = displayData.map(d =>
-      new Date(d.reportedAt).toLocaleString('zh-CN')
-    )
-    chartValues.value = displayData.map(d => d.lightIntensity)
-    tableData.value = data.slice(0, 100)
-    totalElements.value = data.length
-
-    // Update stats
-    if (statsData) {
-      stats.avg.value = statsData.avg?.toFixed(1) ?? null
-      stats.max.value = statsData.max?.toFixed(1) ?? null
-      stats.min.value = statsData.min?.toFixed(1) ?? null
-      stats.count.value = statsData.count ?? data.length
-    } else {
-      const vals = data.map(d => d.lightIntensity)
-      stats.avg.value = (vals.reduce((s, v) => s + v, 0) / vals.length).toFixed(1)
-      stats.max.value = Math.max(...vals).toFixed(1)
-      stats.min.value = Math.min(...vals).toFixed(1)
-      stats.count.value = vals.length
-    }
   } catch (e) {
     console.error('Failed to load history:', e)
     chartError.value = true
@@ -488,23 +609,25 @@ async function loadData() {
   }
 }
 
-function resetStats() {
-  stats.avg.value = null
-  stats.max.value = null
-  stats.min.value = null
-  stats.count.value = null
-}
-
 function handlePageChange(page) {
   currentPage.value = page
 }
 
 function handleChartClick(params) {
-  if (!params || !params.dataIndex === undefined) return
+  if (!params || params.dataIndex === undefined) return
   const idx = params.dataIndex
-  if (idx >= 0 && idx < chartTime.value.length) {
+  const seriesName = params.seriesName
+  let valueText = ''
+  chartSeriesData.value.forEach(sd => {
+    if (sd.name === seriesName || !seriesName) {
+      if (idx >= 0 && idx < sd.values.length) {
+        valueText += `${sd.name}: ${sd.values[idx]} Lux, `
+      }
+    }
+  })
+  if (valueText) {
     ElMessage.info({
-      message: `时刻: ${chartTime.value[idx]}\n光照强度: ${chartValues.value[idx]} Lux`,
+      message: `时刻: ${chartSeriesData.value[0]?.time[idx] || ''}\n${valueText.slice(0, -2)}`,
       duration: 3000
     })
   }
@@ -517,6 +640,9 @@ function exportChart() {
     return
   }
   try {
+    const deviceLabel = filters.deviceIds.length > 1
+      ? `${filters.deviceIds.length}台设备对比`
+      : filters.deviceIds[0] || 'unknown'
     const url = chart.getDataURL({
       type: 'png',
       pixelRatio: 2,
@@ -524,7 +650,7 @@ function exportChart() {
     })
     const link = document.createElement('a')
     link.href = url
-    link.download = `光照趋势_${filters.deviceId}_${new Date().toISOString().slice(0, 10)}.png`
+    link.download = `光照趋势_${deviceLabel}_${new Date().toISOString().slice(0, 10)}.png`
     link.click()
   } catch (e) {
     ElMessage.error('导出失败')
@@ -552,13 +678,13 @@ function exportChart() {
 }
 
 .stat-label {
-  font-size: 12px;
-  color: #909399;
+  font-size: 11px;
   margin-bottom: 4px;
+  font-weight: 500;
 }
 
 .stat-value {
-  font-size: 28px;
+  font-size: 24px;
   font-weight: 700;
   line-height: 1.2;
 }

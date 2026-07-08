@@ -24,6 +24,15 @@ public interface AlarmLogRepository extends JpaRepository<AlarmLog, Long> {
 
     Page<AlarmLog> findByStatusAndAlarmType(AlarmStatus status, AlarmType type, Pageable pageable);
 
+    // === DeviceId filtering ===
+    Page<AlarmLog> findByDeviceId(String deviceId, Pageable pageable);
+
+    Page<AlarmLog> findByDeviceIdAndStatus(String deviceId, AlarmStatus status, Pageable pageable);
+
+    Page<AlarmLog> findByDeviceIdAndAlarmType(String deviceId, AlarmType type, Pageable pageable);
+
+    Page<AlarmLog> findByDeviceIdAndStatusAndAlarmType(String deviceId, AlarmStatus status, AlarmType type, Pageable pageable);
+
     List<AlarmLog> findByDeviceIdAndStatus(String deviceId, AlarmStatus status);
 
     long countByStatus(AlarmStatus status);
