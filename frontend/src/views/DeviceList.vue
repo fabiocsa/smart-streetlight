@@ -18,13 +18,13 @@
           <el-icon><Moon /></el-icon> 批量关灯 ({{ selectedIds.length }})
         </el-button>
         <el-button
-          v-if="selectedIds.length > 0"
+          v-if="selectedIds.length > 0 && authStore.isAdmin"
           type="danger"
           @click="handleBatchDelete"
         >
           <el-icon><Delete /></el-icon> 批量删除 ({{ selectedIds.length }})
         </el-button>
-        <el-button type="primary" @click="openAddDialog">
+        <el-button v-if="authStore.isAdmin" type="primary" @click="openAddDialog">
           <el-icon><Plus /></el-icon> 添加设备
         </el-button>
       </div>
@@ -115,8 +115,9 @@
         <el-table-column label="操作" width="220" fixed="right">
           <template #default="{ row }">
             <el-button type="primary" link @click="goDetail(row.id)">详情</el-button>
-            <el-button type="primary" link @click="openEditDialog(row)">编辑</el-button>
+            <el-button v-if="authStore.isAdmin" type="primary" link @click="openEditDialog(row)">编辑</el-button>
             <el-popconfirm
+              v-if="authStore.isAdmin"
               title="确定删除该设备吗？"
               confirm-button-text="确定删除"
               cancel-button-text="取消"
@@ -162,6 +163,7 @@ import { ref, computed, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { Sunny, Moon } from '@element-plus/icons-vue'
+import { useAuthStore } from '../stores/authStore'
 import { useDeviceStore } from '../store/device'
 import DeviceForm from '../components/DeviceForm.vue'
 import { sendControl, sendBatchControl } from '../api/control'
@@ -169,6 +171,7 @@ import { formatTime, debounce, resetPage } from '../utils/common'
 
 const router = useRouter()
 const deviceStore = useDeviceStore()
+const authStore = useAuthStore()
 const tableRef = ref(null)
 
 const searchKeyword = ref('')

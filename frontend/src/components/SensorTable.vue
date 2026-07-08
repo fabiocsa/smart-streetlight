@@ -7,7 +7,7 @@
           <span style="color: #909399; margin-left: 8px">（共 {{ sensors.length }} 个）</span>
         </span>
         <el-button
-          v-if="selectedIds.length > 0"
+          v-if="selectedIds.length > 0 && authStore.isAdmin"
           type="danger"
           size="small"
           @click="handleBatchDelete"
@@ -67,8 +67,9 @@
       </el-table-column>
       <el-table-column label="操作" width="140" fixed="right">
         <template #default="{ row }">
-          <el-button type="primary" link @click="$emit('edit', row)">编辑</el-button>
+          <el-button v-if="authStore.isAdmin" type="primary" link @click="$emit('edit', row)">编辑</el-button>
           <el-popconfirm
+            v-if="authStore.isAdmin"
             title="确定解绑该传感器吗？"
             confirm-button-text="确定"
             @confirm="$emit('delete', row.id)"
@@ -89,6 +90,7 @@
 <script setup>
 import { ref } from 'vue'
 import { useSensorStore } from '../store/sensor'
+import { useAuthStore } from '../stores/authStore'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { formatTime, typeLabel } from '../utils/common'
 
@@ -100,6 +102,7 @@ const props = defineProps({
 
 const emit = defineEmits(['refresh', 'edit', 'delete', 'updateFrequency', 'batchDelete'])
 const sensorStore = useSensorStore()
+const authStore = useAuthStore()
 const tableRef = ref(null)
 const selectedIds = ref([])
 

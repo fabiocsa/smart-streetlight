@@ -9,6 +9,7 @@
       </div>
       <div>
         <el-popconfirm
+          v-if="authStore.isAdmin"
           title="确定同步传感器到模拟器吗？"
           confirm-button-text="确定"
           @confirm="handleSync"
@@ -19,7 +20,7 @@
             </el-button>
           </template>
         </el-popconfirm>
-        <el-button type="primary" @click="openSensorDialog()">
+        <el-button v-if="authStore.isAdmin" type="primary" @click="openSensorDialog()">
           <el-icon><Plus /></el-icon> 添加传感器
         </el-button>
       </div>
@@ -77,7 +78,7 @@
             </el-form-item>
           </el-col>
         </el-row>
-        <el-form-item>
+        <el-form-item v-if="authStore.isAdmin">
           <el-button type="primary" @click="handleUpdateDevice" :loading="saving">保存设备信息</el-button>
         </el-form-item>
       </el-form>
@@ -111,6 +112,7 @@
 import { ref, onMounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
+import { useAuthStore } from '../stores/authStore'
 import { useDeviceStore } from '../store/device'
 import { useSensorStore } from '../store/sensor'
 import SensorTable from '../components/SensorTable.vue'
@@ -121,6 +123,7 @@ const route = useRoute()
 const router = useRouter()
 const deviceStore = useDeviceStore()
 const sensorStore = useSensorStore()
+const authStore = useAuthStore()
 
 const formRef = ref(null)
 const form = ref({})

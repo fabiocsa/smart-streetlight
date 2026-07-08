@@ -1,5 +1,10 @@
 <template>
-  <el-container style="min-height: 100vh">
+  <!-- 登录页不显示侧边栏 -->
+  <div v-if="route.meta?.public" style="background: #f0f2f5; min-height: 100vh">
+    <router-view />
+  </div>
+
+  <el-container v-else style="min-height: 100vh">
     <el-aside width="220px" style="background: #1d1e2b; overflow: hidden">
       <div class="logo">
         <el-icon :size="24" color="#409EFF"><Monitor /></el-icon>
@@ -28,7 +33,8 @@
           <el-icon><TrendCharts /></el-icon>
           <span>光照趋势</span>
         </el-menu-item>
-        <el-menu-item index="/alarms">
+        <!-- ★ 告警管理仅管理员可见 -->
+        <el-menu-item v-if="authStore.isAdmin" index="/alarms">
           <el-icon><Bell /></el-icon>
           <span>告警管理</span>
         </el-menu-item>
@@ -44,7 +50,13 @@
           <el-breadcrumb-item :to="{ path: '/' }">首页</el-breadcrumb-item>
           <el-breadcrumb-item v-if="route.meta?.title">{{ route.meta.title }}</el-breadcrumb-item>
         </el-breadcrumb>
-        <el-tag type="success" size="small">后端: 8.130.102.89:8080</el-tag>
+        <div style="display: flex; align-items: center; gap: 12px">
+          <el-tag :type="authStore.isAdmin ? 'danger' : 'success'" size="small">
+            {{ authStore.isAdmin ? '管理员' : '市政人员' }}
+          </el-tag>
+          <span style="font-size: 13px; color: #606266">{{ authStore.username }}</span>
+          <el-button type="danger" link size="small" @click="handleLogout">退出</el-button>
+        </div>
       </el-header>
       <el-main>
         <router-view />
@@ -55,9 +67,13 @@
 
 <script setup>
 import { computed } from 'vue'
-import { useRoute } from 'vue-router'
+import { useRoute, useRouter } from 'vue-router'
+import { useAuthStore } from './stores/authStore'
 
 const route = useRoute()
+const router = useRouter()
+const authStore = useAuthStore()
+
 const activeMenu = computed(() => {
   if (route.path.startsWith('/dashboard')) return '/dashboard'
   if (route.path.startsWith('/light-trend')) return '/light-trend'
@@ -67,6 +83,11 @@ const activeMenu = computed(() => {
   if (route.path.startsWith('/devices')) return '/devices'
   return '/dashboard'
 })
+
+function handleLogout() {
+  authStore.logout()
+  router.push('/login')
+}
 </script>
 
 <style>
