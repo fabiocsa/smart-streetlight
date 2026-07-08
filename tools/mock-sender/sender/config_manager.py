@@ -23,6 +23,18 @@ DEFAULT_CONFIG: Dict[str, Any] = {
         "clientId": "mock-sender-v2",
     },
     "backendUrl": "http://localhost:8080/api",
+    "simulation": {
+        "latitude": 29.5,
+        "longitude": 106.5,
+        "timezoneOffset": 8,
+        "cloudCoverMax": 0.8,
+        "cloudChangeInterval": 1800,
+        "temperature": {
+            "annualMean": 21.5,
+            "annualAmplitude": 13.5,
+            "dailyAmplitude": 5.0
+        }
+    },
     "sensors": {},
 }
 
@@ -110,6 +122,22 @@ class ConfigManager:
         with self._lock:
             mqtt_cfg = self._config.setdefault("mqtt", {})
             mqtt_cfg.update(updates)
+            return self.save()
+
+    # ------------------------------------------------------------------
+    # 模拟参数配置
+    # ------------------------------------------------------------------
+
+    def get_simulation_config(self) -> Dict[str, Any]:
+        """获取模拟参数（经纬度、云量、温度等）。"""
+        with self._lock:
+            return dict(self._config.get("simulation", {}))
+
+    def update_simulation_config(self, updates: Dict[str, Any]) -> bool:
+        """更新模拟参数。"""
+        with self._lock:
+            sim = self._config.setdefault("simulation", {})
+            sim.update(updates)
             return self.save()
 
     # ------------------------------------------------------------------

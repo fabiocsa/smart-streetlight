@@ -62,6 +62,7 @@ class SensorWorker:
         sensor_key: str,
         config: Dict[str, Any],
         mqtt_client: MqttClientManager,
+        sim_config: Optional[Dict[str, Any]] = None,
         on_stopped: Optional[Callable] = None,
         on_publish: Optional[Callable] = None,
     ):
@@ -69,6 +70,7 @@ class SensorWorker:
         self.device_id = config.get("deviceId", "")
         self.config = dict(config)
         self._mqtt = mqtt_client
+        self._sim_config = sim_config or {}
         self._on_stopped = on_stopped
         self._on_publish = on_publish
 
@@ -176,9 +178,8 @@ class SensorWorker:
     # ------------------------------------------------------------------
 
     def _do_publish(self) -> bool:
-        """执行一次传感器数据发布，返回是否成功。"""
+        """执行一次传感器数据发布（v2 真实时钟驱动），返回是否成功。"""
         now = time.time()
-        elapsed = now - self._start_time
 
         data_range = self.config.get("dataRange", {"min": 0, "max": 800})
         data_topic = self.config.get("dataTopic", "")
@@ -191,7 +192,12 @@ class SensorWorker:
             "displayName": self.display_name,
         }
         payload = generate_sensor_data(
-            self.device_id, self._light_status, elapsed, data_range, extra, brightness
+            device_id=self.device_id,
+            light_status=self._light_status,
+            data_range=data_range,
+            extra_fields=extra,
+            brightness=brightness,
+            sim_config=self._sim_config,
         )
         ok = self._mqtt.publish_sensor_data(self.device_id, payload, data_topic)
         if ok:
@@ -329,6 +335,7 @@ class SensorManager:
                 return None
 
             worker = SensorWorker(saved_key, cfg, self._mqtt_mgr,
+                                  sim_config=self._config_mgr.get_simulation_config(),
                                   on_publish=self._record_publish)
             self._workers[saved_key] = worker
 
@@ -453,6 +460,7 @@ class SensorManager:
         for sensor_key, cfg in sensors.items():
             if cfg.get("enabled", True) and sensor_key not in self._workers:
                 worker = SensorWorker(sensor_key, cfg, self._mqtt_mgr,
+                                      sim_config=self._config_mgr.get_simulation_config(),
                                       on_publish=self._record_publish)
                 with self._lock:
                     self._workers[sensor_key] = worker
