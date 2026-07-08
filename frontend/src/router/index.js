@@ -40,6 +40,12 @@ const routes = [
     name: 'LightTrend',
     component: () => import('../views/LightTrend.vue'),
     meta: { title: '历史光照趋势' }
+  },
+  {
+    path: '/alarms',
+    name: 'AlarmList',
+    component: () => import('../views/AlarmList.vue'),
+    meta: { title: '告警管理' }
   }
 ]
 

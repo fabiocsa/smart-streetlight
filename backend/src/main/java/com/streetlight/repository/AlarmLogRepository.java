@@ -1,6 +1,7 @@
 package com.streetlight.repository;
 
 import com.streetlight.entity.AlarmLog;
+import com.streetlight.enums.AlarmSeverity;
 import com.streetlight.enums.AlarmStatus;
 import com.streetlight.enums.AlarmType;
 import org.springframework.data.domain.Page;
@@ -44,4 +45,10 @@ public interface AlarmLogRepository extends JpaRepository<AlarmLog, Long> {
            "WHERE created_at >= :since GROUP BY DATE(created_at) ORDER BY dt",
            nativeQuery = true)
     List<Object[]> countByDaySince(@Param("since") LocalDateTime since);
+
+    /** 按设备ID分页查询告警 */
+    Page<AlarmLog> findByDeviceIdOrderByCreatedAtDesc(String deviceId, Pageable pageable);
+
+    /** 按严重级别和状态分页查询 */
+    Page<AlarmLog> findBySeverityAndStatus(AlarmSeverity severity, AlarmStatus status, Pageable pageable);
 }

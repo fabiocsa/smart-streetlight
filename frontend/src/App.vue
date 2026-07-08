@@ -28,6 +28,10 @@
           <el-icon><TrendCharts /></el-icon>
           <span>光照趋势</span>
         </el-menu-item>
+        <el-menu-item index="/alarms">
+          <el-icon><Bell /></el-icon>
+          <span>告警管理</span>
+        </el-menu-item>
         <el-menu-item index="/chat">
           <el-icon><ChatDotRound /></el-icon>
           <span>智能问答</span>
@@ -57,6 +61,7 @@ const route = useRoute()
 const activeMenu = computed(() => {
   if (route.path.startsWith('/dashboard')) return '/dashboard'
   if (route.path.startsWith('/light-trend')) return '/light-trend'
+  if (route.path.startsWith('/alarms')) return '/alarms'
   if (route.path.startsWith('/sensors')) return '/sensors'
   if (route.path.startsWith('/chat')) return '/chat'
   if (route.path.startsWith('/devices')) return '/devices'

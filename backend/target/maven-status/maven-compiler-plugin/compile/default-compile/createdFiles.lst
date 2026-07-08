@@ -6,6 +6,7 @@ com\streetlight\entity\ControlLog$ControlLogBuilder.class
 com\streetlight\config\MqttConfig.class
 com\streetlight\dto\SensorFrequencyRequest.class
 com\streetlight\mqtt\MqttClientManager.class
+com\streetlight\entity\AlarmRule.class
 com\streetlight\enums\ControlMode.class
 com\streetlight\dto\ResolveAlarmRequest.class
 com\streetlight\entity\AlarmLog$AlarmLogBuilder.class
@@ -14,6 +15,8 @@ com\streetlight\service\impl\AlarmServiceImpl.class
 com\streetlight\enums\DeviceStatus.class
 com\streetlight\service\DeviceService.class
 com\streetlight\repository\SensorDataRepository.class
+com\streetlight\service\impl\AlarmRuleServiceImpl.class
+com\streetlight\controller\AlarmRuleController.class
 com\streetlight\dto\ControlRequest.class
 com\streetlight\repository\AlarmLogRepository.class
 com\streetlight\service\AlarmService.class
@@ -34,6 +37,7 @@ com\streetlight\entity\ChatMessage$ChatMessageBuilder.class
 com\streetlight\repository\ControlLogRepository.class
 com\streetlight\service\impl\SensorDataServiceImpl.class
 com\streetlight\service\impl\SensorServiceImpl.class
+com\streetlight\entity\AlarmRule$AlarmRuleBuilder.class
 com\streetlight\entity\ChatSession.class
 com\streetlight\common\Result.class
 com\streetlight\repository\ChatMessageRepository.class
@@ -51,6 +55,7 @@ com\streetlight\service\impl\ChatServiceImpl$1.class
 com\streetlight\entity\Device.class
 com\streetlight\entity\ControlLog.class
 com\streetlight\entity\AlarmLog.class
+com\streetlight\service\AlarmRuleService.class
 com\streetlight\enums\ControlModeConverter.class
 com\streetlight\common\BusinessException.class
 com\streetlight\config\CorsConfig.class
@@ -63,6 +68,7 @@ com\streetlight\controller\AlarmController.class
 com\streetlight\service\impl\ControlServiceImpl.class
 com\streetlight\dto\SessionTitleRequest.class
 com\streetlight\StreetlightApplication.class
+com\streetlight\repository\AlarmRuleRepository.class
 com\streetlight\enums\AlarmSeverity.class
 com\streetlight\service\ControlService.class
 com\streetlight\controller\SensorController.class
