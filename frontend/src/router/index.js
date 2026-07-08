@@ -3,7 +3,13 @@ import { createRouter, createWebHashHistory } from 'vue-router'
 const routes = [
   {
     path: '/',
-    redirect: '/devices'
+    redirect: '/dashboard'
+  },
+  {
+    path: '/dashboard',
+    name: 'Dashboard',
+    component: () => import('../views/Dashboard.vue'),
+    meta: { title: '仪表盘' }
   },
   {
     path: '/devices',
@@ -28,6 +34,12 @@ const routes = [
     name: 'ChatView',
     component: () => import('../views/ChatView.vue'),
     meta: { title: '智能问答' }
+  },
+  {
+    path: '/light-trend',
+    name: 'LightTrend',
+    component: () => import('../views/LightTrend.vue'),
+    meta: { title: '历史光照趋势' }
   }
 ]
 
