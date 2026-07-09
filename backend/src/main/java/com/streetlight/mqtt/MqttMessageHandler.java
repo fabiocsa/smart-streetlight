@@ -169,11 +169,13 @@ public class MqttMessageHandler implements MqttCallback {
     @Override
     public void connectComplete(boolean reconnect, String serverURI) {
         log.info("MQTT连接完成: reconnect={}, server={}", reconnect, serverURI);
-        if (reconnect) {
-            mqttClientManager.subscribeGlobalTopics();
-            mqttClientManager.subscribeAllDevices();
-            log.info("MQTT重连后已重新订阅所有主题");
-        }
+        // 无论初始连接还是重连，都执行订阅。
+        // 初始连接时 connectToBroker() 返回后 isConnected() 可能为 false
+        // （CONNACK 尚未到达），导致 subscribeGlobalTopics() 被跳过。
+        // 此时由 connectComplete 回调补订阅是唯一可靠时机。
+        mqttClientManager.subscribeGlobalTopics();
+        mqttClientManager.subscribeAllDevices();
+        log.info("MQTT{}后已重新订阅所有主题", reconnect ? "重连" : "连接");
     }
     @Override
     public void authPacketArrived(int reasonCode, MqttProperties properties) {}

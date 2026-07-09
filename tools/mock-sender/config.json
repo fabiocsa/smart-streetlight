@@ -8,22 +8,6 @@
     "clientId": "mock-sender-v3"
   },
   "sensors": {
-    "sensor_5335": {
-      "sensorId": 5335,
-      "displayName": "A01光照",
-      "sensorType": "light",
-      "groupTag": "",
-      "dataTopic": "streetlight/sensor/4342/data",
-      "enabled": true,
-      "interval": 5,
-      "dataRange": {
-        "min": 0,
-        "max": 800
-      },
-      "lightStatus": "off",
-      "controlMode": "auto",
-      "configJson": "{\"min\":0,\"max\":800}"
-    },
     "sensor_13119": {
       "sensorId": 13119,
       "displayName": "A02光照",

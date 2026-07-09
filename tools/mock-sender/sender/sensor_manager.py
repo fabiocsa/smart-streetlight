@@ -661,3 +661,26 @@ class SensorManager:
                 worker.unbind_from_device()
                 worker.stop()
         logger.info(f"已关闭 {len(keys)} 个传感器工作线程（配置已保留）")
+
+    def re_register_all(self) -> int:
+        """重新注册所有运行中的传感器到 MQTT（用于连接/重连时恢复注册）。
+        确保后端无论何时启动都能发现模拟器中已存在的传感器。"""
+        count = 0
+        with self._lock:
+            workers = list(self._workers.items())
+        for key, worker in workers:
+            cfg = worker.config
+            sensor_info = {
+                "sensorId": worker.sensor_id,
+                "sensorType": worker.sensor_type,
+                "displayName": worker.display_name,
+                "dataTopic": cfg.get("dataTopic", ""),
+                "reportFrequency": worker.interval,
+                "configJson": cfg.get("configJson", ""),
+                "enabled": True,
+                "timestamp": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+            }
+            if self._mqtt_mgr.publish_sensor_register(sensor_info):
+                count += 1
+        logger.info(f"MQTT 重连后已重新注册 {count} 个传感器")
+        return count
