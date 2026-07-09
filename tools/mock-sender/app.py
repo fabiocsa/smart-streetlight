@@ -119,14 +119,12 @@ def api_sensor(sensor_key: str):
 def api_add_sensor():
     data = request.get_json(force=True)
     device_id = data.get("deviceId", "").strip()
-    if not device_id:
-        return jsonify({"error": "deviceId 不能为空"}), 400
     sensor_id = data.get("sensorId") or int(time.time() * 1000) % 100000
     data["sensorId"] = sensor_id
     key = sensor_mgr.add_sensor(device_id, data)
     if not key:
         return jsonify({"error": "传感器已存在"}), 409
-    return jsonify({"message": "传感器已添加", "sensorKey": key}), 201
+    return jsonify({"message": "传感器已添加", "sensorKey": key, "deviceId": device_id or None}), 201
 
 
 @app.route("/api/sensors/<sensor_key>", methods=["DELETE"])

@@ -28,8 +28,8 @@ logger = logging.getLogger("mock-sender.sensor")
 
 def _sensor_label(cfg: Dict[str, Any]) -> str:
     """生成传感器可读标签: 设备名/传感器名"""
-    device_name = cfg.get("deviceName") or cfg.get("deviceId", "?")
-    sensor_name = cfg.get("displayName") or cfg.get("sensorType") or cfg.get("deviceId", "?")
+    device_name = cfg.get("deviceName") or cfg.get("deviceId") or "独立"
+    sensor_name = cfg.get("displayName") or cfg.get("sensorType") or "传感器"
     return f"{device_name}/{sensor_name}"
 
 
@@ -192,7 +192,10 @@ class SensorWorker:
         brightness = self.config.get("brightness")
         my_sensor_type = self.sensor_type
         my_sensor_id = self.config.get("sensorId")
-        actual_topic = data_topic or f"streetlight/{self.device_id}/sensor/data"
+        actual_topic = data_topic or (
+            f"streetlight/{self.device_id}/sensor/data" if self.device_id
+            else f"streetlight/unbound/{my_sensor_type}/data"
+        )
         extra = {
             "location": self.config.get("location", ""),
             "controlMode": self._control_mode,
@@ -306,8 +309,8 @@ class SensorWorker:
             # 自动发送传感器数据
             self._do_publish()
 
-            # 定时发布心跳
-            if now - last_heartbeat_time >= heartbeat_interval:
+            # 定时发布心跳（仅绑定设备的传感器发送）
+            if self.device_id and now - last_heartbeat_time >= heartbeat_interval:
                 hb_payload = generate_heartbeat(self.device_id)
                 hb_payload["sensorKey"] = self.sensor_key
                 if self._mqtt.publish_heartbeat(self.device_id, hb_payload):
@@ -423,23 +426,24 @@ class SensorManager:
                                   on_publish=self._record_publish)
             self._workers[saved_key] = worker
 
-        # 订阅控制主题
-        self._mqtt_mgr.subscribe_device(device_id)
-
         worker.start()
         logger.info(f"已添加传感器: {_sensor_label(cfg)} (key={saved_key})")
 
-        # 通过 MQTT 发布传感器动态注册
-        sensor_info = {
-            "sensorType": cfg.get("sensorType", "light"),
-            "displayName": cfg.get("displayName", ""),
-            "dataTopic": cfg.get("dataTopic", ""),
-            "reportFrequency": cfg.get("interval", 5),
-            "configJson": cfg.get("configJson", ""),
-            "enabled": True,
-            "timestamp": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
-        }
-        self._mqtt_mgr.publish_sensor_register(device_id, sensor_info)
+        if device_id:
+            # 绑定设备时：订阅控制主题 + MQTT 注册
+            self._mqtt_mgr.subscribe_device(device_id)
+            sensor_info = {
+                "sensorType": cfg.get("sensorType", "light"),
+                "displayName": cfg.get("displayName", ""),
+                "dataTopic": cfg.get("dataTopic", ""),
+                "reportFrequency": cfg.get("interval", 5),
+                "configJson": cfg.get("configJson", ""),
+                "enabled": True,
+                "timestamp": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+            }
+            self._mqtt_mgr.publish_sensor_register(device_id, sensor_info)
+        else:
+            logger.info(f"传感器 {saved_key} 未绑定设备，跳过 MQTT 注册和控制订阅")
 
         return saved_key
 
@@ -509,6 +513,10 @@ class SensorManager:
           - 自动指令(source=auto)   → worker 保持/恢复自动模式，继续周期性上报
         这样确保手动控制后不会被自动联动覆盖。
         """
+        if not device_id:
+            logger.debug("忽略空 deviceId 的控制指令（独立传感器不接受远程控制）")
+            return
+
         command = payload.get("command", "")
         source = payload.get("source", "manual")
         brightness = payload.get("brightness")  # 可选，0-100
@@ -569,7 +577,9 @@ class SensorManager:
                                       on_publish=self._record_publish)
                 with self._lock:
                     self._workers[sensor_key] = worker
-                self._mqtt_mgr.subscribe_device(cfg.get("deviceId", ""))
+                device_id = cfg.get("deviceId", "")
+                if device_id:
+                    self._mqtt_mgr.subscribe_device(device_id)
                 worker.start()
                 count += 1
                 logger.info(f"[本地加载] {_sensor_label(cfg)} (key={sensor_key})")

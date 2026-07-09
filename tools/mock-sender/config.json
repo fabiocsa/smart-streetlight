@@ -8,16 +8,16 @@
     "clientId": "mock-sender-v2"
   },
   "sensors": {
-    "SL-001_8152": {
-      "deviceId": "SL-001",
-      "sensorId": 8152,
-      "displayName": "SL-001光照",
+    "unbound_43374": {
+      "deviceId": "",
+      "sensorId": 43374,
+      "displayName": "A01光照",
       "sensorType": "light",
-      "deviceGroup": "SL-001",
-      "deviceName": "SL-001",
-      "name": "SL-001",
+      "deviceGroup": "A01",
+      "deviceName": "A01",
+      "name": "",
       "location": "",
-      "dataTopic": "streetlight/SL-001/sensor/data",
+      "dataTopic": "streetlight/unbound/light/data",
       "enabled": true,
       "interval": 5,
       "dataRange": {

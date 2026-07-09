@@ -130,8 +130,7 @@ function buildCard(s) {
                 <option value="auto" ${s.controlMode === 'auto' ? 'selected' : ''}>自动</option>
                 <option value="manual" ${s.controlMode === 'manual' ? 'selected' : ''}>手动</option>
             </select>
-            <button class="btn btn-sm btn-outline-primary" onclick="editSensor('${safeKey}')"
-                    data-bs-toggle="modal" data-bs-target="#addSensorModal" title="编辑">
+            <button class="btn btn-sm btn-outline-primary" onclick="editSensor('${safeKey}')" title="编辑">
                 <i class="bi bi-pencil"></i>
             </button>
             <button class="btn btn-sm btn-outline-danger" onclick="removeSensor('${safeKey}')" title="删除">
@@ -237,17 +236,13 @@ function addSensor() {
     fd.forEach((v, k) => { data[k] = v; });
 
     const deviceId = (data.deviceId || '').trim();
-    if (!deviceId) {
-        alert('请输入所属设备ID（需与后端已创建的设备ID一致）');
-        return;
-    }
 
     const body = {
         deviceId: deviceId,
         sensorType: data.sensorType || 'light',
         displayName: data.displayName || '',
         deviceGroup: data.deviceGroup || '',
-        dataTopic: data.dataTopic || `streetlight/${deviceId}/sensor/data`,
+        dataTopic: data.dataTopic || (deviceId ? `streetlight/${deviceId}/sensor/data` : `streetlight/unbound/${data.sensorType || 'light'}/data`),
         interval: parseInt(data.interval) || 5,
         enabled: true,
         controlMode: data.controlMode || 'auto',
@@ -348,12 +343,14 @@ function updateSensor(sensorKey) {
 function autoFillDataTopic() {
     const deviceIdEl = document.getElementById('deviceIdInput');
     const deviceId = deviceIdEl?.value?.trim();
-    if (!deviceId) {
-        alert('请先填写所属设备ID');
-        return;
-    }
+    const sensorTypeEl = document.querySelector('[name="sensorType"]');
+    const sensorType = sensorTypeEl?.value || 'light';
     const el = document.getElementById('dataTopicInput');
-    if (el) el.value = `streetlight/${deviceId}/sensor/data`;
+    if (deviceId) {
+        if (el) el.value = `streetlight/${deviceId}/sensor/data`;
+    } else {
+        if (el) el.value = `streetlight/unbound/${sensorType}/data`;
+    }
 }
 
 // ============================ MQTT 配置 ============================
