@@ -94,4 +94,40 @@ public class SensorRegistrationService {
             log.info("传感器已注销: id={}, simulatorSensorId={}", sensor.getId(), sensorId);
         });
     }
+
+    /**
+     * 从传感器数据中自动注册/恢复传感器（新事务，独立于数据保存）。
+     * 用于 MQTT 数据消息到达时，发现传感器尚未注册的容错恢复场景。
+     */
+    @Transactional(propagation = org.springframework.transaction.annotation.Propagation.REQUIRES_NEW)
+    public void autoRegisterFromData(Long simulatorSensorId, String sensorType,
+                                     String displayName, String dataTopic) {
+        sensorRepository.findBySimulatorSensorId(simulatorSensorId).ifPresentOrElse(
+            existing -> {
+                if (!existing.getEnabled()) {
+                    existing.setEnabled(true);
+                    if (displayName != null && !displayName.isBlank()) {
+                        existing.setDisplayName(displayName);
+                    }
+                    sensorRepository.save(existing);
+                    log.info("传感器已自动恢复启用: simulatorSensorId={}", simulatorSensorId);
+                }
+            },
+            () -> {
+                String name = (displayName != null && !displayName.isBlank())
+                        ? displayName : sensorType + "_" + simulatorSensorId;
+                Sensor sensor = Sensor.builder()
+                        .sensorType(sensorType)
+                        .displayName(name)
+                        .dataTopic(dataTopic)
+                        .reportFrequency(5)
+                        .enabled(true)
+                        .simulatorSensorId(simulatorSensorId)
+                        .build();
+                sensorRepository.save(sensor);
+                log.info("传感器自动注册（被删除后重新识别）: simulatorSensorId={}, displayName={}, type={}",
+                        simulatorSensorId, name, sensorType);
+            }
+        );
+    }
 }

@@ -9,6 +9,7 @@ import com.streetlight.repository.SensorDataRepository;
 import com.streetlight.repository.SensorRepository;
 import com.streetlight.service.AlarmService;
 import com.streetlight.service.SensorDataService;
+import com.streetlight.service.SensorRegistrationService;
 import com.streetlight.websocket.WebSocketHandler;
 import jakarta.persistence.EntityManager;
 import lombok.extern.slf4j.Slf4j;
@@ -32,6 +33,7 @@ public class SensorDataServiceImpl implements SensorDataService {
     private final MqttPublishService mqttPublishService;
     private final EntityManager entityManager;
     private final WebSocketHandler webSocketHandler;
+    private final SensorRegistrationService sensorRegistrationService;
 
     public SensorDataServiceImpl(SensorDataRepository sensorDataRepository,
                                   DeviceRepository deviceRepository,
@@ -39,7 +41,8 @@ public class SensorDataServiceImpl implements SensorDataService {
                                   AlarmService alarmService,
                                   MqttPublishService mqttPublishService,
                                   EntityManager entityManager,
-                                  WebSocketHandler webSocketHandler) {
+                                  WebSocketHandler webSocketHandler,
+                                  SensorRegistrationService sensorRegistrationService) {
         this.sensorDataRepository = sensorDataRepository;
         this.deviceRepository = deviceRepository;
         this.sensorRepository = sensorRepository;
@@ -47,6 +50,7 @@ public class SensorDataServiceImpl implements SensorDataService {
         this.mqttPublishService = mqttPublishService;
         this.entityManager = entityManager;
         this.webSocketHandler = webSocketHandler;
+        this.sensorRegistrationService = sensorRegistrationService;
     }
 
     @Override
@@ -56,45 +60,22 @@ public class SensorDataServiceImpl implements SensorDataService {
         // 保存完整传感器数据（含未绑定传感器的数据，deviceId 可能为 sensor_{id}）
         SensorData sd = SensorData.from(deviceId, sensorId, sensorType, data, reportedAt);
         sensorDataRepository.save(sd);
+        log.info("传感器数据已保存: deviceId={}, sensorId={}, type={}, fields={}",
+                deviceId, sensorId, sensorType, data.keySet());
 
         // 设备不存在或传感器未绑定时：自动注册/恢复传感器（容错恢复）
         if (deviceId.startsWith("sensor_")) {
-            // sensorId 来自 MQTT topic，是模拟器内部 ID
-            sensorRepository.findBySimulatorSensorId(sensorId).ifPresentOrElse(
-                existing -> {
-                    // 传感器存在但被禁用 → 自动恢复启用
-                    if (!existing.getEnabled()) {
-                        existing.setEnabled(true);
-                        // 从 data payload 恢复 displayName（可能比 DB 中的更新）
-                        if (data.containsKey("displayName") && data.get("displayName") != null) {
-                            existing.setDisplayName(data.get("displayName").toString());
-                        }
-                        sensorRepository.save(existing);
-                        log.info("传感器已自动恢复启用: simulatorSensorId={}", sensorId);
-                    }
-                },
-                () -> {
-                    // 传感器完全不存在（被硬删除或注册消息丢失）→ 自动注册
-                    String displayName = null;
-                    if (data.containsKey("displayName") && data.get("displayName") != null) {
-                        displayName = data.get("displayName").toString();
-                    }
-                    if (displayName == null || displayName.isBlank()) {
-                        displayName = sensorType + "_" + sensorId;
-                    }
-                    Sensor newSensor = Sensor.builder()
-                            .sensorType(sensorType)
-                            .displayName(displayName)
-                            .dataTopic("streetlight/sensor/" + sensorId + "/data")
-                            .reportFrequency(5)
-                            .enabled(true)
-                            .simulatorSensorId(sensorId)
-                            .build();
-                    sensorRepository.save(newSensor);
-                    log.info("传感器自动注册（被删除后重新识别）: simulatorSensorId={}, displayName={}, type={}",
-                            sensorId, displayName, sensorType);
-                }
-            );
+            // 委托给 SensorRegistrationService（独立事务），失败不影响数据保存
+            try {
+                String displayName = data.containsKey("displayName") && data.get("displayName") != null
+                        ? data.get("displayName").toString() : null;
+                sensorRegistrationService.autoRegisterFromData(
+                        sensorId, sensorType, displayName,
+                        "streetlight/sensor/" + sensorId + "/data");
+            } catch (Exception e) {
+                log.warn("传感器自动注册失败（不影响数据保存）: sensorId={}, error={}",
+                        sensorId, e.getMessage());
+            }
             log.debug("传感器未绑定设备，跳过联动: deviceId={}, sensorId={}", deviceId, sensorId);
             return sd;
         }
