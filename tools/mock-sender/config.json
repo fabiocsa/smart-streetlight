@@ -7,24 +7,7 @@
     "topicPrefix": "streetlight",
     "clientId": "mock-sender-v3"
   },
-  "sensors": {
-    "sensor_96460": {
-      "sensorId": 96460,
-      "displayName": "A01光照",
-      "sensorType": "light",
-      "groupTag": "A01",
-      "dataTopic": "streetlight/sensor/93850/data",
-      "enabled": true,
-      "interval": 5,
-      "dataRange": {
-        "min": 0,
-        "max": 800
-      },
-      "lightStatus": "off",
-      "controlMode": "auto",
-      "configJson": "{\"min\":0,\"max\":800}"
-    }
-  },
+  "sensors": {},
   "simulation": {
     "latitude": 29.5,
     "longitude": 106.5,
