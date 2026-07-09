@@ -16,7 +16,7 @@
       <el-form-item label="设备ID" prop="deviceId">
         <el-input v-model="form.deviceId" placeholder="如 SL-005" :disabled="isEdit" />
         <div class="form-hint" v-if="!isEdit">
-          <i class="el-icon-info"></i> 模拟器启动时也会通过 MQTT 自动注册设备，无需手动创建
+          <i class="el-icon-info"></i> 设备通过 REST API 管理，创建后传感器可通过 MQTT 自动挂载到此设备
         </div>
       </el-form-item>
       <el-form-item label="设备名称" prop="name">

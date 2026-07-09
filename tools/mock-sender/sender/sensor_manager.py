@@ -330,10 +330,6 @@ class SensorManager:
         self._history: deque = deque(maxlen=200)
         self._history_lock = threading.Lock()
 
-        # 注册确认事件
-        self._registration_ack_event = threading.Event()
-        self._registration_ack_result: Optional[Dict[str, Any]] = None
-
     # ------------------------------------------------------------------
     # 传感器列表
     # ------------------------------------------------------------------
@@ -579,74 +575,6 @@ class SensorManager:
                 logger.info(f"[本地加载] {_sensor_label(cfg)} (key={sensor_key})")
         logger.info(f"从本地配置加载了 {count} 个传感器")
         return count
-
-    # ------------------------------------------------------------------
-    # MQTT Broker 注册 / 注销
-    # ------------------------------------------------------------------
-
-    def register_to_broker(self) -> bool:
-        """
-        通过 MQTT 向 Broker 注册当前设备及其传感器列表。
-        发送注册消息后等待 ACK 确认，收到确认后启动所有传感器。
-
-        返回 True 表示注册成功并已启动传感器。
-        """
-        device_cfg = self._config_mgr.get_device_config()
-        device_id = device_cfg.get("deviceId", "")
-        if not device_id:
-            logger.error("设备 ID 未配置，无法注册到 Broker")
-            return False
-
-        # 构建注册 payload
-        sim_config = self._config_mgr.get_simulation_config()
-        sensors_list = []
-        all_sensors = self._config_mgr.get_all_sensors()
-        for key, cfg in all_sensors.items():
-            if cfg.get("enabled", True):
-                sensors_list.append({
-                    "sensorType": cfg.get("sensorType", "light"),
-                    "displayName": cfg.get("displayName", ""),
-                    "dataTopic": cfg.get("dataTopic", ""),
-                    "reportFrequency": cfg.get("interval", cfg.get("reportFrequency", 5)),
-                    "enabled": True,
-                    "configJson": cfg.get("configJson", ""),
-                    "messageTemplate": cfg.get("messageTemplate", ""),
-                    "autoSendMode": cfg.get("autoSendMode", "algorithm"),
-                    "autoSendContent": cfg.get("autoSendContent", ""),
-                })
-
-        payload = {
-            "deviceId": device_id,
-            "name": device_cfg.get("name", device_id),
-            "location": device_cfg.get("location", ""),
-            "sensors": sensors_list,
-            "simConfig": {
-                "latitude": sim_config.get("latitude", 29.5),
-                "longitude": sim_config.get("longitude", 106.5),
-                "timezoneOffset": sim_config.get("timezoneOffset", 8),
-            },
-            "timestamp": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
-        }
-
-        logger.info(f"正在向 Broker 注册设备: deviceId={device_id}, sensors={len(sensors_list)}")
-        ok = self._mqtt_mgr.publish_registration(payload)
-        if not ok:
-            logger.error("设备注册消息发送失败")
-            return False
-
-        # 注册成功 → 启动所有配置中的传感器
-        logger.info("设备注册消息已发送，启动传感器...")
-        self.load_from_config()
-        return True
-
-    def unregister_from_broker(self) -> bool:
-        """通过 MQTT 发送设备注销消息。"""
-        device_cfg = self._config_mgr.get_device_config()
-        device_id = device_cfg.get("deviceId", "")
-        if not device_id:
-            return False
-        logger.info(f"正在注销设备: deviceId={device_id}")
-        return self._mqtt_mgr.publish_deregistration(device_id)
 
     # ------------------------------------------------------------------
     # 发送历史

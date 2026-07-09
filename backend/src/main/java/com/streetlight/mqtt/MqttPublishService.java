@@ -12,7 +12,6 @@ import org.springframework.stereotype.Service;
 
 import java.time.LocalDateTime;
 import java.util.LinkedHashMap;
-import java.util.List;
 import java.util.Map;
 
 @Service
@@ -48,33 +47,6 @@ public class MqttPublishService {
             log.info("MQTT发布指令 - topic: {}, payload: {}", topic, json);
         } catch (MqttException | JsonProcessingException e) {
             log.error("MQTT发布指令失败 - deviceId: {}: {}", deviceId, e.getMessage(), e);
-        }
-    }
-
-    /**
-     * 发布设备注册确认。
-     * 主题: streetlight/{deviceId}/register/ack
-     */
-    public void publishRegistrationAck(String deviceId, String status,
-                                        List<Map<String, Object>> sensors) {
-        if (!mqttClient.isConnected()) {
-            log.warn("MQTT 未连接，跳过发布注册确认 - deviceId: {}", deviceId);
-            return;
-        }
-        try {
-            String topic = "streetlight/" + deviceId + "/register/ack";
-            Map<String, Object> payload = new LinkedHashMap<>();
-            payload.put("deviceId", deviceId);
-            payload.put("status", status);
-            payload.put("sensors", sensors);
-            payload.put("timestamp", LocalDateTime.now().toString());
-            String json = objectMapper.writeValueAsString(payload);
-            MqttMessage message = new MqttMessage(json.getBytes());
-            message.setQos(1);
-            mqttClient.publish(topic, message);
-            log.info("已发布注册确认 - topic: {}, status: {}", topic, status);
-        } catch (MqttException | JsonProcessingException e) {
-            log.error("发布注册确认失败 - deviceId: {}: {}", deviceId, e.getMessage(), e);
         }
     }
 

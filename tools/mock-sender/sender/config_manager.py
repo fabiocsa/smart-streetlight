@@ -23,11 +23,6 @@ DEFAULT_CONFIG: Dict[str, Any] = {
         "clientId": "mock-sender-v2",
     },
     "backendUrl": "http://localhost:8080/api",
-    "device": {
-        "deviceId": "SL-001",
-        "name": "路灯A-01",
-        "location": "校门口",
-    },
     "simulation": {
         "latitude": 29.5,
         "longitude": 106.5,
@@ -146,20 +141,6 @@ class ConfigManager:
         with self._lock:
             sim = self._config.setdefault("simulation", {})
             sim.update(updates)
-            return self.save()
-
-    # ------------------------------------------------------------------
-    # 设备身份配置（模拟器自身标识）
-    # ------------------------------------------------------------------
-
-    def get_device_config(self) -> Dict[str, Any]:
-        with self._lock:
-            return dict(self._config.get("device", {}))
-
-    def update_device_config(self, updates: Dict[str, Any]) -> bool:
-        with self._lock:
-            device_cfg = self._config.setdefault("device", {})
-            device_cfg.update(updates)
             return self.save()
 
     # ------------------------------------------------------------------

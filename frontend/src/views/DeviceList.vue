@@ -24,23 +24,11 @@
         >
           <el-icon><Delete /></el-icon> 批量删除 ({{ selectedIds.length }})
         </el-button>
-        <el-tooltip content="设备由模拟器通过 MQTT 自动注册，也可手动预创建" placement="top">
-          <el-button v-if="authStore.isAdmin" type="primary" @click="openAddDialog">
+        <el-button v-if="authStore.isAdmin" type="primary" @click="openAddDialog">
             <el-icon><Plus /></el-icon> 添加设备
           </el-button>
-        </el-tooltip>
       </div>
     </div>
-
-    <!-- 自动发现提示 -->
-    <el-alert
-      v-if="deviceStore.devices.length > 0"
-      title="设备通过 MQTT 自动发现 — 启动模拟器后，设备上线即自动注册并显示在列表中"
-      type="info"
-      :closable="true"
-      show-icon
-      style="margin-bottom: 12px"
-    />
 
     <!-- 搜索栏 -->
     <el-card shadow="never" style="margin-bottom: 16px">
@@ -148,9 +136,9 @@
           </el-empty>
           <el-empty v-else description="暂无设备">
             <template #description>
-              <p style="color: #909399; margin: 0">尚未发现任何设备</p>
+              <p style="color: #909399; margin: 0">尚未添加任何设备</p>
               <p style="color: #c0c4cc; font-size: 12px; margin: 4px 0 0 0">
-                请启动 Mock 模拟器，设备将通过 MQTT 自动注册到系统
+                点击「添加设备」通过 REST API 创建，传感器将通过 MQTT 自动挂载到已有设备下
               </p>
             </template>
             <el-button type="primary" @click="refreshDevices">

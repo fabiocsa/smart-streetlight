@@ -45,9 +45,6 @@
                             title="启动所有已停止的传感器">
                         <i class="bi bi-play-fill"></i> 全部启动
                     </button>
-                    <button class="btn btn-sm btn-outline-info" onclick="registerDevice()" id="btnRegister">
-                        <i class="bi bi-broadcast"></i> 注册到 Broker
-                    </button>
                     <button class="btn btn-sm btn-success" data-bs-toggle="modal" data-bs-target="#addSensorModal">
                         <i class="bi bi-plus-lg"></i> 添加传感器
                     </button>
@@ -100,32 +97,6 @@
 
         <!-- 右侧：配置与日志 -->
         <div class="col-lg-4">
-            <!-- 设备身份 -->
-            <div class="card mb-3">
-                <div class="card-header d-flex justify-content-between align-items-center">
-                    <span><i class="bi bi-hdd-stack"></i> 设备身份 (Device Identity)</span>
-                    <button class="btn btn-sm btn-outline-secondary" onclick="loadDeviceConfig()">
-                        <i class="bi bi-arrow-clockwise"></i>
-                    </button>
-                </div>
-                <div class="card-body">
-                    <div class="mb-2">
-                        <input id="deviceIdInput" class="form-control form-control-sm mb-1" placeholder="设备ID: SL-001">
-                        <input id="deviceNameInput" class="form-control form-control-sm mb-1" placeholder="设备名称: 路灯A-01">
-                        <input id="deviceLocationInput" class="form-control form-control-sm" placeholder="安装位置: 校门口">
-                    </div>
-                    <div class="d-flex gap-2">
-                        <button class="btn btn-sm btn-outline-secondary flex-fill" onclick="saveDeviceConfig()">
-                            <i class="bi bi-check-lg"></i> 保存
-                        </button>
-                        <button class="btn btn-sm btn-outline-info flex-fill" onclick="registerDevice()">
-                            <i class="bi bi-broadcast"></i> 注册到 Broker
-                        </button>
-                    </div>
-                    <div id="deviceRegResult" class="mt-2 small"></div>
-                </div>
-            </div>
-
             <!-- MQTT 配置 -->
             <div class="card mb-3">
                 <div class="card-header d-flex justify-content-between align-items-center">
@@ -223,6 +194,13 @@
                 <form id="addSensorForm">
                     <input type="hidden" id="editSensorKey" value="">
                     <div class="mb-3">
+                        <label class="form-label">所属设备ID <span class="text-danger">*</span></label>
+                        <input name="deviceId" class="form-control form-control-sm"
+                               id="deviceIdInput"
+                               placeholder="如 SL-001（需与后端已创建的设备ID一致）" required>
+                        <div class="form-text">传感器将注册到此设备下，设备需先通过后端 REST API 创建</div>
+                    </div>
+                    <div class="mb-3">
                         <label class="form-label">传感器类型</label>
                         <select name="sensorType" class="form-select form-select-sm">
                             <option value="light">☀️ 光照</option>
@@ -239,7 +217,7 @@
                     <div class="mb-3">
                         <label class="form-label">所属组名 <span class="text-muted">(可选)</span></label>
                         <input name="deviceGroup" class="form-control form-control-sm"
-                               placeholder="如 路灯A-01，仅用于卡分组显示">
+                               placeholder="如 路灯A-01，仅用于卡片分组显示">
                         <div class="form-text">纯文本标签，不上报至系统，仅用于模拟内部显示</div>
                     </div>
                     <div class="mb-3">
