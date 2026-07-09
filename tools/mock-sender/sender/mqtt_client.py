@@ -227,12 +227,14 @@ class MqttClientManager:
         if data_topic:
             topic = data_topic
         else:
-            topic = self._topic(TOPIC_SENSOR_DATA, sensor_id=str(sensor_id))
+            prefix = self._config.get("topicPrefix", "streetlight")
+            topic = f"{prefix}/sensor/{sensor_id}/data"
         return self.publish(topic, payload)
 
     def publish_heartbeat(self, sensor_id: int, payload: dict) -> bool:
         """发布心跳到 streetlight/sensor/{sensorId}/status。"""
-        topic = self._topic(TOPIC_HEARTBEAT, sensor_id=str(sensor_id))
+        prefix = self._config.get("topicPrefix", "streetlight")
+        topic = f"{prefix}/sensor/{sensor_id}/status"
         return self.publish(topic, payload)
 
     def publish_control_response(self, device_id: str, payload: dict) -> bool:
