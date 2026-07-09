@@ -7,7 +7,56 @@
     "topicPrefix": "streetlight",
     "clientId": "mock-sender-v3"
   },
-  "sensors": {},
+  "sensors": {
+    "sensor_5335": {
+      "sensorId": 5335,
+      "displayName": "A01光照",
+      "sensorType": "light",
+      "groupTag": "",
+      "dataTopic": "streetlight/sensor/4342/data",
+      "enabled": true,
+      "interval": 5,
+      "dataRange": {
+        "min": 0,
+        "max": 800
+      },
+      "lightStatus": "off",
+      "controlMode": "auto",
+      "configJson": "{\"min\":0,\"max\":800}"
+    },
+    "sensor_13119": {
+      "sensorId": 13119,
+      "displayName": "A02光照",
+      "sensorType": "light",
+      "groupTag": "",
+      "dataTopic": "streetlight/sensor/12211/data",
+      "enabled": true,
+      "interval": 5,
+      "dataRange": {
+        "min": 0,
+        "max": 800
+      },
+      "lightStatus": "off",
+      "controlMode": "auto",
+      "configJson": "{\"min\":0,\"max\":800}"
+    },
+    "sensor_25352": {
+      "sensorId": 25352,
+      "displayName": "B01光照",
+      "sensorType": "light",
+      "groupTag": "",
+      "dataTopic": "streetlight/sensor/24560/data",
+      "enabled": true,
+      "interval": 5,
+      "dataRange": {
+        "min": 0,
+        "max": 800
+      },
+      "lightStatus": "off",
+      "controlMode": "auto",
+      "configJson": "{\"min\":0,\"max\":800}"
+    }
+  },
   "simulation": {
     "latitude": 29.5,
     "longitude": 106.5,

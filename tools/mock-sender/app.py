@@ -262,7 +262,7 @@ def api_update_mqtt_config():
         return jsonify({"error": "保存配置失败"}), 500
     new_cfg = config_mgr.get_mqtt_config()
     mqtt_mgr.connect(new_cfg)
-    sensor_mgr.stop_all()
+    sensor_mgr.shutdown()
     sensor_mgr.load_from_config()
     return jsonify({"message": "MQTT 配置已更新并重新连接"})
 
@@ -432,7 +432,7 @@ def main():
         pass
     finally:
         logger.info("正在关闭...")
-        sensor_mgr.stop_all()
+        sensor_mgr.shutdown()
         mqtt_mgr.disconnect()
         logger.info("已安全退出")
 

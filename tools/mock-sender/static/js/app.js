@@ -541,20 +541,29 @@ function renderHistory(filterKey) {
     let items = historyList;
     if (filterKey) items = items.filter(h => h.sensorKey === filterKey);
 
+    // ★ 保存当前已展开的条目 ID，重新渲染后恢复展开状态
+    const expandedIds = new Set();
+    container.querySelectorAll('.collapse.show').forEach(el => {
+        if (el.id) expandedIds.add(el.id);
+    });
+
     if (!items.length) {
         container.innerHTML = '<div class="text-center text-muted py-3 small"><i class="bi bi-hourglass-split"></i> 等待数据发送...</div>';
         return;
     }
-    container.innerHTML = items.map(h => `
+    container.innerHTML = items.map(h => {
+        const histId = 'hist-' + h.time.replace(/\D/g, '');
+        const showClass = expandedIds.has(histId) ? ' show' : '';
+        return `
         <div class="history-item">
-            <div class="history-header" data-bs-toggle="collapse" data-bs-target="#hist-${h.time.replace(/\D/g,'')}">
+            <div class="history-header" data-bs-toggle="collapse" data-bs-target="#${histId}">
                 <span class="history-time">${escHtml(h.time)}</span>
                 <span class="history-label">${escHtml(h.displayName || h.deviceId)}</span>
                 <span class="history-chevron ms-auto"><i class="bi bi-chevron-down"></i></span>
             </div>
-            <div class="collapse"><div class="history-topic small text-muted">${escHtml(h.topic)}</div>
+            <div class="collapse${showClass}" id="${histId}"><div class="history-topic small text-muted">${escHtml(h.topic)}</div>
             <pre class="history-payload">${escHtml(JSON.stringify(h.payload, null, 2))}</pre></div>
-        </div>`).join('');
+        </div>`}).join('');
 }
 
 function clearHistory() {
