@@ -34,7 +34,9 @@
       "Bash(ssh yicheng@192.168.58.130 \"cat > ~/mqtt_simulator.py\")",
       "Bash(awk '{print $NF}')",
       "Bash(xargs -I{} taskkill /F /PID {})",
-      "Bash(mysql -h 8.130.102.89 -P 3306 -u remote_user -p123456 -e \"USE streetlight; SELECT COUNT\\(*\\) AS sensor_data_count FROM sensor_data; SELECT id, device_id, light_intensity, reported_at FROM sensor_data ORDER BY id DESC LIMIT 10;\")"
+      "Bash(mysql -h 8.130.102.89 -P 3306 -u remote_user -p123456 -e \"USE streetlight; SELECT COUNT\\(*\\) AS sensor_data_count FROM sensor_data; SELECT id, device_id, light_intensity, reported_at FROM sensor_data ORDER BY id DESC LIMIT 10;\")",
+      "Bash(npm run *)",
+      "Bash(node -e \"const icons = require\\('@element-plus/icons-vue'\\); console.log\\(Object.keys\\(icons\\).filter\\(k => k.toLowerCase\\(\\).includes\\('map'\\) || k.toLowerCase\\(\\).includes\\('grid'\\) || k.toLowerCase\\(\\).includes\\('layout'\\) || k.toLowerCase\\(\\).includes\\('table'\\)\\).join\\(', '\\)\\)\")"
     ]
   }
 }
