@@ -33,6 +33,7 @@ com\streetlight\common\GlobalExceptionHandler.class
 com\streetlight\entity\ChatSession$ChatSessionBuilder.class
 com\streetlight\repository\SensorRepository.class
 com\streetlight\entity\ChatMessage.class
+com\streetlight\service\DeviceRegistrationService.class
 com\streetlight\service\impl\ChatServiceImpl$ToolCall.class
 com\streetlight\controller\DashboardController.class
 com\streetlight\controller\DeviceController.class

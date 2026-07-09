@@ -15,6 +15,9 @@
     >
       <el-form-item label="设备ID" prop="deviceId">
         <el-input v-model="form.deviceId" placeholder="如 SL-005" :disabled="isEdit" />
+        <div class="form-hint" v-if="!isEdit">
+          <i class="el-icon-info"></i> 模拟器启动时也会通过 MQTT 自动注册设备，无需手动创建
+        </div>
       </el-form-item>
       <el-form-item label="设备名称" prop="name">
         <el-input v-model="form.name" placeholder="如 路灯A-05" />
@@ -110,3 +113,9 @@ async function submit() {
   }
 }
 </script>
+
+<style scoped>
+.form-hint {
+  font-size: 12px; color: #909399; line-height: 1.5; margin-top: 4px;
+}
+</style>

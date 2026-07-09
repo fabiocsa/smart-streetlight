@@ -22,15 +22,12 @@ DEFAULT_CONFIG: Dict[str, Any] = {
         "topicPrefix": "streetlight",
         "clientId": "mock-sender-v2",
     },
-    "database": {
-        "host": "8.130.102.89",
-        "port": 3306,
-        "database": "streetlight",
-        "user": "remote_user",
-        "password": "123456",
-        "poolSize": 5,
-    },
     "backendUrl": "http://localhost:8080/api",
+    "device": {
+        "deviceId": "SL-001",
+        "name": "路灯A-01",
+        "location": "校门口",
+    },
     "simulation": {
         "latitude": 29.5,
         "longitude": 106.5,
@@ -152,17 +149,17 @@ class ConfigManager:
             return self.save()
 
     # ------------------------------------------------------------------
-    # 数据库配置
+    # 设备身份配置（模拟器自身标识）
     # ------------------------------------------------------------------
 
-    def get_database_config(self) -> Dict[str, Any]:
+    def get_device_config(self) -> Dict[str, Any]:
         with self._lock:
-            return dict(self._config.get("database", {}))
+            return dict(self._config.get("device", {}))
 
-    def update_database_config(self, updates: Dict[str, Any]) -> bool:
+    def update_device_config(self, updates: Dict[str, Any]) -> bool:
         with self._lock:
-            db_cfg = self._config.setdefault("database", {})
-            db_cfg.update(updates)
+            device_cfg = self._config.setdefault("device", {})
+            device_cfg.update(updates)
             return self.save()
 
     # ------------------------------------------------------------------

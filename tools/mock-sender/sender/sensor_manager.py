@@ -320,11 +320,9 @@ class SensorWorker:
 class SensorManager:
     """传感器管理器，管理所有 SensorWorker。"""
 
-    def __init__(self, config_mgr: ConfigManager, mqtt_mgr: MqttClientManager,
-                 db_client=None):
+    def __init__(self, config_mgr: ConfigManager, mqtt_mgr: MqttClientManager):
         self._config_mgr = config_mgr
         self._mqtt_mgr = mqtt_mgr
-        self._db_client = db_client
         self._workers: Dict[str, SensorWorker] = {}
         self._lock = threading.Lock()
 
@@ -332,9 +330,9 @@ class SensorManager:
         self._history: deque = deque(maxlen=200)
         self._history_lock = threading.Lock()
 
-    def set_db_client(self, db_client) -> None:
-        """热更新数据库客户端（用于配置变更后重连）。"""
-        self._db_client = db_client
+        # 注册确认事件
+        self._registration_ack_event = threading.Event()
+        self._registration_ack_result: Optional[Dict[str, Any]] = None
 
     # ------------------------------------------------------------------
     # 传感器列表
@@ -404,7 +402,7 @@ class SensorManager:
     # ------------------------------------------------------------------
 
     def add_sensor(self, device_id: str, sensor_cfg: Dict[str, Any]) -> Optional[str]:
-        """添加传感器并自动启动，返回传感器键。"""
+        """添加传感器并自动启动，返回传感器键。同时通过 MQTT 发布传感器注册。"""
         with self._lock:
             sensor_id = sensor_cfg.get("sensorId", sensor_cfg.get("id"))
             if sensor_id is None:
@@ -434,19 +432,40 @@ class SensorManager:
 
         worker.start()
         logger.info(f"已添加传感器: {_sensor_label(cfg)} (key={saved_key})")
+
+        # 通过 MQTT 发布传感器动态注册
+        sensor_info = {
+            "sensorType": cfg.get("sensorType", "light"),
+            "displayName": cfg.get("displayName", ""),
+            "dataTopic": cfg.get("dataTopic", ""),
+            "reportFrequency": cfg.get("interval", 5),
+            "configJson": cfg.get("configJson", ""),
+            "enabled": True,
+            "timestamp": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+        }
+        self._mqtt_mgr.publish_sensor_register(device_id, sensor_info)
+
         return saved_key
 
     def remove_sensor(self, sensor_key: str) -> bool:
-        """停止并移除传感器。"""
+        """停止并移除传感器。同时通过 MQTT 发布传感器注销。"""
         with self._lock:
             worker = self._workers.pop(sensor_key, None)
             if not worker:
                 return False
 
+        cfg = worker.config
+        sensor_id = cfg.get("sensorId")
+
         worker.stop()
         self._mqtt_mgr.unsubscribe_device(worker.device_id)
         self._config_mgr.remove_sensor(sensor_key)
-        logger.info(f"已移除传感器: {_sensor_label(worker.config)} (key={sensor_key})")
+        logger.info(f"已移除传感器: {_sensor_label(cfg)} (key={sensor_key})")
+
+        # 通过 MQTT 发布传感器注销
+        if sensor_id is not None:
+            self._mqtt_mgr.publish_sensor_unregister(worker.device_id, int(sensor_id))
+
         return True
 
     # ------------------------------------------------------------------
@@ -561,191 +580,73 @@ class SensorManager:
         logger.info(f"从本地配置加载了 {count} 个传感器")
         return count
 
-    def load_from_backend(self) -> int:
-        """
-        全量同步传感器列表 —— DB 优先，REST API 作为 fallback。
-        """
-        db_cfg = self._config_mgr.get_database_config()
-        if db_cfg and db_cfg.get("host") and self._db_client:
-            try:
-                return self._load_from_database()
-            except Exception as e:
-                logger.warning(f"数据库连接失败，回退到 REST API: {e}")
-        return self._load_from_rest_api()
+    # ------------------------------------------------------------------
+    # MQTT Broker 注册 / 注销
+    # ------------------------------------------------------------------
 
-    def _load_from_database(self) -> int:
+    def register_to_broker(self) -> bool:
         """
-        从 MySQL sensor 表直接加载所有已启用的传感器。
-        支持 device_id=NULL 的无主传感器（key 格式: unbound_{id}）。
+        通过 MQTT 向 Broker 注册当前设备及其传感器列表。
+        发送注册消息后等待 ACK 确认，收到确认后启动所有传感器。
+
+        返回 True 表示注册成功并已启动传感器。
         """
-        if not self._db_client:
-            logger.warning("数据库客户端未初始化，跳过数据库加载")
-            return 0
+        device_cfg = self._config_mgr.get_device_config()
+        device_id = device_cfg.get("deviceId", "")
+        if not device_id:
+            logger.error("设备 ID 未配置，无法注册到 Broker")
+            return False
 
-        logger.info("开始从数据库同步传感器...")
-        rows = self._db_client.get_all_sensors()
-        if not rows:
-            logger.info("数据库中暂无传感器记录")
-            return 0
-
-        logger.info(f"数据库查询到 {len(rows)} 条传感器记录")
-
-        total_added = 0
+        # 构建注册 payload
         sim_config = self._config_mgr.get_simulation_config()
+        sensors_list = []
+        all_sensors = self._config_mgr.get_all_sensors()
+        for key, cfg in all_sensors.items():
+            if cfg.get("enabled", True):
+                sensors_list.append({
+                    "sensorType": cfg.get("sensorType", "light"),
+                    "displayName": cfg.get("displayName", ""),
+                    "dataTopic": cfg.get("dataTopic", ""),
+                    "reportFrequency": cfg.get("interval", cfg.get("reportFrequency", 5)),
+                    "enabled": True,
+                    "configJson": cfg.get("configJson", ""),
+                    "messageTemplate": cfg.get("messageTemplate", ""),
+                    "autoSendMode": cfg.get("autoSendMode", "algorithm"),
+                    "autoSendContent": cfg.get("autoSendContent", ""),
+                })
 
-        for row in rows:
-            sensor_id = row.get("id")
-            device_id = row.get("device_id") or ""  # NULL → ""
-            sensor_type = row.get("sensor_type", "light")
-            display_name = row.get("display_name", "")
-            data_topic = row.get("data_topic", "")
-            report_frequency = row.get("report_frequency", 5)
-            enabled = row.get("enabled", 1)
-            config_json = row.get("config_json", "")
+        payload = {
+            "deviceId": device_id,
+            "name": device_cfg.get("name", device_id),
+            "location": device_cfg.get("location", ""),
+            "sensors": sensors_list,
+            "simConfig": {
+                "latitude": sim_config.get("latitude", 29.5),
+                "longitude": sim_config.get("longitude", 106.5),
+                "timezoneOffset": sim_config.get("timezoneOffset", 8),
+            },
+            "timestamp": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+        }
 
-            # 跳过禁用的传感器
-            if not enabled:
-                logger.debug(f"跳过已禁用的传感器 DB id={sensor_id}")
-                continue
+        logger.info(f"正在向 Broker 注册设备: deviceId={device_id}, sensors={len(sensors_list)}")
+        ok = self._mqtt_mgr.publish_registration(payload)
+        if not ok:
+            logger.error("设备注册消息发送失败")
+            return False
 
-            # 生成 sensor key
-            key = _make_sensor_key(device_id, sensor_id)
-            if not key:
-                continue
+        # 注册成功 → 启动所有配置中的传感器
+        logger.info("设备注册消息已发送，启动传感器...")
+        self.load_from_config()
+        return True
 
-            # 已存在的跳过
-            if key in self._workers:
-                continue
-
-            # 解析 config_json 获取数据范围
-            data_range = {"min": 0, "max": 800}
-            if config_json:
-                try:
-                    import json
-                    cfg = json.loads(config_json)
-                    if isinstance(cfg, dict):
-                        data_range = {
-                            "min": cfg.get("min", 0),
-                            "max": cfg.get("max", 800),
-                        }
-                except (json.JSONDecodeError, TypeError):
-                    pass
-
-            # 查询设备名（如果有 device_id）
-            device_name = ""
-            location = ""
-            if device_id:
-                devices = self._db_client.get_all_devices()
-                for dev in devices:
-                    if dev.get("device_id") == device_id:
-                        device_name = dev.get("name", "")
-                        location = dev.get("location", "")
-                        break
-
-            sensor_cfg = {
-                "sensorId": sensor_id,
-                "deviceId": device_id,
-                "displayName": display_name,
-                "sensorType": sensor_type,
-                "deviceName": device_name,
-                "dataTopic": data_topic,
-                "interval": report_frequency,
-                "enabled": bool(enabled),
-                "location": location,
-                "configJson": config_json,
-                "dataRange": data_range,
-            }
-
-            # 使用内部方法直接创建 worker（绕过 add_sensor 的配置持久化）
-            with self._lock:
-                worker = SensorWorker(
-                    key, sensor_cfg, self._mqtt_mgr,
-                    sim_config=sim_config,
-                    on_publish=self._record_publish,
-                )
-                self._workers[key] = worker
-
-            # 订阅控制主题
-            mqtt_device_id = device_id if device_id else f"unbound/{sensor_id}"
-            self._mqtt_mgr.subscribe_device(device_id if device_id else mqtt_device_id)
-
-            worker.start()
-            total_added += 1
-            label = _sensor_label(sensor_cfg)
-            logger.info(f"[DB加载] {label} (key={key})")
-
-        logger.info(f"从数据库同步了 {total_added} 个传感器")
-        return total_added
-
-    def _load_from_rest_api(self) -> int:
-        """
-        [Fallback] 从后端 REST API 全量同步传感器列表。
-        步骤:
-          1. GET /api/devices → 获取所有设备
-          2. 对每个设备 GET /api/devices/{deviceId}/sensors → 获取设备下的传感器
-          3. 将所有传感器添加到本地
-        """
-        backend_url = self._config_mgr.get_backend_url()
-        logger.info(f"开始从后端同步传感器 (REST API fallback): {backend_url}")
-
-        # 1. 获取所有设备
-        devices = _http_get_json(f"{backend_url}/devices", timeout=10)
-        if not devices:
-            logger.warning("无法获取设备列表，后端可能未启动")
-            return 0
-
-        if isinstance(devices, dict):
-            devices = devices.get("data", devices.get("content", []))
-
-        if not isinstance(devices, list):
-            logger.warning(f"设备列表格式异常: {type(devices)}")
-            return 0
-
-        logger.info(f"获取到 {len(devices)} 个设备")
-
-        # 2. 遍历每个设备获取传感器
-        total_added = 0
-        for device in devices:
-            device_id = device.get("deviceId", "")
-            device_name = device.get("name", device_id)
-            if not device_id:
-                continue
-
-            sensors_resp = _http_get_json(f"{backend_url}/devices/{device_id}/sensors", timeout=10)
-            if not sensors_resp:
-                continue
-
-            if isinstance(sensors_resp, dict):
-                sensor_list = sensors_resp.get("data", sensors_resp.get("content", []))
-            elif isinstance(sensors_resp, list):
-                sensor_list = sensors_resp
-            else:
-                continue
-
-            if not sensor_list:
-                logger.info(f"设备 {device_name} ({device_id}) 暂无传感器")
-                continue
-
-            for sensor in sensor_list:
-                sensor_cfg = {
-                    "sensorId": sensor.get("id"),
-                    "displayName": sensor.get("displayName", ""),
-                    "sensorType": sensor.get("sensorType", "light"),
-                    "deviceName": device_name,
-                    "deviceId": device_id,
-                    "dataTopic": sensor.get("dataTopic", ""),
-                    "interval": sensor.get("reportFrequency", 5),
-                    "enabled": sensor.get("enabled", True),
-                    "location": device.get("location", ""),
-                    "configJson": sensor.get("configJson", ""),
-                }
-
-                key = self.add_sensor(device_id, sensor_cfg)
-                if key:
-                    total_added += 1
-
-        logger.info(f"从后端同步了 {total_added} 个传感器")
-        return total_added
+    def unregister_from_broker(self) -> bool:
+        """通过 MQTT 发送设备注销消息。"""
+        device_cfg = self._config_mgr.get_device_config()
+        device_id = device_cfg.get("deviceId", "")
+        if not device_id:
+            return False
+        logger.info(f"正在注销设备: deviceId={device_id}")
+        return self._mqtt_mgr.publish_deregistration(device_id)
 
     # ------------------------------------------------------------------
     # 发送历史
@@ -832,134 +733,86 @@ class SensorManager:
     # 解绑 / 换绑（直接操作数据库）
     # ------------------------------------------------------------------
 
+    # ------------------------------------------------------------------
+    # 解绑 / 换绑（纯本地操作 + MQTT 通知）
+    # ------------------------------------------------------------------
+
     def unbind_sensor(self, sensor_key: str, sensor_id: int) -> bool:
         """
-        解绑传感器: 在 DB 中将 device_id 设为 NULL，
-        传感器保留在列表中显示为"未绑定"状态，停止数据发送。
-
-        Args:
-            sensor_key: 传感器内部键
-            sensor_id: 数据库传感器主键 ID
-
-        Returns:
-            bool: 是否成功
+        解绑传感器: 停止数据发送，通过 MQTT 通知后端标记传感器未绑定。
         """
-        if not self._db_client:
-            logger.error("数据库客户端未初始化，无法执行解绑操作")
-            return False
-
-        # 1. 更新数据库: device_id = NULL
-        db_ok = self._db_client.unbind_sensor(sensor_id)
-        if not db_ok:
-            logger.error(f"数据库解绑失败: sensor DB id={sensor_id}")
-            return False
-
-        # 2. 停止 worker 但保留在列表中（标记为未绑定）
         with self._lock:
             worker = self._workers.get(sensor_key)
         if worker:
             worker.stop()
             self._mqtt_mgr.unsubscribe_device(worker.device_id)
-            # 更新为未绑定状态
             worker.config["deviceId"] = ""
             worker.config["deviceName"] = ""
             worker.device_id = ""
 
-        # 3. 更新本地配置（转为未绑定 key）
+        # 通过 MQTT 通知后端
+        self._mqtt_mgr.publish_sensor_unregister(worker.device_id if worker else "", sensor_id)
+
         self._config_mgr.remove_sensor(sensor_key)
         new_key = _make_sensor_key("", sensor_id)
         if worker:
             cfg = dict(worker.config)
-            cfg["deviceId"] = ""
             self._config_mgr.add_sensor("", cfg)
-            # 用新 key 重新注册 worker
             with self._lock:
                 self._workers.pop(sensor_key, None)
                 self._workers[new_key] = worker
             worker.sensor_key = new_key
             worker._label = _sensor_label(cfg)
 
-        logger.info(f"传感器 {sensor_key} (DB id={sensor_id}) 已解绑 -> {new_key} (device_id=NULL, 保留在列表中)")
+        logger.info(f"传感器 {sensor_key} 已解绑 -> {new_key}")
         return True
 
     def rebind_sensor(self, sensor_key: str, sensor_id: int,
                       new_device_id: str) -> Optional[str]:
         """
-        换绑传感器到新设备: 在 DB 中更新 device_id，
-        停止旧 worker，创建新 worker 并启动。
-
-        Args:
-            sensor_key: 当前传感器内部键
-            sensor_id: 数据库传感器主键 ID
-            new_device_id: 目标设备 device_id
-
-        Returns:
-            str: 新的 sensor_key，失败返回 None
+        换绑传感器到新设备: 停止旧 worker，创建新 worker，通过 MQTT 通知后端。
         """
-        if not self._db_client:
-            logger.error("数据库客户端未初始化，无法执行换绑操作")
-            return None
-
-        # 验证目标设备存在
-        if not self._db_client.device_exists(new_device_id):
-            logger.error(f"目标设备不存在: {new_device_id}")
-            return None
-
-        # 1. 更新数据库: device_id = new_device_id
-        db_ok = self._db_client.rebind_sensor(sensor_id, new_device_id)
-        if not db_ok:
-            logger.error(f"数据库换绑失败: sensor DB id={sensor_id} -> {new_device_id}")
-            return None
-
-        # 2. 停止旧 worker
         with self._lock:
             old_worker = self._workers.pop(sensor_key, None)
         if old_worker:
             old_worker.stop()
             self._mqtt_mgr.unsubscribe_device(old_worker.device_id)
 
-        # 3. 从本地配置移除旧 key
         self._config_mgr.remove_sensor(sensor_key)
 
-        # 4. 创建新 key 和配置
         new_key = _make_sensor_key(new_device_id, sensor_id)
         cfg = dict(old_worker.config) if old_worker else {
-            "sensorId": sensor_id,
-            "deviceId": new_device_id,
+            "sensorId": sensor_id, "deviceId": new_device_id,
         }
         cfg["deviceId"] = new_device_id
 
-        # 查询设备名
-        devices = self._db_client.get_all_devices()
-        for dev in devices:
-            if dev.get("device_id") == new_device_id:
-                cfg["deviceName"] = dev.get("name", "")
-                cfg["location"] = dev.get("location", "")
-                break
-
-        # 保存到本地配置
         self._config_mgr.add_sensor(new_device_id, cfg)
 
-        # 5. 创建新 worker
-        sim_config = self._config_mgr.get_simulation_config()
-        worker = SensorWorker(
-            new_key, cfg, self._mqtt_mgr,
-            sim_config=sim_config,
-            on_publish=self._record_publish,
-        )
+        worker = SensorWorker(new_key, cfg, self._mqtt_mgr,
+                              sim_config=self._config_mgr.get_simulation_config(),
+                              on_publish=self._record_publish)
         with self._lock:
             self._workers[new_key] = worker
 
         self._mqtt_mgr.subscribe_device(new_device_id)
         worker.start()
 
-        logger.info(f"传感器 DB id={sensor_id} 已换绑: "
-                    f"{sensor_key} -> {new_key} (device_id={new_device_id})")
+        # 通过 MQTT 发布传感器注册
+        sensor_info = {
+            "sensorType": cfg.get("sensorType", "light"),
+            "displayName": cfg.get("displayName", ""),
+            "dataTopic": cfg.get("dataTopic", ""),
+            "reportFrequency": cfg.get("interval", 5),
+            "configJson": cfg.get("configJson", ""),
+            "enabled": True,
+            "timestamp": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+        }
+        self._mqtt_mgr.publish_sensor_register(new_device_id, sensor_info)
+
+        logger.info(f"传感器已换绑: {sensor_key} -> {new_key}")
         return new_key
 
     def sync_from_database(self) -> int:
-        """
-        [公开接口] 从数据库同步传感器（供 Flask API 调用）。
-        遍历 DB 中所有 enabled 传感器，添加尚不在内存中的。
-        """
-        return self._load_from_database()
+        """[已废弃] 模拟器不再直连数据库，改用 register_to_broker()。"""
+        logger.warning("sync_from_database() 已废弃，请使用 register_to_broker()")
+        return 0

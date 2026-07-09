@@ -20,6 +20,9 @@
           <el-option label="湿度" value="humidity" />
           <el-option label="功率" value="power" />
         </el-select>
+        <div class="form-hint" v-if="!isEdit">
+          传感器由模拟器通过 MQTT 自动注册，手动添加后也会自动同步到模拟器
+        </div>
       </el-form-item>
       <el-form-item label="显示名称" prop="displayName">
         <el-input v-model="form.displayName" placeholder="如 光照传感器A" />
@@ -158,3 +161,9 @@ async function submit() {
   }
 }
 </script>
+
+<style scoped>
+.form-hint {
+  font-size: 12px; color: #909399; line-height: 1.5; margin-top: 4px;
+}
+</style>

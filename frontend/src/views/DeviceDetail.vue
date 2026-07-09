@@ -8,21 +8,11 @@
         <h2 style="display: inline; margin-left: 8px">{{ form.name || '设备详情' }}</h2>
       </div>
       <div>
-        <el-popconfirm
-          v-if="authStore.isAdmin"
-          title="确定同步传感器到模拟器吗？"
-          confirm-button-text="确定"
-          @confirm="handleSync"
-        >
-          <template #reference>
-            <el-button type="success" :loading="syncing">
-              <el-icon><Refresh /></el-icon> 同步传感器到模拟器
-            </el-button>
-          </template>
-        </el-popconfirm>
-        <el-button v-if="authStore.isAdmin" type="primary" @click="openSensorDialog()">
-          <el-icon><Plus /></el-icon> 添加传感器
-        </el-button>
+        <el-tooltip content="传感器通过 MQTT 自动注册，也可在此手动添加" placement="top">
+          <el-button v-if="authStore.isAdmin" type="primary" @click="openSensorDialog()">
+            <el-icon><Plus /></el-icon> 添加传感器
+          </el-button>
+        </el-tooltip>
       </div>
     </div>
 
@@ -130,7 +120,6 @@ const formRef = ref(null)
 const form = ref({})
 const sensors = ref([])
 const saving = ref(false)
-const syncing = ref(false)
 const sensorDialogVisible = ref(false)
 const editingSensor = ref(null)
 
@@ -170,18 +159,6 @@ async function handleUpdateDevice() {
     // 错误已在拦截器统一提示
   } finally {
     saving.value = false
-  }
-}
-
-async function handleSync() {
-  syncing.value = true
-  try {
-    const res = await sensorStore.syncToMock(form.value.deviceId)
-    ElMessage.success(`已同步 ${res?.syncedCount ?? 0} 个传感器到模拟器`)
-  } catch {
-    // 错误已在拦截器统一提示
-  } finally {
-    syncing.value = false
   }
 }
 

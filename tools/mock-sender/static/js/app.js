@@ -20,7 +20,7 @@ let newHistoryCount = 0;
 document.addEventListener('DOMContentLoaded', () => {
     loadSensors();
     loadMqttConfig();
-    loadDbConfig();
+    loadDeviceConfig();
     loadAllDevices();
     startUptimeTimer();
     startPolling();
@@ -45,7 +45,7 @@ function renderSensorTable(sensors) {
     if (!sensors || sensors.length === 0) {
         tbody.innerHTML = `<tr id="noSensorsRow">
             <td colspan="11" class="text-center text-muted py-4">
-                <i class="bi bi-inbox"></i> 暂无传感器，点击右上角"从后端同步"或"添加传感器"
+                <i class="bi bi-inbox"></i> 暂无传感器，点击右上角"添加传感器"或"注册到 Broker"
             </td>
         </tr>`;
         updateSortArrows();
@@ -870,57 +870,40 @@ function saveBackendUrl() {
 }
 
 function syncFromBackend() {
-    const btn = document.getElementById('btnSyncBackend');
-    if (btn) btn.disabled = true;
-    if (btn) btn.innerHTML = '<i class="bi bi-hourglass-split"></i> 同步中...';
-
-    const el = document.getElementById('syncResult');
-    if (el) el.innerHTML = '<span class="text-info"><i class="bi bi-arrow-repeat spin"></i> 正在从后端同步...</span>';
-
-    fetch('/api/sensors/sync-from-backend', { method: 'POST' })
-        .then(r => r.json())
-        .then(resp => {
-            if (el) {
-                el.innerHTML = `<span class="text-success"><i class="bi bi-check-circle"></i> ${resp.message}</span>`;
-                setTimeout(() => el.innerHTML = '', 10000);
-            }
-            loadSensors();
-        })
-        .catch(err => {
-            if (el) el.innerHTML = `<span class="text-danger">同步失败: ${err.message}</span>`;
-        })
-        .finally(() => {
-            if (btn) {
-                btn.disabled = false;
-                btn.innerHTML = '<i class="bi bi-cloud-download"></i> 从后端同步';
-            }
-        });
+    // 已废弃：改用 registerDevice() 通过 MQTT 注册到 Broker
+    registerDevice();
 }
 
-// ============================ 数据库同步 ============================
+// ============================ 设备注册 ============================
 
-function loadDbConfig() {
-    fetch('/api/config/database')
+function loadDeviceConfig() {
+    fetch('/api/device/config')
         .then(r => r.json())
         .then(cfg => {
-            if (cfg.host) document.getElementById('dbHostInput').value = cfg.host;
-            if (cfg.port) document.getElementById('dbPortInput').value = cfg.port;
-            if (cfg.database) document.getElementById('dbNameInput').value = cfg.database;
-            if (cfg.user) document.getElementById('dbUserInput').value = cfg.user;
+            if (cfg.deviceId) {
+                const el = document.getElementById('deviceIdInput');
+                if (el) el.value = cfg.deviceId;
+            }
+            if (cfg.name) {
+                const el = document.getElementById('deviceNameInput');
+                if (el) el.value = cfg.name;
+            }
+            if (cfg.location) {
+                const el = document.getElementById('deviceLocationInput');
+                if (el) el.value = cfg.location;
+            }
         })
         .catch(() => {});
 }
 
-function saveDbConfig() {
+function saveDeviceConfig() {
     const data = {
-        host: document.getElementById('dbHostInput').value.trim(),
-        port: parseInt(document.getElementById('dbPortInput').value) || 3306,
-        database: document.getElementById('dbNameInput').value.trim(),
-        user: document.getElementById('dbUserInput').value.trim(),
-        password: document.getElementById('dbPassInput').value,
+        deviceId: (document.getElementById('deviceIdInput')?.value || '').trim(),
+        name: (document.getElementById('deviceNameInput')?.value || '').trim(),
+        location: (document.getElementById('deviceLocationInput')?.value || '').trim(),
     };
 
-    fetch('/api/config/database', {
+    fetch('/api/device/config', {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(data),
@@ -928,38 +911,41 @@ function saveDbConfig() {
     .then(r => r.json())
     .then(resp => {
         if (resp.error) { alert(resp.error); return; }
-        if (resp.warning) { alert(resp.warning); return; }
-        alert(resp.message || '数据库配置已保存');
+        alert(resp.message || '设备配置已保存');
     })
     .catch(err => alert('保存失败: ' + err.message));
 }
 
-function syncFromDatabase() {
-    const btn = document.getElementById('btnSyncDB');
+function registerDevice() {
+    const btn = document.getElementById('btnRegister');
     if (btn) {
         btn.disabled = true;
-        btn.innerHTML = '<i class="bi bi-hourglass-split"></i> 同步中...';
+        btn.innerHTML = '<i class="bi bi-hourglass-split"></i> 注册中...';
     }
 
-    const el = document.getElementById('dbSyncResult');
-    if (el) el.innerHTML = '<span class="text-info"><i class="bi bi-arrow-repeat spin"></i> 正在从数据库同步...</span>';
+    const el = document.getElementById('deviceRegResult');
+    if (el) el.innerHTML = '<span class="text-info"><i class="bi bi-arrow-repeat spin"></i> 正在向 Broker 注册设备...</span>';
 
-    fetch('/api/sensors/sync-from-db', { method: 'POST' })
+    fetch('/api/device/register', { method: 'POST' })
         .then(r => r.json())
         .then(resp => {
             if (el) {
-                el.innerHTML = `<span class="text-success"><i class="bi bi-check-circle"></i> ${resp.message}</span>`;
+                if (resp.success) {
+                    el.innerHTML = `<span class="text-success"><i class="bi bi-check-circle"></i> ${resp.message}</span>`;
+                } else {
+                    el.innerHTML = `<span class="text-danger">${resp.message}</span>`;
+                }
                 setTimeout(() => el.innerHTML = '', 10000);
             }
             loadSensors();
         })
         .catch(err => {
-            if (el) el.innerHTML = `<span class="text-danger">同步失败: ${err.message}</span>`;
+            if (el) el.innerHTML = `<span class="text-danger">注册失败: ${err.message}</span>`;
         })
         .finally(() => {
             if (btn) {
                 btn.disabled = false;
-                btn.innerHTML = '<i class="bi bi-database"></i> 从数据库同步';
+                btn.innerHTML = '<i class="bi bi-broadcast"></i> 注册到 Broker';
             }
         });
 }

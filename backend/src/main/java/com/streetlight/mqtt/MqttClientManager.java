@@ -59,6 +59,7 @@ public class MqttClientManager {
     public void onApplicationReady() {
         try {
             connectToBroker();
+            subscribeRegistrationTopics();
             subscribeAllDevices();
         } catch (Exception e) {
             log.error("MQTT 初始化失败: {}", e.getMessage(), e);
@@ -200,5 +201,75 @@ public class MqttClientManager {
      */
     public boolean isStatusTopic(String topic) {
         return topic.endsWith("/status");
+    }
+
+    /**
+     * 判断是否为设备注册主题
+     */
+    public boolean isRegistrationTopic(String topic) {
+        return topic.equals(topicPrefix + "/register");
+    }
+
+    /**
+     * 判断是否为设备注销主题
+     */
+    public boolean isDeregistrationTopic(String topic) {
+        return topic.matches(topicPrefix + "/[^/]+/deregister");
+    }
+
+    /**
+     * 判断是否为传感器注册主题
+     */
+    public boolean isSensorRegisterTopic(String topic) {
+        return topic.matches(topicPrefix + "/[^/]+/sensor/register");
+    }
+
+    /**
+     * 判断是否为传感器注销主题
+     */
+    public boolean isSensorUnregisterTopic(String topic) {
+        return topic.matches(topicPrefix + "/[^/]+/sensor/unregister");
+    }
+
+    /**
+     * 从 deregister/sensor/register/sensor/unregister 主题中提取 deviceId
+     */
+    public String extractDeviceIdFromRegistrationTopic(String topic) {
+        String[] parts = topic.split("/");
+        if (parts.length >= 2) {
+            return parts[1];
+        }
+        return "";
+    }
+
+    /**
+     * 订阅全局注册/注销主题
+     */
+    public void subscribeRegistrationTopics() {
+        if (!mqttClient.isConnected()) {
+            log.warn("MQTT 未连接，跳过注册主题订阅");
+            return;
+        }
+        try {
+            // 全局设备注册主题
+            String registerTopic = topicPrefix + "/register";
+            // 设备注销主题（通配符匹配所有设备）
+            String deregisterTopic = topicPrefix + "/+/deregister";
+            // 传感器动态注册/注销
+            String sensorRegisterTopic = topicPrefix + "/+/sensor/register";
+            String sensorUnregisterTopic = topicPrefix + "/+/sensor/unregister";
+
+            MqttSubscription[] subscriptions = {
+                    new MqttSubscription(registerTopic, 1),
+                    new MqttSubscription(deregisterTopic, 1),
+                    new MqttSubscription(sensorRegisterTopic, 1),
+                    new MqttSubscription(sensorUnregisterTopic, 1)
+            };
+            mqttClient.subscribe(subscriptions);
+            log.info("已订阅注册/注销主题: [{}, {}, {}, {}]",
+                    registerTopic, deregisterTopic, sensorRegisterTopic, sensorUnregisterTopic);
+        } catch (MqttException e) {
+            log.error("订阅注册主题失败: {}", e.getMessage(), e);
+        }
     }
 }

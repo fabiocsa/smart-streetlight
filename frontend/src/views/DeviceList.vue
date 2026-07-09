@@ -24,11 +24,23 @@
         >
           <el-icon><Delete /></el-icon> 批量删除 ({{ selectedIds.length }})
         </el-button>
-        <el-button v-if="authStore.isAdmin" type="primary" @click="openAddDialog">
-          <el-icon><Plus /></el-icon> 添加设备
-        </el-button>
+        <el-tooltip content="设备由模拟器通过 MQTT 自动注册，也可手动预创建" placement="top">
+          <el-button v-if="authStore.isAdmin" type="primary" @click="openAddDialog">
+            <el-icon><Plus /></el-icon> 添加设备
+          </el-button>
+        </el-tooltip>
       </div>
     </div>
+
+    <!-- 自动发现提示 -->
+    <el-alert
+      v-if="deviceStore.devices.length > 0"
+      title="设备通过 MQTT 自动发现 — 启动模拟器后，设备上线即自动注册并显示在列表中"
+      type="info"
+      :closable="true"
+      show-icon
+      style="margin-bottom: 12px"
+    />
 
     <!-- 搜索栏 -->
     <el-card shadow="never" style="margin-bottom: 16px">
@@ -130,9 +142,19 @@
           </template>
         </el-table-column>
         <template #empty>
-          <el-empty :description="searchKeyword || filterStatus || filterControlMode ? '没有匹配的设备' : '暂无设备数据'">
-            <el-button v-if="searchKeyword || filterStatus || filterControlMode" type="primary" @click="clearFilters">
-              清除筛选
+          <el-empty v-if="searchKeyword || filterStatus || filterControlMode"
+            description="没有匹配的设备">
+            <el-button type="primary" @click="clearFilters">清除筛选</el-button>
+          </el-empty>
+          <el-empty v-else description="暂无设备">
+            <template #description>
+              <p style="color: #909399; margin: 0">尚未发现任何设备</p>
+              <p style="color: #c0c4cc; font-size: 12px; margin: 4px 0 0 0">
+                请启动 Mock 模拟器，设备将通过 MQTT 自动注册到系统
+              </p>
+            </template>
+            <el-button type="primary" @click="refreshDevices">
+              <el-icon><Refresh /></el-icon> 刷新
             </el-button>
           </el-empty>
         </template>
@@ -162,7 +184,7 @@
 import { ref, computed, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { Sunny, Moon } from '@element-plus/icons-vue'
+import { Sunny, Moon, Refresh } from '@element-plus/icons-vue'
 import { useAuthStore } from '../stores/authStore'
 import { useDeviceStore } from '../store/device'
 import DeviceForm from '../components/DeviceForm.vue'
@@ -329,6 +351,11 @@ async function handleBatchControl(command) {
 async function handleSaved() {
   dialogVisible.value = false
   // store 已局部更新，无需全量刷新
+}
+
+async function refreshDevices() {
+  await deviceStore.fetchAll()
+  ElMessage.success('设备列表已刷新')
 }
 
 onMounted(() => {
