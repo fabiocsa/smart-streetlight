@@ -650,3 +650,14 @@ class SensorManager:
         for key in keys:
             self.remove_sensor(key)
         logger.info("已停止所有传感器")
+
+    def shutdown(self) -> None:
+        """关闭所有传感器工作线程但不删除配置（用于进程退出时的安全清理）。"""
+        with self._lock:
+            keys = list(self._workers.keys())
+        for key in keys:
+            worker = self._workers.pop(key, None)
+            if worker:
+                worker.unbind_from_device()
+                worker.stop()
+        logger.info(f"已关闭 {len(keys)} 个传感器工作线程（配置已保留）")
