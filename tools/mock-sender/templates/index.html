@@ -194,11 +194,11 @@
                 <form id="addSensorForm">
                     <input type="hidden" id="editSensorKey" value="">
                     <div class="mb-3">
-                        <label class="form-label">所属设备ID <span class="text-danger">*</span></label>
+                        <label class="form-label">所属设备ID <span class="text-muted">(可选)</span></label>
                         <input name="deviceId" class="form-control form-control-sm"
                                id="deviceIdInput"
-                               placeholder="如 SL-001（需与后端已创建的设备ID一致）" required>
-                        <div class="form-text">传感器将注册到此设备下，设备需先通过后端 REST API 创建</div>
+                               placeholder="如 SL-001，留空则传感器独立运行">
+                        <div class="form-text">填写后传感器将通过 MQTT 注册到该设备并接受控制指令；留空则仅上报数据</div>
                     </div>
                     <div class="mb-3">
                         <label class="form-label">传感器类型</label>
