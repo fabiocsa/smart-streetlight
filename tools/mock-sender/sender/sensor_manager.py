@@ -178,13 +178,18 @@ class SensorWorker:
     # ------------------------------------------------------------------
 
     def _do_publish(self) -> bool:
-        """执行一次传感器数据发布（v2 真实时钟驱动 + 自定义消息模板），返回是否成功。"""
+        """执行一次传感器数据发布（v2 真实时钟驱动 + 自定义消息模板），返回是否成功。
+
+        发送模式:
+          - algorithm (默认): 真实时钟太阳模型动态生成数据
+          - fixed: 发送用户编辑的固定内容 (autoSendContent)
+        """
         now = time.time()
+        import json as _json
 
         data_range = self.config.get("dataRange", {"min": 0, "max": 800})
         data_topic = self.config.get("dataTopic", "")
         brightness = self.config.get("brightness")
-        message_template = self.config.get("messageTemplate", "")
         actual_topic = data_topic or f"streetlight/{self.device_id}/sensor/data"
         extra = {
             "location": self.config.get("location", ""),
@@ -193,23 +198,32 @@ class SensorWorker:
             "displayName": self.display_name,
         }
 
-        # 使用自定义模板或默认生成
-        if message_template and message_template.strip():
-            from sender.data_generator import generate_sensor_data_with_template
-            msg_str = generate_sensor_data_with_template(
-                template=message_template,
-                device_id=self.device_id,
-                light_status=self._light_status,
-                data_range=data_range,
-                extra_fields=extra,
-                brightness=brightness,
-                sim_config=self._sim_config,
-            )
-            try:
-                import json
-                payload = json.loads(msg_str)
-            except (json.JSONDecodeError, TypeError):
-                # 模板渲染结果不是合法 JSON，回退到默认
+        # ---- 发送模式判断 ----
+        send_mode = self.config.get("autoSendMode", "algorithm")
+
+        if send_mode == "fixed":
+            # ★ 固定内容模式: 发送用户编辑的静态消息
+            fixed_content = self.config.get("autoSendContent", "")
+            if fixed_content and fixed_content.strip():
+                # 替换时间戳变量
+                from datetime import datetime, timezone
+                ts = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+                content = fixed_content.replace("{{timestamp}}", ts)
+                content = content.replace("{{deviceId}}", self.device_id)
+                try:
+                    payload = _json.loads(content)
+                except (_json.JSONDecodeError, TypeError):
+                    logger.warning(f"[{self._label}] 固定内容格式错误，回退到算法模式")
+                    payload = generate_sensor_data(
+                        device_id=self.device_id,
+                        light_status=self._light_status,
+                        data_range=data_range,
+                        extra_fields=extra,
+                        brightness=brightness,
+                        sim_config=self._sim_config,
+                    )
+            else:
+                # 固定内容为空，使用算法生成
                 payload = generate_sensor_data(
                     device_id=self.device_id,
                     light_status=self._light_status,
@@ -219,20 +233,44 @@ class SensorWorker:
                     sim_config=self._sim_config,
                 )
         else:
-            payload = generate_sensor_data(
-                device_id=self.device_id,
-                light_status=self._light_status,
-                data_range=data_range,
-                extra_fields=extra,
-                brightness=brightness,
-                sim_config=self._sim_config,
-            )
+            # ---- 算法模式: 使用 messageTemplate 或默认生成 ----
+            message_template = self.config.get("messageTemplate", "")
+            if message_template and message_template.strip():
+                from sender.data_generator import generate_sensor_data_with_template
+                msg_str = generate_sensor_data_with_template(
+                    template=message_template,
+                    device_id=self.device_id,
+                    light_status=self._light_status,
+                    data_range=data_range,
+                    extra_fields=extra,
+                    brightness=brightness,
+                    sim_config=self._sim_config,
+                )
+                try:
+                    payload = _json.loads(msg_str)
+                except (_json.JSONDecodeError, TypeError):
+                    payload = generate_sensor_data(
+                        device_id=self.device_id,
+                        light_status=self._light_status,
+                        data_range=data_range,
+                        extra_fields=extra,
+                        brightness=brightness,
+                        sim_config=self._sim_config,
+                    )
+            else:
+                payload = generate_sensor_data(
+                    device_id=self.device_id,
+                    light_status=self._light_status,
+                    data_range=data_range,
+                    extra_fields=extra,
+                    brightness=brightness,
+                    sim_config=self._sim_config,
+                )
 
         ok = self._mqtt.publish_sensor_data(self.device_id, payload, data_topic)
         if ok:
             self.publish_count += 1
             self.last_publish_time = now
-            # 记录发送历史
             if self._on_publish:
                 self._on_publish(
                     self.sensor_key, self.device_id,
@@ -314,6 +352,8 @@ class SensorManager:
                     "heartbeatCount": worker.heartbeat_count,
                     "uptime": round(worker.uptime, 1),
                     "lastPublish": worker.last_publish_time,
+                    "autoSendMode": worker.config.get("autoSendMode", "algorithm"),
+                    "autoSendContent": worker.config.get("autoSendContent", ""),
                 })
         return result
 
@@ -343,6 +383,8 @@ class SensorManager:
                 "lastPublish": worker.last_publish_time,
                 "dataRange": worker.config.get("dataRange", {"min": 0, "max": 800}),
                 "messageTemplate": worker.config.get("messageTemplate", ""),
+                "autoSendMode": worker.config.get("autoSendMode", "algorithm"),
+                "autoSendContent": worker.config.get("autoSendContent", ""),
             }
 
     # ------------------------------------------------------------------

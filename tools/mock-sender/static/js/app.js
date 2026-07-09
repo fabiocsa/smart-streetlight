@@ -95,6 +95,12 @@ function renderSensorTable(sensors) {
             <option value="manual" ${s.controlMode === 'manual' ? 'selected' : ''}>手动</option>
         </select>`;
 
+        // 自动发送模式标识
+        const autoMode = s.autoSendMode || 'algorithm';
+        const autoModeBadge = autoMode === 'fixed'
+            ? '<span class="badge bg-warning text-dark ms-1" title="固定内容模式"><i class="bi bi-pin-angle-fill"></i></span>'
+            : '';
+
         // 未绑定状态标识
         const isUnbound = !s.deviceId;
         const deviceIdCell = isUnbound
@@ -115,7 +121,7 @@ function renderSensorTable(sensors) {
             <td>${s.interval}s</td>
             <td>${s.publishCount}</td>
             <td class="status-cell">${statusIndicator}</td>
-            <td>${modeSelect}</td>
+            <td>${modeSelect}${autoModeBadge}</td>
             <td class="text-nowrap">
                 <button class="btn btn-sm btn-outline-success" onclick="publishOnce('${escHtml(s.sensorKey)}')"
                         title="手动发送一次">
@@ -1065,52 +1071,167 @@ function rebindSensor() {
 
 // ============================ 消息模板编辑 ============================
 
+// ============================ 消息模板 & 自动发送配置 ============================
+
+let currentAutoSendMode = 'algorithm';
+
 function editMessageTemplate(sensorKey) {
     const s = sensorList.find(s => s.sensorKey === sensorKey);
     if (!s) return;
 
-    document.getElementById('templateSensorLabel').textContent = sensorKey;
+    document.getElementById('templateSensorLabel').textContent =
+        `${sensorKey} (${s.sensorType || 'light'})`;
     document.getElementById('msgTemplateModal').dataset.sensorKey = sensorKey;
 
-    // 加载当前模板
+    // 加载当前模板和自动发送配置
     fetch(`/api/sensors/${encodeURIComponent(sensorKey)}/message-template`)
         .then(r => r.json())
         .then(data => {
             document.getElementById('msgTemplateInput').value = data.template || '';
+            // 自动发送模式
+            const mode = data.autoSendMode || 'algorithm';
+            currentAutoSendMode = mode;
+            document.getElementById('modeAlgorithm').checked = (mode === 'algorithm');
+            document.getElementById('modeFixed').checked = (mode === 'fixed');
+            document.getElementById('autoSendContentInput').value = data.autoSendContent || '';
+            // 更新 UI 状态
+            applyAutoSendModeUI(mode);
         })
         .catch(() => {
             document.getElementById('msgTemplateInput').value = '';
+            document.getElementById('autoSendContentInput').value = '';
+            document.getElementById('modeAlgorithm').checked = true;
+            document.getElementById('modeFixed').checked = false;
+            applyAutoSendModeUI('algorithm');
         });
 
     const modal = new bootstrap.Modal(document.getElementById('msgTemplateModal'));
     modal.show();
 }
 
-function saveTemplate() {
+function onAutoSendModeChange(mode) {
+    currentAutoSendMode = mode;
+    applyAutoSendModeUI(mode);
+}
+
+function applyAutoSendModeUI(mode) {
+    const templateSection = document.getElementById('templateSection');
+    const fixedDesc = document.getElementById('fixedModeDesc');
+    const algoDesc = document.getElementById('algorithmModeDesc');
+    const fixedBadge = document.getElementById('fixedContentBadge');
+    const contentInput = document.getElementById('autoSendContentInput');
+
+    if (mode === 'fixed') {
+        if (templateSection) templateSection.style.opacity = '0.5';
+        if (fixedDesc) fixedDesc.style.display = '';
+        if (algoDesc) algoDesc.style.display = 'none';
+        if (fixedBadge) { fixedBadge.className = 'badge bg-warning text-dark'; fixedBadge.textContent = '固定模式生效中'; }
+    } else {
+        if (templateSection) templateSection.style.opacity = '1';
+        if (fixedDesc) fixedDesc.style.display = 'none';
+        if (algoDesc) algoDesc.style.display = '';
+        if (fixedBadge) { fixedBadge.className = 'badge bg-secondary'; fixedBadge.textContent = '仅固定模式生效'; }
+    }
+}
+
+function generateSampleContent() {
+    const sensorKey = document.getElementById('msgTemplateModal').dataset.sensorKey;
+    const s = sensorList.find(s => s.sensorKey === sensorKey);
+    if (!s) return;
+
+    const sensorType = s.sensorType || 'light';
+    const deviceId = s.deviceId || 'SL-001';
+
+    fetch(`/api/sensors/generate-sample/${encodeURIComponent(sensorType)}?deviceId=${encodeURIComponent(deviceId)}`)
+        .then(r => r.json())
+        .then(data => {
+            document.getElementById('autoSendContentInput').value = data.sample || '';
+            formatAutoSendContent();
+        })
+        .catch(err => alert('生成失败: ' + err.message));
+}
+
+function formatAutoSendContent() {
+    const textarea = document.getElementById('autoSendContentInput');
+    try {
+        const obj = JSON.parse(textarea.value);
+        textarea.value = JSON.stringify(obj, null, 2);
+        document.getElementById('autoSendValidation').innerHTML =
+            '<span class="text-success"><i class="bi bi-check-circle"></i> JSON 格式正确</span>';
+    } catch (e) {
+        document.getElementById('autoSendValidation').innerHTML =
+            `<span class="text-danger"><i class="bi bi-x-circle"></i> JSON 格式错误: ${e.message}</span>`;
+    }
+}
+
+function validateAutoSendContent() {
+    const textarea = document.getElementById('autoSendContentInput');
+    try {
+        JSON.parse(textarea.value);
+        document.getElementById('autoSendValidation').innerHTML =
+            '<span class="text-success"><i class="bi bi-check-circle"></i> JSON 格式正确 ✓</span>';
+    } catch (e) {
+        document.getElementById('autoSendValidation').innerHTML =
+            `<span class="text-danger"><i class="bi bi-x-circle"></i> JSON 格式错误: ${e.message}</span>`;
+    }
+}
+
+function loadPresetTemplate(type) {
+    fetch(`/api/sensors/generate-sample/${encodeURIComponent(type)}?deviceId=SL-001`)
+        .then(r => r.json())
+        .then(data => {
+            document.getElementById('autoSendContentInput').value = data.sample || '';
+            formatAutoSendContent();
+        })
+        .catch(err => alert('加载模板失败: ' + err.message));
+}
+
+function saveAllTemplateSettings() {
     const sensorKey = document.getElementById('msgTemplateModal').dataset.sensorKey;
     const template = document.getElementById('msgTemplateInput').value;
+    const mode = currentAutoSendMode;
+    const fixedContent = document.getElementById('autoSendContentInput').value;
 
-    fetch(`/api/sensors/${encodeURIComponent(sensorKey)}/message-template`, {
+    const statusEl = document.getElementById('templateSaveStatus');
+    statusEl.textContent = '保存中...';
+
+    // 保存消息模板
+    const p1 = fetch(`/api/sensors/${encodeURIComponent(sensorKey)}/message-template`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ template: template }),
-    })
-    .then(r => r.json())
-    .then(resp => {
-        if (resp.error) {
-            alert(resp.error);
-            return;
-        }
-        const modal = bootstrap.Modal.getInstance(document.getElementById('msgTemplateModal'));
-        if (modal) modal.hide();
-        alert('消息模板已保存');
-        loadSensors();
-    })
-    .catch(err => alert('保存失败: ' + err.message));
+    });
+
+    // 保存自动发送配置
+    const p2 = fetch(`/api/sensors/${encodeURIComponent(sensorKey)}/auto-send-config`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ autoSendMode: mode, autoSendContent: fixedContent }),
+    });
+
+    Promise.all([p1, p2])
+        .then(() => {
+            statusEl.textContent = '已保存 ✓';
+            setTimeout(() => {
+                const modal = bootstrap.Modal.getInstance(document.getElementById('msgTemplateModal'));
+                if (modal) modal.hide();
+                statusEl.textContent = '';
+                loadSensors();
+            }, 600);
+        })
+        .catch(err => {
+            statusEl.textContent = '保存失败';
+            alert('保存失败: ' + err.message);
+        });
 }
 
 function resetTemplate() {
     document.getElementById('msgTemplateInput').value = '';
+    document.getElementById('autoSendContentInput').value = '';
+    document.getElementById('modeAlgorithm').checked = true;
+    document.getElementById('modeFixed').checked = false;
+    currentAutoSendMode = 'algorithm';
+    applyAutoSendModeUI('algorithm');
 }
 
 function formatTemplate() {
