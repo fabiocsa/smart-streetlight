@@ -22,6 +22,14 @@ DEFAULT_CONFIG: Dict[str, Any] = {
         "topicPrefix": "streetlight",
         "clientId": "mock-sender-v2",
     },
+    "database": {
+        "host": "8.130.102.89",
+        "port": 3306,
+        "database": "streetlight",
+        "user": "remote_user",
+        "password": "123456",
+        "poolSize": 5,
+    },
     "backendUrl": "http://localhost:8080/api",
     "simulation": {
         "latitude": 29.5,
@@ -39,9 +47,12 @@ DEFAULT_CONFIG: Dict[str, Any] = {
 }
 
 
-def _make_sensor_key(device_id: str, sensor_id) -> str:
-    """生成传感器内部唯一键: {deviceId}_{sensorId}"""
-    return f"{device_id}_{sensor_id}"
+def _make_sensor_key(device_id, sensor_id) -> str:
+    """生成传感器内部唯一键: {deviceId}_{sensorId}。
+    device_id 为空/None 时返回 unbound_{sensorId}。"""
+    if device_id:
+        return f"{device_id}_{sensor_id}"
+    return f"unbound_{sensor_id}"
 
 
 class ConfigManager:
@@ -138,6 +149,20 @@ class ConfigManager:
         with self._lock:
             sim = self._config.setdefault("simulation", {})
             sim.update(updates)
+            return self.save()
+
+    # ------------------------------------------------------------------
+    # 数据库配置
+    # ------------------------------------------------------------------
+
+    def get_database_config(self) -> Dict[str, Any]:
+        with self._lock:
+            return dict(self._config.get("database", {}))
+
+    def update_database_config(self, updates: Dict[str, Any]) -> bool:
+        with self._lock:
+            db_cfg = self._config.setdefault("database", {})
+            db_cfg.update(updates)
             return self.save()
 
     # ------------------------------------------------------------------

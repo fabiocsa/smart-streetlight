@@ -24,6 +24,10 @@ export function updateFrequency(deviceId, id, data) {
   return request.put(`/devices/${deviceId}/sensors/${id}/frequency`, data)
 }
 
+export function unbindSensor(deviceId, id) {
+  return request.post(`/devices/${deviceId}/sensors/${id}/unbind`)
+}
+
 export function syncToMock(deviceId) {
   return request.post(`/devices/${deviceId}/sensors/sync-to-mock`)
 }

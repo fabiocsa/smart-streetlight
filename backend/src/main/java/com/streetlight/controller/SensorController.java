@@ -95,4 +95,29 @@ public class SensorController {
         result.put("syncedCount", count);
         return Result.success(result);
     }
+
+    /**
+     * 解绑传感器（设 device_id = NULL，不删除记录）
+     */
+    @PostMapping("/{id}/unbind")
+    public ResponseEntity<Sensor> unbindSensor(@PathVariable String deviceId,
+                                                @PathVariable Long id) {
+        Sensor sensor = sensorService.unbindSensor(id);
+        return ResponseEntity.ok(sensor);
+    }
+
+    /**
+     * 传感器换绑到另一设备
+     */
+    @PostMapping("/{id}/rebind")
+    public ResponseEntity<Sensor> rebindSensor(@PathVariable String deviceId,
+                                                @PathVariable Long id,
+                                                @RequestBody Map<String, String> body) {
+        String newDeviceId = body.get("deviceId");
+        if (newDeviceId == null || newDeviceId.isBlank()) {
+            return ResponseEntity.badRequest().build();
+        }
+        Sensor sensor = sensorService.rebindSensor(id, newDeviceId);
+        return ResponseEntity.ok(sensor);
+    }
 }

@@ -89,6 +89,28 @@ export const useSensorStore = defineStore('sensor', () => {
     allSensors.value = allSensors.value.filter(s => !(s.deviceId === deviceId && s.id === id))
   }
 
+  /** 解绑传感器（设 device_id=NULL，不删除记录） */
+  async function unbind(deviceId, id) {
+    const res = await sensorApi.unbindSensor(deviceId, id)
+    const updated = res?.data || res
+    // 更新本地状态：将 sensor 的 deviceId 置空（标记为未绑定）
+    if (sensorsByDevice[deviceId]) {
+      const sensor = sensorsByDevice[deviceId].find(s => s.id === id)
+      if (sensor) {
+        sensor.deviceId = null
+        sensor.unbound = true
+      }
+      // 从当前设备列表移除
+      sensorsByDevice[deviceId] = sensorsByDevice[deviceId].filter(s => s.id !== id)
+    }
+    const allS = allSensors.value.find(s => s.id === id)
+    if (allS) {
+      allS.deviceId = null
+      allS.unbound = true
+    }
+    return res
+  }
+
   /** 批量删除传感器 */
   async function removeBatch(deviceId, ids) {
     const results = []
@@ -153,7 +175,7 @@ export const useSensorStore = defineStore('sensor', () => {
   return {
     sensorsByDevice, allSensors, loading,
     fetchByDevice, fetchAll,
-    create, update, remove, removeBatch, updateBatch,
+    create, update, remove, unbind, removeBatch, updateBatch,
     updateFreq, syncToMock
   }
 })

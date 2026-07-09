@@ -15,5 +15,9 @@ public interface SensorRepository extends JpaRepository<Sensor, Long> {
 
     List<Sensor> findByDeviceIdAndSensorType(String deviceId, String sensorType);
 
+    List<Sensor> findByDeviceIdIsNull();
+
+    List<Sensor> findByDeviceIdIsNullAndEnabled(Boolean enabled);
+
     long countByDeviceId(String deviceId);
 }

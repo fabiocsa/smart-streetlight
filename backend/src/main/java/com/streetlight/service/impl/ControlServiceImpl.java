@@ -53,9 +53,10 @@ public class ControlServiceImpl implements ControlService {
         if ("manual".equals(source)) {
             deviceRepository.findByDeviceId(deviceId).ifPresent(d -> {
                 d.setControlMode("manual");
+                d.setLightStatus(command);  // ★ 修复: 手动指令时立即更新 lightStatus，避免 GET 读到旧状态
                 d.setBrightness(brightness);
                 deviceRepository.save(d);
-                log.info("手动控制已切换设备为手动模式: deviceId={}", deviceId);
+                log.info("手动控制已切换设备为手动模式+灯光状态: deviceId={}, command={}", deviceId, command);
             });
         } else if (brightness != null) {
             deviceRepository.findByDeviceId(deviceId).ifPresent(d -> {

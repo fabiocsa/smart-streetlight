@@ -23,6 +23,9 @@
             <span id="sensorCount" class="badge bg-info">
                 <i class="bi bi-cpu"></i> 传感器: 0
             </span>
+            <span id="unboundCount" class="badge bg-warning" style="display:none">
+                <i class="bi bi-unlink"></i> 未绑定: 0
+            </span>
             <span id="uptime" class="text-light small">运行: 00:00:00</span>
         </div>
     </div>
@@ -45,8 +48,8 @@
                                 title="启动所有已停止的传感器">
                             <i class="bi bi-play-fill"></i> 全部启动
                         </button>
-                        <button class="btn btn-sm btn-outline-info" onclick="syncFromBackend()" id="btnSyncBackend">
-                            <i class="bi bi-cloud-download"></i> 从后端同步
+                        <button class="btn btn-sm btn-outline-info" onclick="syncFromDatabase()" id="btnSyncDB">
+                            <i class="bi bi-database"></i> 从数据库同步
                         </button>
                         <button class="btn btn-sm btn-success" data-bs-toggle="modal" data-bs-target="#addSensorModal">
                             <i class="bi bi-plus-lg"></i> 添加传感器
@@ -130,22 +133,40 @@
 
         <!-- 右侧：配置与日志 -->
         <div class="col-lg-4">
-            <!-- 后端 API 配置 -->
+            <!-- 数据库连接 (MySQL) -->
             <div class="card mb-3">
                 <div class="card-header">
-                    <span><i class="bi bi-link-45deg"></i> 后端 API</span>
+                    <span><i class="bi bi-database"></i> 数据库连接 (MySQL)</span>
                 </div>
                 <div class="card-body">
-                    <div class="input-group input-group-sm mb-2">
-                        <input id="backendUrlInput" class="form-control" placeholder="http://localhost:8080/api">
-                        <button class="btn btn-outline-secondary" onclick="saveBackendUrl()">
-                            <i class="bi bi-check-lg"></i> 保存
+                    <div class="mb-2">
+                        <input id="dbHostInput" class="form-control form-control-sm mb-1" placeholder="主机: 8.130.102.89">
+                        <div class="row g-1">
+                            <div class="col-4">
+                                <input id="dbPortInput" class="form-control form-control-sm" placeholder="端口: 3306">
+                            </div>
+                            <div class="col-8">
+                                <input id="dbNameInput" class="form-control form-control-sm" placeholder="数据库: streetlight">
+                            </div>
+                        </div>
+                        <div class="row g-1 mt-1">
+                            <div class="col-6">
+                                <input id="dbUserInput" class="form-control form-control-sm" placeholder="用户: remote_user">
+                            </div>
+                            <div class="col-6">
+                                <input id="dbPassInput" class="form-control form-control-sm" type="password" placeholder="密码">
+                            </div>
+                        </div>
+                    </div>
+                    <div class="d-flex gap-2">
+                        <button class="btn btn-sm btn-outline-secondary flex-fill" onclick="saveDbConfig()">
+                            <i class="bi bi-check-lg"></i> 保存配置
+                        </button>
+                        <button class="btn btn-sm btn-outline-info flex-fill" onclick="syncFromDatabase()">
+                            <i class="bi bi-cloud-download"></i> 同步全部传感器
                         </button>
                     </div>
-                    <button class="btn btn-sm btn-outline-info w-100" onclick="syncFromBackend()">
-                        <i class="bi bi-cloud-download"></i> 从后端同步全部传感器
-                    </button>
-                    <div id="syncResult" class="mt-2 small"></div>
+                    <div id="dbSyncResult" class="mt-2 small"></div>
                 </div>
             </div>
 
@@ -308,6 +329,93 @@
                 <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">取消</button>
                 <button type="button" class="btn btn-primary" onclick="addSensor()">
                     <i class="bi bi-plus-lg"></i> 添加
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- ==================== 重新绑定模态框 ==================== -->
+<div class="modal fade" id="rebindModal" tabindex="-1">
+    <div class="modal-dialog modal-sm">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title"><i class="bi bi-link-45deg"></i> 重新绑定传感器</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <div class="mb-3">
+                    <label class="form-label">传感器</label>
+                    <input id="rebindSensorLabel" class="form-control" readonly>
+                </div>
+                <div class="mb-3">
+                    <label class="form-label">目标设备 ID <span class="text-danger">*</span></label>
+                    <input id="rebindDeviceId" class="form-control" placeholder="如 SL-003" required>
+                    <div class="form-text">设备必须已存在于数据库中</div>
+                </div>
+            </div>
+                <div class="mb-3">
+                    <label class="form-label">目标设备 ID <span class="text-danger">*</span></label>
+                    <select id="rebindDeviceSelect" class="form-select form-select-sm" onchange="onDeviceSelectChange()">
+                        <option value="">-- 选择设备 --</option>
+                    </select>
+                    <input id="rebindDeviceId" class="form-control form-control-sm mt-1" placeholder="或手动输入设备ID" style="display:none">
+                    <div class="form-text">从列表选择或手动输入设备 ID</div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">取消</button>
+                <button type="button" class="btn btn-primary" onclick="rebindSensor()">
+                    <i class="bi bi-link"></i> 确定绑定
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- ==================== 消息模板编辑模态框 ==================== -->
+<div class="modal fade" id="msgTemplateModal" tabindex="-1">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title"><i class="bi bi-code-slash"></i> 编辑 MQTT 消息模板</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <div class="mb-2">
+                    <label class="form-label fw-bold small">传感器: <span id="templateSensorLabel" class="text-primary"></span></label>
+                </div>
+                <div class="mb-2">
+                    <label class="form-label small">自定义消息模板 (JSON) — 留空使用默认生成</label>
+                    <textarea id="msgTemplateInput" class="form-control" rows="12"
+                        style="font-family: 'Cascadia Code', 'Consolas', monospace; font-size: 0.85rem;"
+                        placeholder='{"deviceId": "{{deviceId}}", "light": {{lightIntensity}}, ...}'></textarea>
+                </div>
+                <details class="mb-2">
+                    <summary class="small text-muted" style="cursor:pointer">可用变量参考</summary>
+                    <div class="small bg-light p-2 rounded mt-1" style="font-family:monospace; font-size:0.75rem;">
+                        <strong>设备:</strong> {{deviceId}}<br>
+                        <strong>数据:</strong> {{lightIntensity}} {{temperature}} {{voltage}} {{power}} {{cloudCover}} {{status}}<br>
+                        <strong>属性:</strong> {{sensorType}} {{displayName}} {{location}} {{controlMode}}<br>
+                        <strong>时间:</strong> {{timestamp}}<br>
+                        <strong>整个payload:</strong> {{payload}}<br>
+                        <hr class="my-1">
+                        <em>示例:</em> {"device_id":"{{deviceId}}","lux":{{lightIntensity}},"temp":{{temperature}}}
+                    </div>
+                </details>
+                <div class="d-flex gap-2">
+                    <button class="btn btn-sm btn-outline-secondary" onclick="resetTemplate()">
+                        <i class="bi bi-arrow-counterclockwise"></i> 重置为默认
+                    </button>
+                    <button class="btn btn-sm btn-outline-secondary" onclick="formatTemplate()">
+                        <i class="bi bi-braces"></i> 格式化 JSON
+                    </button>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">取消</button>
+                <button type="button" class="btn btn-primary" onclick="saveTemplate()">
+                    <i class="bi bi-check-lg"></i> 保存模板
                 </button>
             </div>
         </div>

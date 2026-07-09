@@ -46,7 +46,7 @@ CREATE TABLE device (
 DROP TABLE IF EXISTS sensor;
 CREATE TABLE sensor (
     id               BIGINT       NOT NULL AUTO_INCREMENT  COMMENT '主键',
-    device_id        VARCHAR(50)  NOT NULL                 COMMENT '所属设备标识(FK → device.device_id)',
+    device_id        VARCHAR(50)  DEFAULT NULL             COMMENT '所属设备标识(FK → device.device_id)，NULL=未绑定',
     sensor_type      VARCHAR(30)  NOT NULL DEFAULT 'light' COMMENT '传感器类型: light(光照) / temperature(温度) / humidity(湿度) / power(功率)',
     display_name     VARCHAR(100) DEFAULT NULL             COMMENT '传感器显示名称(如: 光照传感器A)',
     data_topic       VARCHAR(200) NOT NULL                 COMMENT '数据上报MQTT主题',
@@ -58,9 +58,11 @@ CREATE TABLE sensor (
 
     PRIMARY KEY (id),
     INDEX idx_device_id (device_id),
-    INDEX idx_device_type (device_id, sensor_type),
-    CONSTRAINT fk_sensor_device FOREIGN KEY (device_id) REFERENCES device(device_id)
+    INDEX idx_device_type (device_id, sensor_type)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='传感器定义表';
+-- 注意: 外键 fk_sensor_device 已移除，以支持无主传感器 (device_id=NULL)。
+-- 对于已有数据库，需手动执行: ALTER TABLE sensor DROP FOREIGN KEY fk_sensor_device;
+-- ALTER TABLE sensor MODIFY COLUMN device_id VARCHAR(50) NULL;
 
 -- ============================================================================
 -- 4. 传感器数据表 (sensor_data)

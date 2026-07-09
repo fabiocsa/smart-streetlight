@@ -20,7 +20,7 @@ let newHistoryCount = 0;
 document.addEventListener('DOMContentLoaded', () => {
     loadSensors();
     loadMqttConfig();
-    loadBackendUrl();
+    loadDbConfig();
     startUptimeTimer();
     startPolling();
     connectLogStream();
@@ -94,11 +94,21 @@ function renderSensorTable(sensors) {
             <option value="manual" ${s.controlMode === 'manual' ? 'selected' : ''}>手动</option>
         </select>`;
 
-        return `<tr>
-            <td>${escHtml(s.deviceName) || '<span class="text-muted">-</span>'}</td>
+        // 未绑定状态标识
+        const isUnbound = !s.deviceId;
+        const deviceIdCell = isUnbound
+            ? '<span class="badge bg-warning text-dark"><i class="bi bi-unlink"></i> 未绑定</span>'
+            : `<code>${escHtml(s.deviceId)}</code>`;
+        const deviceNameCell = isUnbound
+            ? '<span class="text-warning fw-bold">未绑定设备</span>'
+            : (escHtml(s.deviceName) || '<span class="text-muted">-</span>');
+        const rowClass = isUnbound ? 'table-warning' : '';
+
+        return `<tr class="${rowClass}">
+            <td>${deviceNameCell}</td>
             <td>${escHtml(s.displayName) || '<span class="text-muted">-</span>'}</td>
             <td>${typeBadge}</td>
-            <td><code>${escHtml(s.deviceId)}</code></td>
+            <td>${deviceIdCell}</td>
             <td style="display:none"><small class="text-muted">${escHtml(s.sensorKey)}</small></td>
             <td><small>${escHtml(s.dataTopic) || '-'}</small></td>
             <td>${s.interval}s</td>
@@ -110,9 +120,22 @@ function renderSensorTable(sensors) {
                         title="手动发送一次">
                     <i class="bi bi-send"></i>
                 </button>
+                <button class="btn btn-sm btn-outline-secondary" onclick="editMessageTemplate('${escHtml(s.sensorKey)}')"
+                        title="编辑MQTT消息模板">
+                    <i class="bi bi-code-slash"></i>
+                </button>
                 <button class="btn btn-sm btn-outline-primary" onclick="editSensor('${escHtml(s.sensorKey)}')"
                         title="编辑配置" data-bs-toggle="modal" data-bs-target="#addSensorModal">
                     <i class="bi bi-pencil"></i>
+                </button>
+                ${!isUnbound ? `
+                <button class="btn btn-sm btn-outline-warning" onclick="unbindSensor('${escHtml(s.sensorKey)}')"
+                        title="解绑传感器（保留在数据库，device_id=NULL）">
+                    <i class="bi bi-unlink"></i>
+                </button>` : ''}
+                <button class="btn btn-sm btn-outline-info" onclick="showRebindDialog('${escHtml(s.sensorKey)}')"
+                        title="重新绑定到其他设备">
+                    <i class="bi bi-link-45deg"></i>
                 </button>
                 <button class="btn btn-sm btn-outline-danger" onclick="removeSensor('${escHtml(s.sensorKey)}')"
                         title="删除传感器">
@@ -495,7 +518,7 @@ function onHistoryFilterChange() {
     renderHistory();
 }
 
-// ============================ 后端同步 ============================
+// ============================ 后端同步 (保留兼容) ============================
 
 function loadBackendUrl() {
     fetch('/api/status')
@@ -526,26 +549,262 @@ function saveBackendUrl() {
 
 function syncFromBackend() {
     const btn = document.getElementById('btnSyncBackend');
-    btn.disabled = true;
-    btn.innerHTML = '<i class="bi bi-hourglass-split"></i> 同步中...';
+    if (btn) btn.disabled = true;
+    if (btn) btn.innerHTML = '<i class="bi bi-hourglass-split"></i> 同步中...';
 
     const el = document.getElementById('syncResult');
-    el.innerHTML = '<span class="text-info"><i class="bi bi-arrow-repeat spin"></i> 正在从后端同步...</span>';
+    if (el) el.innerHTML = '<span class="text-info"><i class="bi bi-arrow-repeat spin"></i> 正在从后端同步...</span>';
 
     fetch('/api/sensors/sync-from-backend', { method: 'POST' })
         .then(r => r.json())
         .then(resp => {
-            el.innerHTML = `<span class="text-success"><i class="bi bi-check-circle"></i> ${resp.message}</span>`;
-            setTimeout(() => el.innerHTML = '', 10000);
+            if (el) {
+                el.innerHTML = `<span class="text-success"><i class="bi bi-check-circle"></i> ${resp.message}</span>`;
+                setTimeout(() => el.innerHTML = '', 10000);
+            }
             loadSensors();
         })
         .catch(err => {
-            el.innerHTML = `<span class="text-danger">同步失败: ${err.message}</span>`;
+            if (el) el.innerHTML = `<span class="text-danger">同步失败: ${err.message}</span>`;
         })
         .finally(() => {
-            btn.disabled = false;
-            btn.innerHTML = '<i class="bi bi-cloud-download"></i> 从后端同步';
+            if (btn) {
+                btn.disabled = false;
+                btn.innerHTML = '<i class="bi bi-cloud-download"></i> 从后端同步';
+            }
         });
+}
+
+// ============================ 数据库同步 ============================
+
+function loadDbConfig() {
+    fetch('/api/config/database')
+        .then(r => r.json())
+        .then(cfg => {
+            if (cfg.host) document.getElementById('dbHostInput').value = cfg.host;
+            if (cfg.port) document.getElementById('dbPortInput').value = cfg.port;
+            if (cfg.database) document.getElementById('dbNameInput').value = cfg.database;
+            if (cfg.user) document.getElementById('dbUserInput').value = cfg.user;
+        })
+        .catch(() => {});
+}
+
+function saveDbConfig() {
+    const data = {
+        host: document.getElementById('dbHostInput').value.trim(),
+        port: parseInt(document.getElementById('dbPortInput').value) || 3306,
+        database: document.getElementById('dbNameInput').value.trim(),
+        user: document.getElementById('dbUserInput').value.trim(),
+        password: document.getElementById('dbPassInput').value,
+    };
+
+    fetch('/api/config/database', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(data),
+    })
+    .then(r => r.json())
+    .then(resp => {
+        if (resp.error) { alert(resp.error); return; }
+        if (resp.warning) { alert(resp.warning); return; }
+        alert(resp.message || '数据库配置已保存');
+    })
+    .catch(err => alert('保存失败: ' + err.message));
+}
+
+function syncFromDatabase() {
+    const btn = document.getElementById('btnSyncDB');
+    if (btn) {
+        btn.disabled = true;
+        btn.innerHTML = '<i class="bi bi-hourglass-split"></i> 同步中...';
+    }
+
+    const el = document.getElementById('dbSyncResult');
+    if (el) el.innerHTML = '<span class="text-info"><i class="bi bi-arrow-repeat spin"></i> 正在从数据库同步...</span>';
+
+    fetch('/api/sensors/sync-from-db', { method: 'POST' })
+        .then(r => r.json())
+        .then(resp => {
+            if (el) {
+                el.innerHTML = `<span class="text-success"><i class="bi bi-check-circle"></i> ${resp.message}</span>`;
+                setTimeout(() => el.innerHTML = '', 10000);
+            }
+            loadSensors();
+        })
+        .catch(err => {
+            if (el) el.innerHTML = `<span class="text-danger">同步失败: ${err.message}</span>`;
+        })
+        .finally(() => {
+            if (btn) {
+                btn.disabled = false;
+                btn.innerHTML = '<i class="bi bi-database"></i> 从数据库同步';
+            }
+        });
+}
+
+// ============================ 解绑 / 换绑 ============================
+
+function unbindSensor(sensorKey) {
+    if (!confirm(`确定要解绑传感器 ${sensorKey}？\n\n解绑后 device_id 将被设为 NULL，传感器将独立运行并可在以后重新绑定。`)) return;
+
+    fetch(`/api/sensors/${encodeURIComponent(sensorKey)}/unbind`, { method: 'POST' })
+        .then(r => r.json())
+        .then(resp => {
+            if (resp.error) {
+                alert(resp.error);
+                return;
+            }
+            loadSensors();
+        })
+        .catch(err => alert('解绑失败: ' + err.message));
+}
+
+// 缓存的设备列表
+let deviceList = [];
+
+function loadDeviceList() {
+    fetch('/api/devices/list')
+        .then(r => r.json())
+        .then(devices => {
+            deviceList = devices || [];
+            const select = document.getElementById('rebindDeviceSelect');
+            if (select) {
+                select.innerHTML = '<option value="">-- 选择设备 --</option>' +
+                    deviceList.map(d => `<option value="${escHtml(d.deviceId)}">${escHtml(d.name || d.deviceId)} (${escHtml(d.deviceId)})</option>`).join('');
+            }
+        })
+        .catch(() => {});
+}
+
+function onDeviceSelectChange() {
+    const select = document.getElementById('rebindDeviceSelect');
+    const input = document.getElementById('rebindDeviceId');
+    if (select && input) {
+        if (select.value === '__custom__') {
+            input.style.display = '';
+            input.value = '';
+            input.focus();
+        } else {
+            input.style.display = 'none';
+            input.value = select.value;
+        }
+    }
+}
+
+function showRebindDialog(sensorKey) {
+    const s = sensorList.find(s => s.sensorKey === sensorKey);
+    if (!s) return;
+
+    document.getElementById('rebindSensorLabel').value = s.displayName || sensorKey;
+    document.getElementById('rebindModal').dataset.sensorKey = sensorKey;
+
+    // 加载设备列表并显示选择器
+    loadDeviceList();
+
+    const select = document.getElementById('rebindDeviceSelect');
+    const input = document.getElementById('rebindDeviceId');
+    if (select) select.value = '';
+    if (input) { input.style.display = 'none'; input.value = ''; }
+
+    const modal = new bootstrap.Modal(document.getElementById('rebindModal'));
+    modal.show();
+}
+
+function rebindSensor() {
+    const sensorKey = document.getElementById('rebindModal').dataset.sensorKey;
+    const select = document.getElementById('rebindDeviceSelect');
+    const input = document.getElementById('rebindDeviceId');
+
+    // 优先使用选择值，其次使用手动输入
+    let newDeviceId = '';
+    if (select && select.value && select.value !== '__custom__') {
+        newDeviceId = select.value;
+    } else if (input && input.value.trim()) {
+        newDeviceId = input.value.trim();
+    }
+
+    if (!newDeviceId) {
+        alert('请选择或输入目标设备 ID');
+        return;
+    }
+
+    fetch(`/api/sensors/${encodeURIComponent(sensorKey)}/rebind`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ deviceId: newDeviceId }),
+    })
+    .then(r => r.json())
+    .then(resp => {
+        if (resp.error) {
+            alert(resp.error);
+            return;
+        }
+        const modal = bootstrap.Modal.getInstance(document.getElementById('rebindModal'));
+        if (modal) modal.hide();
+        alert(resp.message);
+        loadSensors();
+    })
+    .catch(err => alert('重新绑定失败: ' + err.message));
+}
+
+// ============================ 消息模板编辑 ============================
+
+function editMessageTemplate(sensorKey) {
+    const s = sensorList.find(s => s.sensorKey === sensorKey);
+    if (!s) return;
+
+    document.getElementById('templateSensorLabel').textContent = sensorKey;
+    document.getElementById('msgTemplateModal').dataset.sensorKey = sensorKey;
+
+    // 加载当前模板
+    fetch(`/api/sensors/${encodeURIComponent(sensorKey)}/message-template`)
+        .then(r => r.json())
+        .then(data => {
+            document.getElementById('msgTemplateInput').value = data.template || '';
+        })
+        .catch(() => {
+            document.getElementById('msgTemplateInput').value = '';
+        });
+
+    const modal = new bootstrap.Modal(document.getElementById('msgTemplateModal'));
+    modal.show();
+}
+
+function saveTemplate() {
+    const sensorKey = document.getElementById('msgTemplateModal').dataset.sensorKey;
+    const template = document.getElementById('msgTemplateInput').value;
+
+    fetch(`/api/sensors/${encodeURIComponent(sensorKey)}/message-template`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ template: template }),
+    })
+    .then(r => r.json())
+    .then(resp => {
+        if (resp.error) {
+            alert(resp.error);
+            return;
+        }
+        const modal = bootstrap.Modal.getInstance(document.getElementById('msgTemplateModal'));
+        if (modal) modal.hide();
+        alert('消息模板已保存');
+        loadSensors();
+    })
+    .catch(err => alert('保存失败: ' + err.message));
+}
+
+function resetTemplate() {
+    document.getElementById('msgTemplateInput').value = '';
+}
+
+function formatTemplate() {
+    const textarea = document.getElementById('msgTemplateInput');
+    try {
+        const obj = JSON.parse(textarea.value);
+        textarea.value = JSON.stringify(obj, null, 2);
+    } catch {
+        alert('JSON 格式无效，请检查');
+    }
 }
 
 // ============================ MQTT 配置 ============================
@@ -672,7 +931,22 @@ function startPolling() {
                 }
             })
             .catch(() => {});
+        // 更新未绑定传感器计数
+        updateUnboundCount();
     }, 3000);
+}
+
+function updateUnboundCount() {
+    const unbound = sensorList.filter(s => !s.deviceId).length;
+    const badge = document.getElementById('unboundCount');
+    if (badge) {
+        if (unbound > 0) {
+            badge.style.display = 'inline-block';
+            badge.innerHTML = `<i class="bi bi-unlink"></i> 未绑定: ${unbound}`;
+        } else {
+            badge.style.display = 'none';
+        }
+    }
 }
 
 function startUptimeTimer() {

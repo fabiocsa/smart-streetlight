@@ -258,19 +258,17 @@ function handleControlResult(data) {
 }
 
 // 同步 device prop → 本地状态
-// ★ 修复：正在下发手动指令时不覆盖本地状态，防止 loadDevice() 的异步
-//    返回在 DB 提交前到达，导致 watch 把 controlMode 刷回 "auto"。
+// ★ 修复：正在下发手动指令时不覆盖本地状态，防止 loadDevice() 返回的
+//    旧值（DB 尚未提交 lightStatus）导致状态回退。
 watch(() => props.device, (d) => {
   if (!d) return
   // 手动操作进行中时跳过同步，保持乐观更新的值
   if (!sending.value) {
     controlMode.value = d.controlMode || 'auto'
+    brightness.value = d.brightness ?? 50
   }
   thresholdOn.value = d.thresholdOn ?? 50
   thresholdOff.value = d.thresholdOff ?? 100
-  if (!sending.value) {
-    brightness.value = d.brightness ?? 50
-  }
 }, { immediate: true, deep: true })
 
 // =============== 操作函数 ===============
@@ -314,15 +312,15 @@ async function toggleLight() {
     // 如果 3 秒内未收到 WebSocket 结果，认为指令已下发等待反馈
     setTimeout(() => {
       if (sending.value && pendingCmd.value === newCmd) {
-        // WebSocket 未及时返回，以 HTTP 成功为准
+        // WebSocket 未及时返回，以 HTTP 成功为准（不触发 emit('updated')，避免 stale reload）
         sending.value = false
         pendingCmd.value = ''
         if (timeoutHandle) { clearTimeout(timeoutHandle); timeoutHandle = null }
         props.device.lightStatus = newCmd
         props.device.controlMode = 'manual'
         lastResult.value = { type: 'success', text: `指令「${actionText}」已下发，已切换为手动模式` }
+        // ★ 修复: 不再触发 emit('updated') → loadDevice()，避免从 DB 读到旧 lightStatus 导致回退
         loadLogs()
-        emit('updated')
       }
     }, 3000)
   } catch (e) {

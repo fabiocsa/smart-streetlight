@@ -43,9 +43,11 @@ public class SensorServiceImpl implements SensorService {
     @Override
     @Transactional
     public Sensor addSensor(String deviceId, SensorRequest request) {
-        // 验证设备存在
-        Device device = deviceRepository.findByDeviceId(deviceId)
-                .orElseThrow(() -> new BusinessException("设备不存在, deviceId=" + deviceId));
+        // 允许 deviceId 为空（无主传感器），此时跳过设备存在校验
+        if (deviceId != null && !deviceId.isBlank()) {
+            Device device = deviceRepository.findByDeviceId(deviceId)
+                    .orElseThrow(() -> new BusinessException("设备不存在, deviceId=" + deviceId));
+        }
 
         Sensor sensor = Sensor.builder()
                 .deviceId(deviceId)
@@ -136,11 +138,18 @@ public class SensorServiceImpl implements SensorService {
     @Override
     @Transactional
     public int syncToMock(String deviceId) {
-        // 验证设备存在
-        deviceRepository.findByDeviceId(deviceId)
-                .orElseThrow(() -> new BusinessException("设备不存在, deviceId=" + deviceId));
+        // 验证设备存在（仅当 deviceId 非空时）
+        if (deviceId != null && !deviceId.isBlank()) {
+            deviceRepository.findByDeviceId(deviceId)
+                    .orElseThrow(() -> new BusinessException("设备不存在, deviceId=" + deviceId));
+        }
 
-        List<Sensor> sensors = sensorRepository.findByDeviceIdAndEnabled(deviceId, true);
+        List<Sensor> sensors;
+        if (deviceId == null || deviceId.isBlank()) {
+            sensors = sensorRepository.findAll();
+        } else {
+            sensors = sensorRepository.findByDeviceIdAndEnabled(deviceId, true);
+        }
         if (sensors.isEmpty()) {
             log.warn("设备 {} 没有已启用的传感器，跳过同步", deviceId);
             return 0;
@@ -148,10 +157,56 @@ public class SensorServiceImpl implements SensorService {
 
         // 逐个通知模拟器
         for (Sensor sensor : sensors) {
-            mqttPublishService.publishSensorConfig(deviceId, "add_sensor", sensor);
+            String did = sensor.getDeviceId() != null ? sensor.getDeviceId() : "";
+            mqttPublishService.publishSensorConfig(did, "add_sensor", sensor);
         }
 
         log.info("传感器配置已同步到模拟器 - deviceId: {}, count: {}", deviceId, sensors.size());
         return sensors.size();
+    }
+
+    @Override
+    public List<Sensor> getAllSensors() {
+        return sensorRepository.findAll();
+    }
+
+    @Override
+    @Transactional
+    public Sensor unbindSensor(Long id) {
+        Sensor sensor = sensorRepository.findById(id)
+                .orElseThrow(() -> new BusinessException("传感器不存在, id=" + id));
+
+        String oldDeviceId = sensor.getDeviceId();
+        sensor.setDeviceId(null);
+        Sensor saved = sensorRepository.save(sensor);
+        log.info("传感器解绑 - sensorId: {}, 原设备: {}", id, oldDeviceId);
+
+        // 通知模拟器移除传感器
+        if (oldDeviceId != null) {
+            mqttPublishService.publishSensorConfig(oldDeviceId, "remove_sensor", saved);
+        }
+
+        return saved;
+    }
+
+    @Override
+    @Transactional
+    public Sensor rebindSensor(Long id, String newDeviceId) {
+        Sensor sensor = sensorRepository.findById(id)
+                .orElseThrow(() -> new BusinessException("传感器不存在, id=" + id));
+
+        // 验证新设备存在
+        deviceRepository.findByDeviceId(newDeviceId)
+                .orElseThrow(() -> new BusinessException("设备不存在, deviceId=" + newDeviceId));
+
+        String oldDeviceId = sensor.getDeviceId();
+        sensor.setDeviceId(newDeviceId);
+        Sensor saved = sensorRepository.save(sensor);
+        log.info("传感器换绑 - sensorId: {}, 旧设备: {}, 新设备: {}", id, oldDeviceId, newDeviceId);
+
+        // 通知模拟器添加传感器到新设备
+        mqttPublishService.publishSensorConfig(newDeviceId, "add_sensor", saved);
+
+        return saved;
     }
 }

@@ -6,6 +6,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.streetlight.service.ControlService;
 import com.streetlight.service.DeviceService;
 import com.streetlight.service.SensorDataService;
+import com.streetlight.websocket.WebSocketHandler;
 import lombok.extern.slf4j.Slf4j;
 import org.eclipse.paho.mqttv5.client.IMqttToken;
 import org.eclipse.paho.mqttv5.client.MqttCallback;
@@ -26,16 +27,19 @@ public class MqttMessageHandler implements MqttCallback {
     private final ControlService controlService;
     private final DeviceService deviceService;
     private final MqttClientManager mqttClientManager;
+    private final WebSocketHandler webSocketHandler;
     private final ObjectMapper objectMapper = new ObjectMapper();
 
     public MqttMessageHandler(SensorDataService sensorDataService,
                                ControlService controlService,
                                @Lazy DeviceService deviceService,
-                               @Lazy MqttClientManager mqttClientManager) {
+                               @Lazy MqttClientManager mqttClientManager,
+                               WebSocketHandler webSocketHandler) {
         this.sensorDataService = sensorDataService;
         this.controlService = controlService;
         this.deviceService = deviceService;
         this.mqttClientManager = mqttClientManager;
+        this.webSocketHandler = webSocketHandler;
     }
 
     @Override
@@ -94,6 +98,10 @@ public class MqttMessageHandler implements MqttCallback {
             deviceId = root.get("deviceId").asText();
         }
         controlService.updateControlResult(deviceId, command, result);
+
+        // ★ 修复: 推送控制结果到前端 WebSocket，避免前端依赖乐观更新+轮询
+        webSocketHandler.pushControlResult(deviceId, command, result);
+        log.info("已推送控制结果到WebSocket: deviceId={}, command={}, result={}", deviceId, command, result);
     }
 
     private void handleHeartbeat(String topic, String payload) throws JsonProcessingException {
