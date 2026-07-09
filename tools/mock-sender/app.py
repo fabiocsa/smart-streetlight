@@ -83,7 +83,6 @@ def index():
 @app.route("/api/status")
 def api_status():
     mqtt_cfg = config_mgr.get_mqtt_config()
-    device_cfg = config_mgr.get_device_config()
     sensors = sensor_mgr.list_sensors()
     return jsonify({
         "mqtt": {
@@ -91,7 +90,6 @@ def api_status():
             "port": mqtt_cfg.get("port", 1883),
             "connected": mqtt_mgr.is_connected,
         },
-        "device": device_cfg,
         "sensors": {
             "total": len(sensors),
             "running": sum(1 for s in sensors if s["running"]),
@@ -101,37 +99,6 @@ def api_status():
 
 
 # ================================ API: 设备注册 ================================
-
-@app.route("/api/device/config")
-def api_get_device_config():
-    """获取设备身份配置。"""
-    cfg = config_mgr.get_device_config()
-    return jsonify(cfg)
-
-
-@app.route("/api/device/config", methods=["PUT"])
-def api_update_device_config():
-    """更新设备身份配置。"""
-    data = request.get_json(force=True)
-    ok = config_mgr.update_device_config(data)
-    if not ok:
-        return jsonify({"error": "保存设备配置失败"}), 500
-    return jsonify({"message": "设备配置已保存"})
-
-
-@app.route("/api/device/register", methods=["POST"])
-def api_register_device():
-    """手动触发设备注册到 MQTT Broker。"""
-    ok = sensor_mgr.register_to_broker()
-    return jsonify({"message": "设备已注册" if ok else "设备注册失败", "success": ok})
-
-
-@app.route("/api/device/deregister", methods=["POST"])
-def api_deregister_device():
-    """手动触发设备注销。"""
-    ok = sensor_mgr.unregister_from_broker()
-    return jsonify({"message": "设备已注销" if ok else "设备注销失败", "success": ok})
-
 
 # ================================ API: 传感器 ================================
 
@@ -488,25 +455,15 @@ def main():
     mqtt_cfg = config_mgr.get_mqtt_config()
     mqtt_mgr.connect(mqtt_cfg)
 
-    # 从本地配置加载传感器
+    # 从本地配置加载并启动所有传感器
     sensor_mgr.load_from_config()
-
-    # 异步注册到 MQTT Broker
-    def _register_async():
-        time.sleep(2)  # 等 MQTT 连接稳定
-        sensor_mgr.register_to_broker()
-
-    reg_thread = threading.Thread(target=_register_async, daemon=True)
-    reg_thread.start()
 
     # 启动
     port = 5050
-    device_cfg = config_mgr.get_device_config()
     logger.info("=" * 55)
-    logger.info("  智慧路灯 Mock 模拟数据发送器 (纯 MQTT)")
+    logger.info("  智慧路灯 Mock 模拟数据发送器 (纯传感器)")
     logger.info(f"  Web UI:  http://localhost:{port}")
     logger.info(f"  MQTT:    {mqtt_cfg['broker']}:{mqtt_cfg['port']}")
-    logger.info(f"  设备ID:  {device_cfg.get('deviceId', '未配置')}")
     logger.info("=" * 55)
     logger.info("  按 Ctrl+C 停止")
     logger.info("")
@@ -517,7 +474,6 @@ def main():
         pass
     finally:
         logger.info("正在关闭...")
-        sensor_mgr.unregister_from_broker()
         sensor_mgr.stop_all()
         mqtt_mgr.disconnect()
         logger.info("已安全退出")

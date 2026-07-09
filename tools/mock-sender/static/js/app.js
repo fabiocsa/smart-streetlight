@@ -19,7 +19,6 @@ const TYPE_LABELS = { light: '光照', temperature: '温度', humidity: '湿度'
 document.addEventListener('DOMContentLoaded', () => {
     loadSensors();
     loadMqttConfig();
-    loadDeviceConfig();
     startUptimeTimer();
     startPolling();
     connectLogStream();
@@ -237,12 +236,18 @@ function addSensor() {
     const data = {};
     fd.forEach((v, k) => { data[k] = v; });
 
+    const deviceId = (data.deviceId || '').trim();
+    if (!deviceId) {
+        alert('请输入所属设备ID（需与后端已创建的设备ID一致）');
+        return;
+    }
+
     const body = {
-        deviceId: data.deviceGroup || 'auto',
+        deviceId: deviceId,
         sensorType: data.sensorType || 'light',
         displayName: data.displayName || '',
         deviceGroup: data.deviceGroup || '',
-        dataTopic: data.dataTopic || '',
+        dataTopic: data.dataTopic || `streetlight/${deviceId}/sensor/data`,
         interval: parseInt(data.interval) || 5,
         enabled: true,
         controlMode: data.controlMode || 'auto',
@@ -281,6 +286,7 @@ function editSensor(sensorKey) {
 
     const form = document.getElementById('addSensorForm');
     if (!form) return;
+    form.querySelector('[name="deviceId"]').value = s.deviceId || '';
     form.querySelector('[name="sensorType"]').value = s.sensorType || 'light';
     form.querySelector('[name="displayName"]').value = s.displayName || '';
     form.querySelector('[name="deviceGroup"]').value = s.deviceGroup || s.deviceName || '';
@@ -340,58 +346,14 @@ function updateSensor(sensorKey) {
 }
 
 function autoFillDataTopic() {
-    const deviceId = document.getElementById('deviceIdInput')?.value?.trim() || 'SL-001';
+    const deviceIdEl = document.getElementById('deviceIdInput');
+    const deviceId = deviceIdEl?.value?.trim();
+    if (!deviceId) {
+        alert('请先填写所属设备ID');
+        return;
+    }
     const el = document.getElementById('dataTopicInput');
     if (el) el.value = `streetlight/${deviceId}/sensor/data`;
-}
-
-// ============================ 设备配置 ============================
-
-function loadDeviceConfig() {
-    fetch('/api/device/config')
-        .then(r => r.json())
-        .then(cfg => {
-            setVal('deviceIdInput', cfg.deviceId);
-            setVal('deviceNameInput', cfg.name);
-            setVal('deviceLocationInput', cfg.location);
-        }).catch(() => {});
-}
-
-function saveDeviceConfig() {
-    const data = {
-        deviceId: (document.getElementById('deviceIdInput')?.value || '').trim(),
-        name: (document.getElementById('deviceNameInput')?.value || '').trim(),
-        location: (document.getElementById('deviceLocationInput')?.value || '').trim(),
-    };
-    fetch('/api/device/config', {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(data),
-    }).then(r => r.json()).then(resp => {
-        if (resp.error) alert(resp.error);
-        else alert(resp.message || '设备配置已保存');
-    }).catch(err => alert('保存失败: ' + err.message));
-}
-
-function registerDevice() {
-    const btn = document.getElementById('btnRegister');
-    if (btn) { btn.disabled = true; btn.innerHTML = '<i class="bi bi-hourglass-split"></i> 注册中...'; }
-    const el = document.getElementById('deviceRegResult');
-    if (el) el.innerHTML = '<span class="text-info"><i class="bi bi-arrow-repeat spin"></i> 正在注册...</span>';
-
-    fetch('/api/device/register', { method: 'POST' })
-        .then(r => r.json())
-        .then(resp => {
-            if (el) {
-                el.innerHTML = resp.success
-                    ? `<span class="text-success"><i class="bi bi-check-circle"></i> ${resp.message}</span>`
-                    : `<span class="text-danger">${resp.message}</span>`;
-                setTimeout(() => el.innerHTML = '', 10000);
-            }
-            loadSensors();
-        })
-        .catch(err => { if (el) el.innerHTML = `<span class="text-danger">失败: ${err.message}</span>`; })
-        .finally(() => { if (btn) { btn.disabled = false; btn.innerHTML = '<i class="bi bi-broadcast"></i> 注册到 Broker'; } });
 }
 
 // ============================ MQTT 配置 ============================

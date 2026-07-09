@@ -7,20 +7,15 @@
     "topicPrefix": "streetlight",
     "clientId": "mock-sender-v2"
   },
-  "device": {
-    "deviceId": "SL-001",
-    "name": "路灯A-01",
-    "location": "校门口"
-  },
   "sensors": {
-    "A01_17128": {
-      "deviceId": "A01",
-      "sensorId": 17128,
-      "displayName": "A01光照",
+    "SL-001_8152": {
+      "deviceId": "SL-001",
+      "sensorId": 8152,
+      "displayName": "SL-001光照",
       "sensorType": "light",
-      "deviceGroup": "A01",
-      "deviceName": "A01",
-      "name": "A01",
+      "deviceGroup": "SL-001",
+      "deviceName": "SL-001",
+      "name": "SL-001",
       "location": "",
       "dataTopic": "streetlight/SL-001/sensor/data",
       "enabled": true,
