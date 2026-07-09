@@ -408,6 +408,7 @@ def main():
     # 注册 MQTT 回调
     mqtt_mgr.on_control_command = sensor_mgr.handle_control_command
     mqtt_mgr.on_mock_config = _handle_mock_config_command
+    mqtt_mgr.on_connected = lambda: sensor_mgr.re_register_all()
 
     # 连接 MQTT
     mqtt_cfg = config_mgr.get_mqtt_config()
