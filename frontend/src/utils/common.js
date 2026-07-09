@@ -10,6 +10,14 @@ const SENSOR_TYPE_MAP = {
   power: '功率'
 }
 
+// 传感器类型 Element Plus Tag 颜色映射
+const SENSOR_TYPE_TAG_MAP = {
+  light: '',
+  temperature: 'danger',
+  humidity: 'info',
+  power: 'warning'
+}
+
 // 格式化时间为中文格式
 export function formatTime(t) {
   if (!t) return '-'
@@ -19,6 +27,11 @@ export function formatTime(t) {
 // 传感器类型转中文标签
 export function typeLabel(t) {
   return SENSOR_TYPE_MAP[t] || t
+}
+
+// 传感器类型转 Element Plus Tag type
+export function sensorTypeTag(t) {
+  return SENSOR_TYPE_TAG_MAP[t] || 'info'
 }
 
 // 搜索过滤时重置分页

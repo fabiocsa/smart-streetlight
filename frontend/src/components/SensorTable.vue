@@ -29,7 +29,7 @@
       <el-table-column prop="displayName" label="传感器名称" min-width="130" />
       <el-table-column label="类型" width="90">
         <template #default="{ row }">
-          <el-tag size="small">{{ typeLabel(row.sensorType) }}</el-tag>
+          <el-tag size="small" :type="sensorTypeTag(row.sensorType)">{{ typeLabel(row.sensorType) }}</el-tag>
         </template>
       </el-table-column>
       <el-table-column prop="dataTopic" label="数据主题" min-width="180" show-overflow-tooltip />
@@ -102,7 +102,7 @@ import { ref } from 'vue'
 import { useSensorStore } from '../store/sensor'
 import { useAuthStore } from '../stores/authStore'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { formatTime, typeLabel } from '../utils/common'
+import { formatTime, typeLabel, sensorTypeTag } from '../utils/common'
 
 const props = defineProps({
   deviceId: { type: String, required: true },

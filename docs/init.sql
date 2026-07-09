@@ -1,5 +1,5 @@
 -- ============================================================================
--- 智慧路灯系统 - 数据库初始化脚本
+-- 智慧路灯系统 - 数据库初始化脚本 (v2 — JSON 传感器数据)
 -- Smart Streetlight System - Database Initialization Script
 -- 技术栈: MySQL 8.x
 -- 字符集: utf8mb4 (支持emoji和特殊字符)
@@ -61,24 +61,28 @@ CREATE TABLE sensor (
     INDEX idx_device_type (device_id, sensor_type)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='传感器定义表';
 -- 注意: 外键 fk_sensor_device 已移除，以支持无主传感器 (device_id=NULL)。
--- 对于已有数据库，需手动执行: ALTER TABLE sensor DROP FOREIGN KEY fk_sensor_device;
--- ALTER TABLE sensor MODIFY COLUMN device_id VARCHAR(50) NULL;
 
 -- ============================================================================
--- 4. 传感器数据表 (sensor_data)
+-- 4. 传感器数据表 (sensor_data) — JSON 存储，支持异构多维数据
+--    每个传感器上报的完整 JSON payload 直接存入 data_json 列。
+--    无需 ALTER TABLE 即可支持新增传感器类型。
 -- ============================================================================
 DROP TABLE IF EXISTS sensor_data;
 CREATE TABLE sensor_data (
-    id               BIGINT       NOT NULL AUTO_INCREMENT  COMMENT '主键',
-    device_id        VARCHAR(50)  NOT NULL                 COMMENT '设备标识(FK → device.device_id)',
-    light_intensity  DOUBLE       NOT NULL                 COMMENT '光照强度(Lux)，范围 0~2000',
-    reported_at      DATETIME     NOT NULL                 COMMENT '设备上报时间',
-    created_at       DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '记录写入时间',
+    id              BIGINT       NOT NULL AUTO_INCREMENT  COMMENT '主键',
+    device_id       VARCHAR(50)  NOT NULL                 COMMENT '设备标识(FK → device.device_id)',
+    sensor_id       BIGINT       DEFAULT NULL             COMMENT '传感器定义ID(FK → sensor.id)，可空',
+    sensor_type     VARCHAR(30)  NOT NULL DEFAULT 'light' COMMENT '传感器类型(冗余, 便于筛选和聚合)',
+    data_json       JSON         NOT NULL                 COMMENT '传感器全量数据(任意字段, 如 lightIntensity/temperature/humidity/power/voltage)',
+    reported_at     DATETIME     NOT NULL                 COMMENT '设备上报时间',
+    created_at      DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '记录写入时间',
 
     PRIMARY KEY (id),
     INDEX idx_device_reported (device_id, reported_at),
-    INDEX idx_reported_at (reported_at)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='传感器数据表';
+    INDEX idx_sensor_reported (sensor_id, reported_at),
+    INDEX idx_type_reported  (sensor_type, reported_at),
+    INDEX idx_reported_at    (reported_at)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='传感器数据表(JSON存储,支持异构数据)';
 
 -- ============================================================================
 -- 5. 告警日志表 (alarm_log)
@@ -137,39 +141,30 @@ INSERT INTO device (name, device_id, status, threshold_on, threshold_off, light_
     ('路灯C-01', 'SL-007', 'online',  40.0,  90.0, 'off', 'auto',   '教学楼A',     NOW()),
     ('路灯C-02', 'SL-008', 'online',  50.0, 100.0, 'off', 'auto',   '教学楼B',     NOW());
 
--- 插入传感器定义示例数据
+-- 插入传感器定义示例数据（多种类型）
 INSERT INTO sensor (device_id, sensor_type, display_name, data_topic, report_frequency, enabled, config_json) VALUES
-    ('SL-001', 'light',    '光照传感器A', 'streetlight/SL-001/sensor/data',  5, 1, '{"min": 0, "max": 800}'),
-    ('SL-001', 'power',    '功率传感器',   'streetlight/SL-001/sensor/data', 10, 1, '{"min": 0, "max": 100}'),
-    ('SL-002', 'light',    '光照传感器',   'streetlight/SL-002/sensor/data',  5, 1, '{"min": 0, "max": 800}'),
-    ('SL-004', 'light',    '光照传感器',   'streetlight/SL-004/sensor/data',  5, 1, '{"min": 0, "max": 600}');
+    ('SL-001', 'light',       '光照传感器A',  'streetlight/SL-001/sensor/data',  5, 1, '{"min": 0, "max": 800}'),
+    ('SL-001', 'power',       '功率传感器',   'streetlight/SL-001/sensor/data', 10, 1, '{"min": 0, "max": 100}'),
+    ('SL-002', 'light',       '光照传感器',   'streetlight/SL-002/sensor/data',  5, 1, '{"min": 0, "max": 800}'),
+    ('SL-002', 'temperature', '温度传感器',   'streetlight/SL-002/sensor/data', 10, 1, '{"min": -10, "max": 50}'),
+    ('SL-004', 'light',       '光照传感器',   'streetlight/SL-004/sensor/data',  5, 1, '{"min": 0, "max": 600}');
 
--- 插入传感器示例数据（过去2小时，每5分钟一条，共24条/设备 × 前4个设备）
-INSERT INTO sensor_data (device_id, light_intensity, reported_at) VALUES
-    ('SL-001', 120.5, DATE_SUB(NOW(), INTERVAL 120 MINUTE)),
-    ('SL-001', 95.0,  DATE_SUB(NOW(), INTERVAL 115 MINUTE)),
-    ('SL-001', 80.2,  DATE_SUB(NOW(), INTERVAL 110 MINUTE)),
-    ('SL-001', 60.5,  DATE_SUB(NOW(), INTERVAL 105 MINUTE)),
-    ('SL-001', 45.0,  DATE_SUB(NOW(), INTERVAL 100 MINUTE)),
-    ('SL-001', 35.2,  DATE_SUB(NOW(), INTERVAL 95 MINUTE)),
-    ('SL-001', 28.5,  DATE_SUB(NOW(), INTERVAL 90 MINUTE)),
-    ('SL-001', 25.0,  DATE_SUB(NOW(), INTERVAL 85 MINUTE)),
-    ('SL-001', 30.5,  DATE_SUB(NOW(), INTERVAL 80 MINUTE)),
-    ('SL-001', 42.0,  DATE_SUB(NOW(), INTERVAL 75 MINUTE)),
-    ('SL-001', 55.8,  DATE_SUB(NOW(), INTERVAL 70 MINUTE)),
-    ('SL-001', 70.2,  DATE_SUB(NOW(), INTERVAL 65 MINUTE)),
-    ('SL-001', 88.5,  DATE_SUB(NOW(), INTERVAL 60 MINUTE)),
-    ('SL-001', 110.0, DATE_SUB(NOW(), INTERVAL 55 MINUTE)),
-    ('SL-001', 135.2, DATE_SUB(NOW(), INTERVAL 50 MINUTE)),
-    ('SL-001', 150.5, DATE_SUB(NOW(), INTERVAL 45 MINUTE)),
-    ('SL-001', 165.0, DATE_SUB(NOW(), INTERVAL 40 MINUTE)),
-    ('SL-001', 180.2, DATE_SUB(NOW(), INTERVAL 35 MINUTE)),
-    ('SL-001', 200.5, DATE_SUB(NOW(), INTERVAL 30 MINUTE)),
-    ('SL-001', 185.0, DATE_SUB(NOW(), INTERVAL 25 MINUTE)),
-    ('SL-001', 160.2, DATE_SUB(NOW(), INTERVAL 20 MINUTE)),
-    ('SL-001', 140.5, DATE_SUB(NOW(), INTERVAL 15 MINUTE)),
-    ('SL-001', 125.0, DATE_SUB(NOW(), INTERVAL 10 MINUTE)),
-    ('SL-001', 115.5, DATE_SUB(NOW(), INTERVAL 5 MINUTE));
+-- 插入传感器数据示例（JSON 格式，含多维度数据）
+INSERT INTO sensor_data (device_id, sensor_id, sensor_type, data_json, reported_at) VALUES
+    -- SL-001 光照数据（前24条，每5分钟一条）
+    ('SL-001', 1, 'light', '{"lightIntensity": 120.5, "illuminance": 120.5, "temperature": 25.3, "voltage": 226.0, "power": 0.5, "cloudCover": 0.3, "status": "OFF"}', DATE_SUB(NOW(), INTERVAL 120 MINUTE)),
+    ('SL-001', 1, 'light', '{"lightIntensity": 95.0,  "illuminance": 95.0,  "temperature": 25.8, "voltage": 225.5, "power": 0.4, "cloudCover": 0.3, "status": "OFF"}', DATE_SUB(NOW(), INTERVAL 115 MINUTE)),
+    ('SL-001', 1, 'light', '{"lightIntensity": 80.2,  "illuminance": 80.2,  "temperature": 26.1, "voltage": 227.2, "power": 0.5, "cloudCover": 0.2, "status": "OFF"}', DATE_SUB(NOW(), INTERVAL 110 MINUTE)),
+    ('SL-001', 1, 'light', '{"lightIntensity": 60.5,  "illuminance": 60.5,  "temperature": 27.0, "voltage": 226.8, "power": 0.4, "cloudCover": 0.1, "status": "OFF"}', DATE_SUB(NOW(), INTERVAL 105 MINUTE)),
+    ('SL-001', 1, 'light', '{"lightIntensity": 45.0,  "illuminance": 45.0,  "temperature": 27.5, "voltage": 225.0, "power": 65.0, "cloudCover": 0.1, "status": "ON"}',  DATE_SUB(NOW(), INTERVAL 100 MINUTE)),
+    ('SL-001', 1, 'light', '{"lightIntensity": 35.2,  "illuminance": 35.2,  "temperature": 27.8, "voltage": 223.5, "power": 68.2, "cloudCover": 0.2, "status": "ON"}',  DATE_SUB(NOW(), INTERVAL 95 MINUTE)),
+    ('SL-001', 1, 'light', '{"lightIntensity": 28.5,  "illuminance": 28.5,  "temperature": 28.1, "voltage": 224.0, "power": 70.1, "cloudCover": 0.3, "status": "ON"}',  DATE_SUB(NOW(), INTERVAL 90 MINUTE)),
+    ('SL-001', 1, 'light', '{"lightIntensity": 25.0,  "illuminance": 25.0,  "temperature": 28.3, "voltage": 222.8, "power": 72.5, "cloudCover": 0.4, "status": "ON"}',  DATE_SUB(NOW(), INTERVAL 85 MINUTE)),
+    -- SL-001 功率数据
+    ('SL-001', 2, 'power', '{"power": 72.5, "voltage": 222.8, "current": 0.33, "energy": 1.15}', DATE_SUB(NOW(), INTERVAL 85 MINUTE)),
+    -- SL-002 多类型数据
+    ('SL-002', 3, 'light',       '{"lightIntensity": 200.5, "illuminance": 200.5, "temperature": 29.0, "voltage": 228.0, "power": 0.3, "cloudCover": 0.5, "status": "OFF"}', DATE_SUB(NOW(), INTERVAL 30 MINUTE)),
+    ('SL-002', 4, 'temperature', '{"temperature": 29.0, "humidity": 62.0}', DATE_SUB(NOW(), INTERVAL 30 MINUTE));
 
 -- 插入告警示例数据
 INSERT INTO alarm_log (device_id, alarm_type, content, severity, status, created_at) VALUES
@@ -189,20 +184,20 @@ INSERT INTO control_log (device_id, command, source, result, created_at) VALUES
 -- 8. 创建常用视图
 -- ============================================================================
 
--- 7.1 Dashboard总览统计视图
+-- 8.1 Dashboard总览统计视图
 DROP VIEW IF EXISTS v_dashboard_stats;
 CREATE VIEW v_dashboard_stats AS
 SELECT
-    COUNT(*)                                    AS total_devices,
-    SUM(CASE WHEN status = 'online'  THEN 1 ELSE 0 END)  AS online_devices,
-    SUM(CASE WHEN status = 'offline' THEN 1 ELSE 0 END)  AS offline_devices,
+    COUNT(*)                                              AS total_devices,
+    SUM(CASE WHEN status = 'online'  THEN 1 ELSE 0 END)   AS online_devices,
+    SUM(CASE WHEN status = 'offline' THEN 1 ELSE 0 END)   AS offline_devices,
     SUM(CASE WHEN light_status = 'on'  THEN 1 ELSE 0 END) AS lights_on,
     SUM(CASE WHEN light_status = 'off' THEN 1 ELSE 0 END) AS lights_off,
     (SELECT COUNT(*) FROM alarm_log WHERE status = 'pending') AS pending_alarms,
     (SELECT COUNT(*) FROM alarm_log WHERE DATE(created_at) = CURDATE()) AS today_alarms
 FROM device;
 
--- 7.2 设备最新传感器数据视图
+-- 8.2 设备最新传感器数据视图（提取 JSON 字段）
 DROP VIEW IF EXISTS v_device_latest_sensor;
 CREATE VIEW v_device_latest_sensor AS
 SELECT
@@ -214,7 +209,12 @@ SELECT
     d.control_mode,
     d.location,
     d.last_heartbeat,
-    s.light_intensity,
+    CAST(JSON_UNQUOTE(JSON_EXTRACT(s.data_json, '$.lightIntensity')) AS DOUBLE) AS light_intensity,
+    CAST(JSON_UNQUOTE(JSON_EXTRACT(s.data_json, '$.temperature'))   AS DOUBLE) AS temperature,
+    CAST(JSON_UNQUOTE(JSON_EXTRACT(s.data_json, '$.humidity'))      AS DOUBLE) AS humidity,
+    CAST(JSON_UNQUOTE(JSON_EXTRACT(s.data_json, '$.power'))         AS DOUBLE) AS power,
+    CAST(JSON_UNQUOTE(JSON_EXTRACT(s.data_json, '$.voltage'))       AS DOUBLE) AS voltage,
+    s.sensor_type,
     s.reported_at AS last_reported_at
 FROM device d
 LEFT JOIN sensor_data s ON s.id = (
@@ -225,9 +225,8 @@ LEFT JOIN sensor_data s ON s.id = (
 );
 
 -- ============================================================================
--- 9. 验证：查看表结构和示例数据
+-- 9. 验证
 -- ============================================================================
--- 取消注释以验证:
 -- SHOW TABLES;
 -- SELECT * FROM device;
 -- SELECT * FROM v_dashboard_stats;

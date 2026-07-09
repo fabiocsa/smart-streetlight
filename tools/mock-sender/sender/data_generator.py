@@ -248,6 +248,8 @@ def generate_sensor_data(
     extra_fields: Optional[Dict[str, Any]] = None,
     brightness: Optional[int] = None,
     sim_config: Optional[Dict[str, Any]] = None,
+    sensor_type: str = "light",
+    sensor_id: Optional[int] = None,
 ) -> Dict[str, Any]:
     """
     生成一条完整的传感器数据 payload (真实时钟驱动)。
@@ -259,6 +261,8 @@ def generate_sensor_data(
         extra_fields: 额外字段会合并到返回值中
         brightness:   手动亮度百分比 0-100，仅在 light_status=on 时生效
         sim_config:   模拟配置 (经纬度/云量/温度参数)，未传则用默认值
+        sensor_type:  传感器类型 (light/temperature/humidity/power)
+        sensor_id:    传感器定义 ID
 
     返回:
         符合 MQTT sensor/data topic 的 dict
@@ -316,6 +320,7 @@ def generate_sensor_data(
     effective_device_id = device_id if device_id else "unbound"
     payload = {
         "deviceId": effective_device_id,
+        "sensorType": sensor_type,
         "illuminance": illuminance,
         "lightIntensity": illuminance,
         "temperature": temperature,
@@ -325,6 +330,9 @@ def generate_sensor_data(
         "status": "ON" if light_on else "OFF",
         "timestamp": now_utc.strftime("%Y-%m-%dT%H:%M:%SZ"),
     }
+
+    if sensor_id is not None:
+        payload["sensorId"] = sensor_id
 
     if brightness is not None:
         payload["brightness"] = brightness
@@ -406,6 +414,8 @@ def generate_sensor_data_with_template(
     extra_fields: Optional[Dict[str, Any]] = None,
     brightness: Optional[int] = None,
     sim_config: Optional[Dict[str, Any]] = None,
+    sensor_type: str = "light",
+    sensor_id: Optional[int] = None,
 ) -> str:
     """
     根据自定义模板生成传感器数据消息字符串。
@@ -419,6 +429,8 @@ def generate_sensor_data_with_template(
         extra_fields=extra_fields,
         brightness=brightness,
         sim_config=sim_config,
+        sensor_type=sensor_type,
+        sensor_id=sensor_id,
     )
 
     if not template or not template.strip():

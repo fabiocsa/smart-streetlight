@@ -30,6 +30,29 @@ public class DashboardController {
         return ResponseEntity.ok(dashboardService.getLatestSensorData());
     }
 
+    @GetMapping("/latest-sensor-data/{sensorType}")
+    public ResponseEntity<List<Map<String, Object>>> getLatestSensorDataByType(
+            @PathVariable String sensorType) {
+        return ResponseEntity.ok(dashboardService.getLatestSensorDataByType(sensorType));
+    }
+
+    /**
+     * 通用传感器趋势（新接口）。
+     * 例: GET /api/dashboard/sensor-trend?metric=temperature&deviceId=SL-001&range=24h
+     * 默认 metric=lightIntensity
+     */
+    @GetMapping("/sensor-trend")
+    public ResponseEntity<Map<String, Object>> getSensorTrend(
+            @RequestParam(required = false) String deviceId,
+            @RequestParam(defaultValue = "lightIntensity") String metric,
+            @RequestParam(defaultValue = "24h") String range) {
+        return ResponseEntity.ok(dashboardService.getSensorTrend(deviceId, metric, range));
+    }
+
+    /**
+     * 光照趋势（旧接口，保留兼容）。
+     * 内部重定向到 getSensorTrend(deviceId, "lightIntensity", range)。
+     */
     @GetMapping("/light-trend")
     public ResponseEntity<Map<String, Object>> getLightTrend(
             @RequestParam(required = false) String deviceId,

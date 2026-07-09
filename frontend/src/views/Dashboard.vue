@@ -34,16 +34,26 @@
         </el-card>
       </el-col>
 
-      <!-- 24h光照趋势 -->
+      <!-- 传感器趋势 -->
       <el-col :span="16">
         <el-card shadow="never">
           <template #header>
             <div class="chart-header">
-              <strong>24小时光照趋势</strong>
-              <el-select v-model="lightTrendDevice" placeholder="全部设备" clearable size="small" style="width: 160px" @change="loadLightTrend">
-                <el-option label="全部设备" value="" />
-                <el-option v-for="d in devices" :key="d.deviceId" :label="d.name" :value="d.deviceId" />
-              </el-select>
+              <strong>24小时传感器趋势</strong>
+              <div style="display: flex; gap: 8px">
+                <el-select v-model="trendMetric" size="small" style="width: 130px" @change="loadSensorTrend">
+                  <el-option
+                    v-for="m in metricOptions"
+                    :key="m.value"
+                    :label="m.label"
+                    :value="m.value"
+                  />
+                </el-select>
+                <el-select v-model="lightTrendDevice" placeholder="全部设备" clearable size="small" style="width: 160px" @change="loadSensorTrend">
+                  <el-option label="全部设备" value="" />
+                  <el-option v-for="d in devices" :key="d.deviceId" :label="d.name" :value="d.deviceId" />
+                </el-select>
+              </div>
             </div>
           </template>
           <v-chart :option="lightTrendOption" autoresize style="height: 280px" />
@@ -135,21 +145,55 @@
       </el-col>
     </el-row>
 
-    <!-- 各设备最新光照 -->
+    <!-- 各设备最新传感器数据 -->
     <el-card shadow="never" style="margin-top: 16px">
-      <template #header><strong>设备最新光照数据</strong></template>
+      <template #header>
+        <div class="chart-header">
+          <strong>设备最新传感器数据</strong>
+          <el-select v-model="latestSensorType" size="small" style="width: 130px" @change="loadLatestByType">
+            <el-option label="全部类型" value="" />
+            <el-option label="光照" value="light" />
+            <el-option label="温度" value="temperature" />
+            <el-option label="湿度" value="humidity" />
+            <el-option label="功率" value="power" />
+          </el-select>
+        </div>
+      </template>
       <el-table :data="latestSensorData" size="small" max-height="280" style="width: 100%">
         <el-table-column prop="deviceId" label="设备ID" width="120" />
-        <el-table-column label="光照强度" min-width="160">
+        <el-table-column label="传感器类型" width="100">
+          <template #default="{ row }">
+            <el-tag :type="sensorTypeTag(row.sensorType)" size="small">{{ sensorTypeLabel(row.sensorType) }}</el-tag>
+          </template>
+        </el-table-column>
+        <el-table-column label="光照强度" width="200">
           <template #default="{ row }">
             <div style="display: flex; align-items: center; gap: 8px">
               <el-progress
-                :percentage="Math.min(row.lightIntensity / 8, 100)"
-                :color="lightColor(row.lightIntensity)"
+                :percentage="Math.min((row.lightIntensity || 0) / 8, 100)"
+                :color="lightColor(row.lightIntensity || 0)"
                 :stroke-width="16"
                 style="flex: 1"
               />
-              <span style="font-weight: 600; min-width: 60px">{{ row.lightIntensity }} Lux</span>
+              <span style="font-weight: 600; min-width: 60px">{{ row.lightIntensity ?? '-' }} Lux</span>
+            </div>
+          </template>
+        </el-table-column>
+        <el-table-column label="其他指标" min-width="200">
+          <template #default="{ row }">
+            <div style="display: flex; gap: 12px; flex-wrap: wrap">
+              <span v-if="row.data?.temperature != null" style="font-size: 13px">
+                🌡 {{ row.data.temperature }}°C
+              </span>
+              <span v-if="row.data?.humidity != null" style="font-size: 13px">
+                💧 {{ row.data.humidity }}%
+              </span>
+              <span v-if="row.data?.voltage != null" style="font-size: 13px">
+                ⚡ {{ row.data.voltage }}V
+              </span>
+              <span v-if="row.data?.power != null" style="font-size: 13px">
+                🔌 {{ row.data.power }}W
+              </span>
             </div>
           </template>
         </el-table-column>
@@ -175,21 +219,37 @@ import * as dashboardApi from '../api/dashboard'
 import { useDeviceStore } from '../store/device'
 import { formatTime } from '../utils/common'
 
-// 注册 ECharts 组件
 use([PieChart, LineChart, BarChart, GridComponent, TooltipComponent, LegendComponent, TitleComponent, CanvasRenderer])
 
 const deviceStore = useDeviceStore()
 const loading = ref(false)
 
+// 指标选项
+const metricOptions = [
+  { label: '光照 (Lux)', value: 'lightIntensity' },
+  { label: '温度 (°C)', value: 'temperature' },
+  { label: '湿度 (%)', value: 'humidity' },
+  { label: '功率 (W)', value: 'power' }
+]
+
+const metricUnits = {
+  lightIntensity: 'Lux',
+  temperature: '°C',
+  humidity: '%',
+  power: 'W'
+}
+
 // 数据
 const stats = ref({})
 const devices = ref([])
 const latestSensorData = ref([])
-const lightTrend = ref({ hours: [], values: [] })
+const sensorTrend = ref({ hours: [], values: [] })
 const alarmStats = ref({ days: [], dailyCounts: [], criticalCount: 0, warningCount: 0, infoCount: 0 })
 const recentAlarms = ref([])
 const recentControls = ref([])
 const lightTrendDevice = ref('')
+const trendMetric = ref('lightIntensity')
+const latestSensorType = ref('')
 
 // 统计卡片
 const statCards = computed(() => [
@@ -201,7 +261,7 @@ const statCards = computed(() => [
   { label: '今日数据量', value: stats.value.todayDataPoints ?? '-', icon: 'DataLine', color: '#909399' }
 ])
 
-// -- 设备状态饼图 --
+// 设备状态饼图
 const deviceStatusOption = computed(() => ({
   tooltip: { trigger: 'item' },
   legend: { bottom: 0 },
@@ -221,18 +281,25 @@ const deviceStatusOption = computed(() => ({
   }]
 }))
 
-// -- 24h 光照趋势 --
+// 传感器趋势图表
+const unit = computed(() => metricUnits[trendMetric.value] || '')
 const lightTrendOption = computed(() => ({
-  tooltip: { trigger: 'axis', formatter: '{b}<br/>光照: {c} Lux' },
-  grid: { left: 50, right: 20, top: 10, bottom: 30 },
+  tooltip: {
+    trigger: 'axis',
+    formatter: (params) => {
+      const p = params[0]
+      return `${p.name}<br/>${trendMetric.value}: <b>${p.value} ${unit.value}</b>`
+    }
+  },
+  grid: { left: 55, right: 20, top: 10, bottom: 30 },
   xAxis: {
-    type: 'category', data: lightTrend.value.hours || [],
+    type: 'category', data: sensorTrend.value.hours || [],
     axisLabel: { rotate: 45, fontSize: 11 }
   },
-  yAxis: { type: 'value', name: 'Lux' },
+  yAxis: { type: 'value', name: unit.value },
   series: [{
     type: 'line',
-    data: lightTrend.value.values || [],
+    data: sensorTrend.value.values || [],
     smooth: true,
     areaStyle: {
       color: {
@@ -248,7 +315,7 @@ const lightTrendOption = computed(() => ({
   }]
 }))
 
-// -- 告警趋势 --
+// 告警趋势
 const alarmTrendOption = computed(() => ({
   tooltip: { trigger: 'axis' },
   grid: { left: 50, right: 20, top: 10, bottom: 30 },
@@ -261,7 +328,7 @@ const alarmTrendOption = computed(() => ({
   }]
 }))
 
-// -- 告警级别饼图 --
+// 告警级别饼图
 const alarmSeverityOption = computed(() => ({
   tooltip: { trigger: 'item' },
   legend: { bottom: 0 },
@@ -279,7 +346,7 @@ const alarmSeverityOption = computed(() => ({
   }]
 }))
 
-// -- 辅助方法 --
+// 辅助方法
 function severityTag(sev) {
   const map = { CRITICAL: 'danger', WARNING: 'warning', INFO: 'info' }
   return map[sev] || 'info'
@@ -294,16 +361,38 @@ function lightColor(val) {
   if (val > 30) return '#409EFF'
   return '#67C23A'
 }
+function sensorTypeTag(type) {
+  const map = { light: '', temperature: 'danger', humidity: 'info', power: 'warning' }
+  return map[type] || ''
+}
+function sensorTypeLabel(type) {
+  const map = { light: '光照', temperature: '温度', humidity: '湿度', power: '功率' }
+  return map[type] || type || '未知'
+}
 
-// -- 数据加载 --
+// 数据加载
 async function loadStats() {
-  try { stats.value = await dashboardApi.getStats() } catch { /* 统一错误处理 */ }
+  try { stats.value = await dashboardApi.getStats() } catch { /* */ }
 }
 async function loadLatestSensorData() {
   try { latestSensorData.value = await dashboardApi.getLatestSensorData() } catch { /* */ }
 }
-async function loadLightTrend() {
-  try { lightTrend.value = await dashboardApi.getLightTrend(lightTrendDevice.value || undefined) } catch { /* */ }
+async function loadLatestByType() {
+  try {
+    if (latestSensorType.value) {
+      latestSensorData.value = await dashboardApi.getLatestSensorDataByType(latestSensorType.value)
+    } else {
+      latestSensorData.value = await dashboardApi.getLatestSensorData()
+    }
+  } catch { /* */ }
+}
+async function loadSensorTrend() {
+  try {
+    sensorTrend.value = await dashboardApi.getSensorTrend(
+      lightTrendDevice.value || undefined,
+      trendMetric.value
+    )
+  } catch { /* */ }
 }
 async function loadAlarmStats() {
   try { alarmStats.value = await dashboardApi.getAlarmStats() } catch { /* */ }
@@ -320,7 +409,7 @@ async function refreshAll() {
   try {
     await Promise.all([
       loadStats(), loadLatestSensorData(),
-      loadLightTrend(), loadAlarmStats(),
+      loadSensorTrend(), loadAlarmStats(),
       loadRecentAlarms(), loadRecentControls(),
       deviceStore.fetchAll()
     ])
@@ -336,7 +425,7 @@ onMounted(async () => {
   devices.value = deviceStore.devices
   await Promise.all([
     loadStats(), loadLatestSensorData(),
-    loadLightTrend(), loadAlarmStats(),
+    loadSensorTrend(), loadAlarmStats(),
     loadRecentAlarms(), loadRecentControls()
   ])
 })

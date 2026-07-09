@@ -9,6 +9,7 @@ import org.springframework.web.socket.WebSocketSession;
 import org.springframework.web.socket.handler.TextWebSocketHandler;
 
 import java.io.IOException;
+import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 
@@ -33,7 +34,6 @@ public class WebSocketHandler extends TextWebSocketHandler {
 
     @Override
     protected void handleTextMessage(WebSocketSession session, TextMessage message) {
-        // 处理前端发来的消息（如心跳）
         log.debug("收到WebSocket消息: {}", message.getPayload());
     }
 
@@ -43,9 +43,7 @@ public class WebSocketHandler extends TextWebSocketHandler {
         sessions.remove(session.getId());
     }
 
-    /**
-     * 广播消息给所有连接的客户端
-     */
+    /** 广播消息给所有连接的客户端 */
     public void broadcast(Object payload) {
         try {
             String json = objectMapper.writeValueAsString(payload);
@@ -61,19 +59,21 @@ public class WebSocketHandler extends TextWebSocketHandler {
     }
 
     /**
-     * 发送传感器实时数据
+     * 推送传感器实时数据（多字段版本）。
+     * 前端收到后将包含所有传感器指标（lightIntensity, temperature, humidity, voltage, power 等）。
      */
-    public void pushSensorData(String deviceId, double lightIntensity, String reportedAt) {
-        broadcast(Map.of(
-                "type", "SENSOR_DATA",
-                "deviceId", deviceId,
-                "data", Map.of("lightIntensity", lightIntensity, "reportedAt", reportedAt)
-        ));
+    public void pushSensorData(String deviceId, String sensorType,
+                                Map<String, Object> data, String reportedAt) {
+        Map<String, Object> payload = new LinkedHashMap<>();
+        payload.put("type", "SENSOR_DATA");
+        payload.put("deviceId", deviceId);
+        payload.put("sensorType", sensorType);
+        payload.put("data", data);
+        payload.put("reportedAt", reportedAt);
+        broadcast(payload);
     }
 
-    /**
-     * 推送设备状态变更
-     */
+    /** 推送设备状态变更 */
     public void pushDeviceStatus(String deviceId, String status, String lightStatus) {
         broadcast(Map.of(
                 "type", "DEVICE_STATUS",
@@ -82,9 +82,7 @@ public class WebSocketHandler extends TextWebSocketHandler {
         ));
     }
 
-    /**
-     * 推送新告警
-     */
+    /** 推送新告警 */
     public void pushNewAlarm(Long alarmId, String deviceId, String alarmType,
                              String content, String severity) {
         broadcast(Map.of(
@@ -96,9 +94,7 @@ public class WebSocketHandler extends TextWebSocketHandler {
         ));
     }
 
-    /**
-     * 推送控制结果
-     */
+    /** 推送控制结果 */
     public void pushControlResult(String deviceId, String command, String result) {
         broadcast(Map.of(
                 "type", "CONTROL_RESULT",
