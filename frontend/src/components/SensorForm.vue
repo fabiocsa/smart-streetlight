@@ -21,14 +21,14 @@
           <el-option label="功率" value="power" />
         </el-select>
         <div class="form-hint" v-if="!isEdit">
-          传感器由模拟器通过 MQTT 自动注册，手动添加后也会自动同步到模拟器
+          传感器由模拟器通过 MQTT 独立注册，需在设备详情页手动绑定到设备
         </div>
       </el-form-item>
       <el-form-item label="显示名称" prop="displayName">
         <el-input v-model="form.displayName" placeholder="如 光照传感器A" />
       </el-form-item>
       <el-form-item label="数据主题" prop="dataTopic">
-        <el-input v-model="form.dataTopic" placeholder="如 streetlight/SL-001/sensor/data" />
+        <el-input v-model="form.dataTopic" placeholder="如 streetlight/sensor/1/data" />
       </el-form-item>
       <el-form-item label="上报频率（秒）" prop="reportFrequency">
         <el-input-number v-model="form.reportFrequency" :min="1" :max="3600" style="width: 100%" />
@@ -61,7 +61,7 @@ import { useSensorStore } from '../store/sensor'
 
 const props = defineProps({
   visible: Boolean,
-  deviceId: { type: String, required: true },
+  deviceId: { type: String, default: '' },
   editData: Object
 })
 
@@ -146,11 +146,11 @@ async function submit() {
     }
 
     if (isEdit.value) {
-      await sensorStore.update(props.deviceId, props.editData.id, payload)
+      await sensorStore.update(props.editData.id, payload)
       ElMessage.success('传感器配置已更新')
     } else {
-      await sensorStore.create(props.deviceId, payload)
-      ElMessage.success('传感器已绑定')
+      await sensorStore.create(payload)
+      ElMessage.success('传感器已创建（未绑定状态）')
     }
     emit('saved')
     emit('update:visible', false)

@@ -1,22 +1,16 @@
 """
-MQTT 客户端模块 (v2 — 稳定版)
+MQTT 客户端模块 (v3 — 传感器独立)
 =============================
 封装 paho-mqtt，提供：
   - 可靠连接 / 智能重连（clean_session=False 避免 session 碰撞）
-  - 传感器数据发布（QoS 1 + inflight 流控）
+  - 传感器数据发布（QoS 1 + inflight 流控）— 使用传感器自身 ID
   - 控制指令订阅 (streetlight/{deviceId}/control)
   - 配置指令订阅 (streetlight/mock-sender/config)
   - 线程安全发布 + 连接健康看门狗
 
-rc=7 (MQTT_ERR_CONN_LOST) 根因与修复:
-  1. clean_session=True 导致 EMQX 立即丢弃 session → 重连后 Client ID 碰撞 → 断连风暴
-     → 改为 clean_session=False，EMQX 保留 session，平滑重连
-  2. _subscribe_all_controls() 空实现 → 重连后控制指令订阅丢失
-     → 追踪已订阅 device_id，重连时批量恢复
-  3. 重连延迟 1s 过于激进 → min 3s / max 60s
-  4. QoS 1 消息无流控 → max_inflight=10, max_queued=100
-  5. keepalive=60 在弱网中偏短 → 120s
-  6. 无连接健康监控 → 新增 30s 周期看门狗线程
+v3 变更:
+  - 传感器主题不再携带 deviceId，改用 sensorId
+  - 注册/注销使用全局主题 streetlight/sensor/register
 """
 
 import json
@@ -29,11 +23,13 @@ import paho.mqtt.client as mqtt
 
 logger = logging.getLogger("mock-sender.mqtt")
 
-# 控制指令 Topic 模板
+# Topic 模板
 TOPIC_CONTROL = "{prefix}/{device_id}/control"
 TOPIC_CONTROL_RESPONSE = "{prefix}/{device_id}/control/response"
-TOPIC_SENSOR_DATA = "{prefix}/{device_id}/sensor/data"
-TOPIC_HEARTBEAT = "{prefix}/{device_id}/status"
+TOPIC_SENSOR_DATA = "{prefix}/sensor/{sensor_id}/data"          # v3: 传感器独立
+TOPIC_HEARTBEAT = "{prefix}/sensor/{sensor_id}/status"          # v3: 传感器独立
+TOPIC_SENSOR_REGISTER = "{prefix}/sensor/register"              # v3: 全局注册
+TOPIC_SENSOR_UNREGISTER = "{prefix}/sensor/unregister"          # v3: 全局注销
 TOPIC_MOCK_CONFIG = "{prefix}/mock-sender/config"
 
 # MQTT 错误码可读描述
@@ -227,17 +223,17 @@ class MqttClientManager:
             logger.error(f"发布异常: {e}")
             return False
 
-    def publish_sensor_data(self, device_id: str, payload: dict, data_topic: str = "") -> bool:
-        """发布传感器数据到指定主题，若未指定则使用 streetlight/{deviceId}/sensor/data。"""
+    def publish_sensor_data(self, sensor_id: int, payload: dict, data_topic: str = "") -> bool:
+        """发布传感器数据到 streetlight/sensor/{sensorId}/data。"""
         if data_topic:
             topic = data_topic
         else:
-            topic = self._topic(TOPIC_SENSOR_DATA, device_id)
+            topic = self._topic(TOPIC_SENSOR_DATA, sensor_id=str(sensor_id))
         return self.publish(topic, payload)
 
-    def publish_heartbeat(self, device_id: str, payload: dict) -> bool:
-        """发布心跳到 streetlight/{deviceId}/status。"""
-        topic = self._topic(TOPIC_HEARTBEAT, device_id)
+    def publish_heartbeat(self, sensor_id: int, payload: dict) -> bool:
+        """发布心跳到 streetlight/sensor/{sensorId}/status。"""
+        topic = self._topic(TOPIC_HEARTBEAT, sensor_id=str(sensor_id))
         return self.publish(topic, payload)
 
     def publish_control_response(self, device_id: str, payload: dict) -> bool:
@@ -261,15 +257,17 @@ class MqttClientManager:
         payload = {"deviceId": device_id, "timestamp": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())}
         return self.publish(topic, payload)
 
-    def publish_sensor_register(self, device_id: str, sensor_info: dict) -> bool:
-        """发布传感器动态注册消息到 streetlight/{deviceId}/sensor/register。"""
-        topic = self._topic("{prefix}/{device_id}/sensor/register", device_id)
+    def publish_sensor_register(self, sensor_info: dict) -> bool:
+        """发布传感器注册到全局主题 streetlight/sensor/register（v3: 无 deviceId）。"""
+        prefix = self._config.get("topicPrefix", "streetlight")
+        topic = f"{prefix}/sensor/register"
         return self.publish(topic, sensor_info)
 
-    def publish_sensor_unregister(self, device_id: str, sensor_id: int) -> bool:
-        """发布传感器注销消息到 streetlight/{deviceId}/sensor/unregister。"""
-        topic = self._topic("{prefix}/{device_id}/sensor/unregister", device_id)
-        payload = {"deviceId": device_id, "sensorId": sensor_id,
+    def publish_sensor_unregister(self, sensor_id: int) -> bool:
+        """发布传感器注销到全局主题 streetlight/sensor/unregister（v3: 无 deviceId）。"""
+        prefix = self._config.get("topicPrefix", "streetlight")
+        topic = f"{prefix}/sensor/unregister"
+        payload = {"sensorId": sensor_id,
                    "timestamp": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())}
         return self.publish(topic, payload)
 
@@ -363,7 +361,6 @@ class MqttClientManager:
         """★ 重连后恢复所有订阅（全局 + 设备级）。"""
         # 全局订阅
         self._subscribe_mock_config()
-        self._subscribe_registration_ack()
 
         # 设备级控制指令订阅
         with self._lock:

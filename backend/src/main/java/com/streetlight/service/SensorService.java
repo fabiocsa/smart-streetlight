@@ -8,55 +8,34 @@ import com.streetlight.entity.Sensor;
 import java.util.List;
 import java.util.Optional;
 
+/**
+ * 传感器服务接口 (v2)
+ * 传感器独立存在，不再持有设备 ID。
+ * 设备与传感器的绑定通过 DeviceService 管理。
+ */
 public interface SensorService {
 
-    /**
-     * 获取设备的所有传感器
-     */
-    List<Sensor> getSensorsByDeviceId(String deviceId);
-
-    /**
-     * 获取单个传感器
-     */
-    Optional<Sensor> getSensorById(Long id);
-
-    /**
-     * 绑定传感器到设备
-     */
-    Sensor addSensor(String deviceId, SensorRequest request);
-
-    /**
-     * 更新传感器配置
-     */
-    Sensor updateSensor(Long id, SensorUpdateRequest request);
-
-    /**
-     * 解绑传感器
-     */
-    void deleteSensor(Long id);
-
-    /**
-     * 调整传感器上报频率
-     */
-    Sensor updateFrequency(Long id, SensorFrequencyRequest request);
-
-    /**
-     * 同步设备的传感器配置到模拟器（通过MQTT）
-     */
-    int syncToMock(String deviceId);
-
-    /**
-     * 获取所有传感器（含未绑定设备的传感器）
-     */
+    /** 获取所有传感器 */
     List<Sensor> getAllSensors();
 
-    /**
-     * 解绑传感器（设 device_id = NULL，不删除记录）
-     */
-    Sensor unbindSensor(Long id);
+    /** 获取未绑定到任何设备的传感器 */
+    List<Sensor> getUnboundSensors();
 
-    /**
-     * 传感器换绑到另一设备
-     */
-    Sensor rebindSensor(Long id, String newDeviceId);
+    /** 获取单个传感器 */
+    Optional<Sensor> getSensorById(Long id);
+
+    /** 创建独立传感器（不绑定设备，由管理员后续绑定） */
+    Sensor createSensor(SensorRequest request);
+
+    /** 更新传感器配置 */
+    Sensor updateSensor(Long id, SensorUpdateRequest request);
+
+    /** 删除传感器（同时删除绑定关系） */
+    void deleteSensor(Long id);
+
+    /** 调整传感器上报频率 */
+    Sensor updateFrequency(Long id, SensorFrequencyRequest request);
+
+    /** 同步传感器配置到模拟器（通过 MQTT） */
+    int syncToMock(Long sensorId);
 }

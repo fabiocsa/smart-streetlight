@@ -1,33 +1,31 @@
 import request from './request'
 
-export function getSensors(deviceId) {
-  return request.get(`/devices/${deviceId}/sensors`)
+// 独立传感器 API（v2: 传感器不再嵌套在设备路径下）
+
+export function getAllSensors() {
+  return request.get('/sensors')
 }
 
-export function getSensor(deviceId, id) {
-  return request.get(`/devices/${deviceId}/sensors/${id}`)
+export function getUnboundSensors() {
+  return request.get('/sensors/unbound')
 }
 
-export function createSensor(deviceId, data) {
-  return request.post(`/devices/${deviceId}/sensors`, data)
+export function getSensor(id) {
+  return request.get(`/sensors/${id}`)
 }
 
-export function updateSensor(deviceId, id, data) {
-  return request.put(`/devices/${deviceId}/sensors/${id}`, data)
+export function createSensor(data) {
+  return request.post('/sensors', data)
 }
 
-export function deleteSensor(deviceId, id) {
-  return request.delete(`/devices/${deviceId}/sensors/${id}`)
+export function updateSensor(id, data) {
+  return request.put(`/sensors/${id}`, data)
 }
 
-export function updateFrequency(deviceId, id, data) {
-  return request.put(`/devices/${deviceId}/sensors/${id}/frequency`, data)
+export function deleteSensor(id) {
+  return request.delete(`/sensors/${id}`)
 }
 
-export function unbindSensor(deviceId, id) {
-  return request.post(`/devices/${deviceId}/sensors/${id}/unbind`)
-}
-
-export function syncToMock(deviceId) {
-  return request.post(`/devices/${deviceId}/sensors/sync-to-mock`)
+export function updateFrequency(id, data) {
+  return request.put(`/sensors/${id}/frequency`, data)
 }

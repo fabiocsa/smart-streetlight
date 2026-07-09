@@ -1,8 +1,8 @@
 """
-配置管理模块
+配置管理模块 (v3)
 ===========
 管理 MQTT Broker 连接参数和传感器配置的加载、保存与动态更新。
-传感器内部键格式: {deviceId}_{sensorId} (如 SL-001_1)
+传感器内部键格式: sensor_{sensorId} (纯模拟器内部 ID，与后端设备无关)
 """
 
 import json
@@ -20,7 +20,7 @@ DEFAULT_CONFIG: Dict[str, Any] = {
         "username": "jieshou",
         "password": "jieshou123",
         "topicPrefix": "streetlight",
-        "clientId": "mock-sender-v2",
+        "clientId": "mock-sender-v3",
     },
     "backendUrl": "http://localhost:8080/api",
     "simulation": {
@@ -39,12 +39,9 @@ DEFAULT_CONFIG: Dict[str, Any] = {
 }
 
 
-def _make_sensor_key(device_id, sensor_id) -> str:
-    """生成传感器内部唯一键: {deviceId}_{sensorId}。
-    device_id 为空/None 时返回 unbound_{sensorId}。"""
-    if device_id:
-        return f"{device_id}_{sensor_id}"
-    return f"unbound_{sensor_id}"
+def _make_sensor_key(sensor_id) -> str:
+    """生成传感器内部唯一键: sensor_{sensorId}。"""
+    return f"sensor_{sensor_id}"
 
 
 class ConfigManager:
@@ -67,7 +64,6 @@ class ConfigManager:
         try:
             with open(self._config_path, "r", encoding="utf-8") as f:
                 cfg = json.load(f)
-            # 合并缺失的默认字段
             for key in DEFAULT_CONFIG:
                 if key not in cfg:
                     cfg[key] = dict(DEFAULT_CONFIG[key]) if isinstance(DEFAULT_CONFIG[key], dict) else DEFAULT_CONFIG[key]
@@ -77,34 +73,44 @@ class ConfigManager:
             return dict(DEFAULT_CONFIG)
 
     def _migrate_old_keys(self) -> bool:
-        """将旧版 {deviceId: config} 键迁移为新版 {deviceId}_{sensorId} 键。"""
+        """将旧版 {deviceId}_{sensorId} 或 unbound_{sensorId} 键迁移为 sensor_{sensorId}。"""
         with self._lock:
             sensors = self._config.setdefault("sensors", {})
             migrated = {}
             has_old = False
             for key, cfg in list(sensors.items()):
-                if "_" in key and not key.startswith("_"):
-                    continue  # 已经是新格式
+                if key.startswith("sensor_") and "_" not in key[7:]:
+                    # 检查是否为纯数字 sensorId
+                    sid = key[7:]
+                    if sid.isdigit():
+                        continue  # 已经是新格式
                 has_old = True
-                device_id = cfg.get("deviceId", key)
-                sensor_id = cfg.get("sensorId", cfg.get("id", 1))
-                new_key = _make_sensor_key(device_id, sensor_id)
-                cfg["deviceId"] = device_id
+                sensor_id = cfg.get("sensorId", int(time.time() * 1000) % 100000)
+                new_key = _make_sensor_key(sensor_id)
+                # 清理旧字段
+                cfg.pop("deviceId", None)
+                cfg.pop("deviceName", None)
+                cfg.pop("name", None)
+                cfg.pop("location", None)
+                # deviceGroup → groupTag
+                if "deviceGroup" in cfg and "groupTag" not in cfg:
+                    cfg["groupTag"] = cfg.pop("deviceGroup")
+                cfg.setdefault("groupTag", "")
                 cfg["sensorId"] = sensor_id
-                cfg.setdefault("displayName", cfg.get("name", key))
+                cfg.setdefault("displayName", cfg.get("displayName", key))
                 cfg.setdefault("sensorType", "light")
-                cfg.setdefault("deviceName", "")
                 cfg.setdefault("dataTopic", "")
+                cfg.setdefault("enabled", True)
+                cfg.setdefault("interval", cfg.get("reportFrequency", 5))
                 migrated[new_key] = cfg
             if has_old:
                 sensors.clear()
                 sensors.update(migrated)
                 self.save()
-                print(f"[Config] 已迁移 {len(migrated)} 个传感器到新键格式")
+                print(f"[Config] 已迁移 {len(migrated)} 个传感器到新键格式 sensor_{{id}}")
             return has_old
 
     def save(self) -> bool:
-        """将当前配置写入 JSON 文件。"""
         try:
             with open(self._config_path, "w", encoding="utf-8") as f:
                 json.dump(self._config, f, ensure_ascii=False, indent=2)
@@ -132,12 +138,10 @@ class ConfigManager:
     # ------------------------------------------------------------------
 
     def get_simulation_config(self) -> Dict[str, Any]:
-        """获取模拟参数（经纬度、云量、温度等）。"""
         with self._lock:
             return dict(self._config.get("simulation", {}))
 
     def update_simulation_config(self, updates: Dict[str, Any]) -> bool:
-        """更新模拟参数。"""
         with self._lock:
             sim = self._config.setdefault("simulation", {})
             sim.update(updates)
@@ -157,7 +161,7 @@ class ConfigManager:
             return self.save()
 
     # ------------------------------------------------------------------
-    # 传感器配置（新版复合键: {deviceId}_{sensorId}）
+    # 传感器配置（v3: 纯 sensor_{sensorId} 键，独立于设备）
     # ------------------------------------------------------------------
 
     def get_all_sensors(self) -> Dict[str, Any]:
@@ -168,26 +172,22 @@ class ConfigManager:
         with self._lock:
             return self._config.get("sensors", {}).get(sensor_key)
 
-    def add_sensor(self, device_id: str, sensor_cfg: Dict[str, Any]) -> Optional[str]:
-        """添加传感器，返回新键；已存在则返回 None。"""
+    def add_sensor(self, sensor_cfg: Dict[str, Any]) -> Optional[str]:
+        """添加独立传感器，返回 sensor_{sensorId} 键；已存在则返回 None。"""
         with self._lock:
             sensors = self._config.setdefault("sensors", {})
-            sensor_id = sensor_cfg.get("sensorId", sensor_cfg.get("id", int(time.time() * 1000) % 100000))
-            key = _make_sensor_key(device_id, sensor_id)
+            sensor_id = sensor_cfg.get("sensorId", int(time.time() * 1000) % 100000)
+            key = _make_sensor_key(sensor_id)
 
             if key in sensors:
                 return None
 
             default_sensor = {
-                "deviceId": device_id,
                 "sensorId": sensor_id,
                 "displayName": sensor_cfg.get("displayName", ""),
                 "sensorType": sensor_cfg.get("sensorType", "light"),
-                "deviceGroup": sensor_cfg.get("deviceGroup", sensor_cfg.get("deviceName", "")),
-                "deviceName": sensor_cfg.get("deviceName", sensor_cfg.get("deviceGroup", "")),
-                "name": sensor_cfg.get("name", device_id),
-                "location": sensor_cfg.get("location", ""),
-                "dataTopic": sensor_cfg.get("dataTopic", ""),
+                "groupTag": sensor_cfg.get("groupTag", sensor_cfg.get("deviceGroup", "")),
+                "dataTopic": sensor_cfg.get("dataTopic", f"streetlight/sensor/{sensor_id}/data"),
                 "enabled": True,
                 "interval": sensor_cfg.get("interval", sensor_cfg.get("reportFrequency", 5)),
                 "dataRange": {"min": 0, "max": 800},
@@ -200,7 +200,6 @@ class ConfigManager:
             return key
 
     def update_sensor(self, sensor_key: str, updates: Dict[str, Any]) -> bool:
-        """更新指定传感器的字段。"""
         with self._lock:
             sensors = self._config.get("sensors", {})
             if sensor_key not in sensors:
@@ -209,21 +208,12 @@ class ConfigManager:
             return self.save()
 
     def remove_sensor(self, sensor_key: str) -> bool:
-        """删除一个传感器。"""
         with self._lock:
             sensors = self._config.get("sensors", {})
             if sensor_key not in sensors:
                 return False
             del sensors[sensor_key]
             return self.save()
-
-    def find_sensors_by_device(self, device_id: str) -> Dict[str, Any]:
-        """查找某设备下的所有传感器。"""
-        with self._lock:
-            return {
-                k: v for k, v in self._config.get("sensors", {}).items()
-                if v.get("deviceId") == device_id
-            }
 
     # ------------------------------------------------------------------
     # 辅助

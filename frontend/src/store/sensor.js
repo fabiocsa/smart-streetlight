@@ -1,181 +1,101 @@
 import { defineStore } from 'pinia'
-import { ref, reactive } from 'vue'
+import { ref } from 'vue'
 import * as sensorApi from '../api/sensor'
+import * as deviceApi from '../api/device'
 
 export const useSensorStore = defineStore('sensor', () => {
-  const sensorsByDevice = reactive({})
   const allSensors = ref([])
+  const unboundSensors = ref([])
   const loading = ref(false)
 
-  async function fetchByDevice(deviceId) {
-    loading.value = true
-    try {
-      const res = await sensorApi.getSensors(deviceId)
-      const list = Array.isArray(res) ? res : (res.data || [])
-      sensorsByDevice[deviceId] = list
-      return list
-    } finally {
-      loading.value = false
-    }
-  }
-
+  /** 获取所有传感器 */
   async function fetchAll() {
     loading.value = true
     try {
-      const { useDeviceStore } = await import('./device')
-      const deviceStore = useDeviceStore()
-      await deviceStore.fetchAll()
-
-      // 并行请求所有设备的传感器
-      const results = await Promise.allSettled(
-        deviceStore.devices.map(d => sensorApi.getSensors(d.deviceId))
-      )
-
-      const all = []
-      deviceStore.devices.forEach((device, i) => {
-        const result = results[i]
-        const list = result.status === 'fulfilled'
-          ? (Array.isArray(result.value) ? result.value : (result.value?.data || []))
-          : []
-        sensorsByDevice[device.deviceId] = list
-        all.push(...list)
-      })
-      allSensors.value = all
-      return all
+      const res = await sensorApi.getAllSensors()
+      allSensors.value = Array.isArray(res) ? res : (res?.data || [])
+      return allSensors.value
     } finally {
       loading.value = false
     }
   }
 
-  async function create(deviceId, data) {
-    const res = await sensorApi.createSensor(deviceId, data)
+  /** 获取未绑定传感器 */
+  async function fetchUnbound() {
+    loading.value = true
+    try {
+      const res = await sensorApi.getUnboundSensors()
+      unboundSensors.value = Array.isArray(res) ? res : (res?.data || [])
+      return unboundSensors.value
+    } finally {
+      loading.value = false
+    }
+  }
+
+  /** 获取设备已绑定传感器 */
+  async function fetchByDevice(deviceId) {
+    loading.value = true
+    try {
+      const res = await deviceApi.getDeviceSensors(deviceId)
+      return Array.isArray(res) ? res : (res?.data || [])
+    } finally {
+      loading.value = false
+    }
+  }
+
+  /** 创建独立传感器 */
+  async function create(data) {
+    const res = await sensorApi.createSensor(data)
     const sensor = res?.data || res
-    // 局部插入
     if (sensor) {
-      if (!sensorsByDevice[deviceId]) sensorsByDevice[deviceId] = []
-      sensorsByDevice[deviceId].push(sensor)
-      // 同步 allSensors
       allSensors.value = [...allSensors.value, sensor]
-    } else {
-      await fetchByDevice(deviceId)
     }
     return res
   }
 
-  async function update(deviceId, id, data) {
-    const res = await sensorApi.updateSensor(deviceId, id, data)
+  /** 更新传感器 */
+  async function update(id, data) {
+    const res = await sensorApi.updateSensor(id, data)
     const updated = res?.data || res
-    // 局部更新
-    if (updated && sensorsByDevice[deviceId]) {
-      const idx = sensorsByDevice[deviceId].findIndex(s => s.id === id || s.deviceId === updated.deviceId)
-      if (idx !== -1) {
-        sensorsByDevice[deviceId][idx] = { ...sensorsByDevice[deviceId][idx], ...updated }
-      }
-    }
-    // 同步 allSensors
-    const allIdx = allSensors.value.findIndex(s => s.id === id)
-    if (allIdx !== -1 && updated) {
-      allSensors.value[allIdx] = { ...allSensors.value[allIdx], ...updated }
+    const idx = allSensors.value.findIndex(s => s.id === id)
+    if (idx !== -1 && updated) {
+      allSensors.value[idx] = { ...allSensors.value[idx], ...updated }
     }
     return res
   }
 
-  async function remove(deviceId, id) {
-    await sensorApi.deleteSensor(deviceId, id)
-    // 局部删除
-    if (sensorsByDevice[deviceId]) {
-      sensorsByDevice[deviceId] = sensorsByDevice[deviceId].filter(s => s.id !== id)
-    }
-    allSensors.value = allSensors.value.filter(s => !(s.deviceId === deviceId && s.id === id))
+  /** 删除传感器 */
+  async function remove(id) {
+    await sensorApi.deleteSensor(id)
+    allSensors.value = allSensors.value.filter(s => s.id !== id)
   }
 
-  /** 解绑传感器（设 device_id=NULL，不删除记录） */
-  async function unbind(deviceId, id) {
-    const res = await sensorApi.unbindSensor(deviceId, id)
-    const updated = res?.data || res
-    // 更新本地状态：将 sensor 的 deviceId 置空（标记为未绑定）
-    if (sensorsByDevice[deviceId]) {
-      const sensor = sensorsByDevice[deviceId].find(s => s.id === id)
-      if (sensor) {
-        sensor.deviceId = null
-        sensor.unbound = true
-      }
-      // 从当前设备列表移除
-      sensorsByDevice[deviceId] = sensorsByDevice[deviceId].filter(s => s.id !== id)
-    }
-    const allS = allSensors.value.find(s => s.id === id)
-    if (allS) {
-      allS.deviceId = null
-      allS.unbound = true
-    }
-    return res
-  }
-
-  /** 批量删除传感器 */
-  async function removeBatch(deviceId, ids) {
-    const results = []
-    for (const id of ids) {
-      try {
-        await sensorApi.deleteSensor(deviceId, id)
-        results.push({ id, success: true })
-      } catch (e) {
-        results.push({ id, success: false, error: e.message })
-      }
-    }
-    const successIds = results.filter(r => r.success).map(r => r.id)
-    if (successIds.length > 0) {
-      if (sensorsByDevice[deviceId]) {
-        sensorsByDevice[deviceId] = sensorsByDevice[deviceId].filter(s => !successIds.includes(s.id))
-      }
-      allSensors.value = allSensors.value.filter(s => !(s.deviceId === deviceId && successIds.includes(s.id)))
-    }
-    return results
-  }
-
-  /** 批量更新传感器状态（启用/停用） */
-  async function updateBatch(deviceId, ids, data) {
-    const results = []
-    for (const id of ids) {
-      try {
-        await sensorApi.updateSensor(deviceId, id, data)
-        results.push({ id, success: true })
-      } catch (e) {
-        results.push({ id, success: false, error: e.message })
-      }
-    }
-    const successIds = results.filter(r => r.success).map(r => r.id)
-    if (successIds.length > 0 && sensorsByDevice[deviceId]) {
-      sensorsByDevice[deviceId] = sensorsByDevice[deviceId].map(s =>
-        successIds.includes(s.id) ? { ...s, ...data } : s
-      )
-    }
-    allSensors.value = allSensors.value.map(s =>
-      s.deviceId === deviceId && successIds.includes(s.id) ? { ...s, ...data } : s
-    )
-    return results
-  }
-
-  async function updateFreq(deviceId, id, data) {
-    const res = await sensorApi.updateFrequency(deviceId, id, data)
-    // 局部更新频率
+  /** 更新频率 */
+  async function updateFreq(id, data) {
+    const res = await sensorApi.updateFrequency(id, data)
     const newFreq = data.reportFrequency
-    if (newFreq && sensorsByDevice[deviceId]) {
-      const sensor = sensorsByDevice[deviceId].find(s => s.id === id)
-      if (sensor) sensor.reportFrequency = newFreq
+    if (newFreq) {
+      const s = allSensors.value.find(s => s.id === id)
+      if (s) s.reportFrequency = newFreq
     }
-    const allS = allSensors.value.find(s => s.id === id)
-    if (allS && newFreq) allS.reportFrequency = newFreq
     return res
   }
 
-  async function syncToMock(deviceId) {
-    return sensorApi.syncToMock(deviceId)
+  /** 设备绑定传感器 */
+  async function bindToDevice(deviceId, sensorId) {
+    return deviceApi.bindSensor(deviceId, sensorId)
+  }
+
+  /** 设备解绑传感器 */
+  async function unbindFromDevice(deviceId, sensorId) {
+    return deviceApi.unbindSensor(deviceId, sensorId)
   }
 
   return {
-    sensorsByDevice, allSensors, loading,
-    fetchByDevice, fetchAll,
-    create, update, remove, unbind, removeBatch, updateBatch,
-    updateFreq, syncToMock
+    allSensors, unboundSensors, loading,
+    fetchAll, fetchUnbound, fetchByDevice,
+    create, update, remove,
+    updateFreq,
+    bindToDevice, unbindFromDevice
   }
 })

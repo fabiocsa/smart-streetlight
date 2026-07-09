@@ -8,9 +8,9 @@
         <h2 style="display: inline; margin-left: 8px">{{ form.name || '设备详情' }}</h2>
       </div>
       <div>
-        <el-tooltip content="传感器通过 MQTT 自动注册，也可在此手动添加" placement="top">
-          <el-button v-if="authStore.isAdmin" type="primary" @click="openSensorDialog()">
-            <el-icon><Plus /></el-icon> 添加传感器
+        <el-tooltip content="设备绑定传感器：选择未绑定的传感器进行绑定" placement="top">
+          <el-button v-if="authStore.isAdmin" type="primary" @click="openBindDialog()">
+            <el-icon><Plus /></el-icon> 绑定传感器
           </el-button>
         </el-tooltip>
       </div>
@@ -77,26 +77,38 @@
     <!-- 设备控制面板 -->
     <ControlPanel :device="form" @updated="loadDevice" />
 
-    <!-- 传感器列表 -->
+    <!-- 已绑定传感器列表 -->
     <SensorTable
-      :device-id="form.deviceId"
+      :device-id="form.id"
       :sensors="sensors"
       :loading="sensorStore.loading"
       @refresh="loadSensors"
-      @edit="openSensorDialog"
-      @unbind="handleDeleteSensor"
-      @delete="handleDeleteSensor"
+      @unbind="handleUnbindSensor"
       @update-frequency="handleUpdateFrequency"
     />
-  </div>
 
-  <!-- 传感器表单对话框 -->
-  <SensorForm
-    v-model:visible="sensorDialogVisible"
-    :device-id="form.deviceId"
-    :edit-data="editingSensor"
-    @saved="handleSensorSaved"
-  />
+    <!-- 绑定传感器对话框 -->
+    <el-dialog v-model="bindDialogVisible" title="设备绑定传感器" width="550px">
+      <p class="text-muted">选择未绑定的传感器绑定到此设备。</p>
+      <el-table :data="unboundSensors" height="300" @selection-change="onBindSelectionChange">
+        <el-table-column type="selection" width="50" />
+        <el-table-column prop="id" label="ID" width="80" />
+        <el-table-column prop="displayName" label="名称" />
+        <el-table-column prop="sensorType" label="类型" width="80">
+          <template #default="{ row }">
+            <el-tag size="small">{{ row.sensorType }}</el-tag>
+          </template>
+        </el-table-column>
+        <el-table-column prop="dataTopic" label="MQTT 主题" min-width="180" show-overflow-tooltip />
+      </el-table>
+      <template #footer>
+        <el-button @click="bindDialogVisible = false">取消</el-button>
+        <el-button type="primary" @click="handleBindSensors" :disabled="bindSelection.length === 0">
+          绑定选中 ({{ bindSelection.length }})
+        </el-button>
+      </template>
+    </el-dialog>
+  </div>
 </template>
 
 <script setup>
@@ -107,7 +119,6 @@ import { useAuthStore } from '../stores/authStore'
 import { useDeviceStore } from '../store/device'
 import { useSensorStore } from '../store/sensor'
 import SensorTable from '../components/SensorTable.vue'
-import SensorForm from '../components/SensorForm.vue'
 import ControlPanel from '../components/ControlPanel.vue'
 
 const route = useRoute()
@@ -120,8 +131,9 @@ const formRef = ref(null)
 const form = ref({})
 const sensors = ref([])
 const saving = ref(false)
-const sensorDialogVisible = ref(false)
-const editingSensor = ref(null)
+const bindDialogVisible = ref(false)
+const unboundSensors = ref([])
+const bindSelection = ref([])
 
 const rules = {
   name: [
@@ -141,7 +153,7 @@ async function loadDevice() {
 }
 
 async function loadSensors() {
-  sensors.value = await sensorStore.fetchByDevice(form.value.deviceId)
+  sensors.value = await sensorStore.fetchByDevice(form.value.id)
 }
 
 async function handleUpdateDevice() {
@@ -162,17 +174,33 @@ async function handleUpdateDevice() {
   }
 }
 
-function openSensorDialog(sensor) {
-  editingSensor.value = sensor || null
-  sensorDialogVisible.value = true
+async function openBindDialog() {
+  unboundSensors.value = await sensorStore.fetchUnbound()
+  bindSelection.value = []
+  bindDialogVisible.value = true
 }
 
-async function handleDeleteSensor(id) {
+function onBindSelectionChange(selection) {
+  bindSelection.value = selection
+}
+
+async function handleBindSensors() {
+  for (const s of bindSelection.value) {
+    try {
+      await sensorStore.bindToDevice(form.value.id, s.id)
+      ElMessage.success(`传感器 ${s.displayName || s.id} 绑定成功`)
+    } catch {
+      // 错误已在拦截器统一提示
+    }
+  }
+  bindDialogVisible.value = false
+  loadSensors()
+}
+
+async function handleUnbindSensor(id) {
   try {
-    // 使用解绑（device_id=NULL）而非删除
-    await sensorStore.unbind(form.value.deviceId, id)
-    ElMessage.success('传感器已解绑（保留记录，可重新绑定）')
-    // 从当前设备列表移除（但保留在全局列表中）
+    await sensorStore.unbindFromDevice(form.value.id, id)
+    ElMessage.success('传感器已移除绑定（保留记录，可重新绑定）')
     sensors.value = sensors.value.filter(s => s.id !== id)
   } catch {
     // 错误已在拦截器统一提示
@@ -181,19 +209,13 @@ async function handleDeleteSensor(id) {
 
 async function handleUpdateFrequency(id, frequency) {
   try {
-    await sensorStore.updateFreq(form.value.deviceId, id, { reportFrequency: frequency })
+    await sensorStore.updateFreq(id, { reportFrequency: frequency })
     ElMessage.success('上报频率已更新')
-    // store 已局部更新，同步本地数据
     const sensor = sensors.value.find(s => s.id === id)
     if (sensor) sensor.reportFrequency = frequency
   } catch {
     // 错误已在拦截器统一提示
   }
-}
-
-function handleSensorSaved() {
-  sensorDialogVisible.value = false
-  loadSensors() // 新增传感器需要刷新列表
 }
 
 onMounted(() => {
@@ -205,4 +227,5 @@ onMounted(() => {
 .page-header {
   display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px;
 }
+.text-muted { color: #888; font-size: 0.9rem; }
 </style>

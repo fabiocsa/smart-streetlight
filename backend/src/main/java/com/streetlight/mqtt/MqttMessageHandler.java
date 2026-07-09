@@ -70,9 +70,9 @@ public class MqttMessageHandler implements MqttCallback {
             } else if (mqttClientManager.isStatusTopic(topic)) {
                 handleHeartbeat(topic, payload);
             } else if (mqttClientManager.isSensorRegisterTopic(topic)) {
-                handleSensorRegistration(topic, payload);
+                handleSensorRegistration(payload);
             } else if (mqttClientManager.isSensorUnregisterTopic(topic)) {
-                handleSensorUnregistration(topic, payload);
+                handleSensorUnregistration(payload);
             } else {
                 log.warn("未知的MQTT主题: {}", topic);
             }
@@ -81,21 +81,24 @@ public class MqttMessageHandler implements MqttCallback {
         }
     }
 
-    /** 处理传感器数据上报：完整 JSON → data_json 列 */
+    /** 处理传感器数据上报（v2: topic = streetlight/sensor/{sensorId}/data） */
     private void handleSensorData(String topic, String payload) throws JsonProcessingException {
-        String deviceId = mqttClientManager.extractDeviceIdFromTopic(topic);
-        if (deviceId.isEmpty()) {
-            log.warn("无法从topic中提取deviceId: {}", topic);
+        String sensorIdStr = mqttClientManager.extractSensorIdFromTopic(topic);
+        if (sensorIdStr.isEmpty()) {
+            log.warn("无法从 topic 中提取 sensorId: {}", topic);
             return;
         }
+        Long sensorId = Long.parseLong(sensorIdStr);
+
         JsonNode root = objectMapper.readTree(payload);
         @SuppressWarnings("unchecked")
         Map<String, Object> data = objectMapper.convertValue(root, LinkedHashMap.class);
 
         String sensorType = root.has("sensorType") && !root.get("sensorType").isNull()
                 ? root.get("sensorType").asText() : "light";
-        Long sensorId = root.has("sensorId") && !root.get("sensorId").isNull()
-                ? root.get("sensorId").asLong() : null;
+
+        // 通过 device_sensor 关联表反查设备
+        String deviceId = deviceService.resolveDeviceIdForSensor(sensorId);
 
         LocalDateTime reportedAt = LocalDateTime.now();
         if (root.has("timestamp") && !root.get("timestamp").isNull()) {
@@ -119,34 +122,41 @@ public class MqttMessageHandler implements MqttCallback {
         webSocketHandler.pushControlResult(deviceId, command, result);
     }
 
+    /** 处理传感器心跳（v2: topic = streetlight/sensor/{sensorId}/status） */
     private void handleHeartbeat(String topic, String payload) {
-        String deviceId = mqttClientManager.extractDeviceIdFromTopic(topic);
-        if (!deviceId.isEmpty()) {
-            deviceService.updateHeartbeat(deviceId);
+        String sensorIdStr = mqttClientManager.extractSensorIdFromTopic(topic);
+        if (!sensorIdStr.isEmpty()) {
+            try {
+                Long sensorId = Long.parseLong(sensorIdStr);
+                String deviceId = deviceService.resolveDeviceIdForSensor(sensorId);
+                if (!deviceId.startsWith("sensor_")) {
+                    deviceService.updateHeartbeat(deviceId);
+                }
+            } catch (NumberFormatException e) {
+                log.debug("无法解析 sensorId: {}", sensorIdStr);
+            }
         }
     }
 
-    // ============ 传感器注册/注销（仅传感器，不涉及设备） ============
+    // ============ 传感器注册/注销（v2: 全局 topic，不携带 deviceId） ============
 
-    private void handleSensorRegistration(String topic, String payload) {
-        String deviceId = mqttClientManager.extractDeviceIdFromRegistrationTopic(topic);
-        log.info("收到传感器注册 - deviceId={}", deviceId);
+    private void handleSensorRegistration(String payload) {
+        log.info("收到传感器注册（全局）");
         try {
             JsonNode root = objectMapper.readTree(payload);
-            sensorRegistrationService.handleSensorRegister(deviceId, root);
+            sensorRegistrationService.handleSensorRegister(root);
         } catch (Exception e) {
             log.error("解析传感器注册消息失败: {}", e.getMessage());
         }
     }
 
-    private void handleSensorUnregistration(String topic, String payload) {
-        String deviceId = mqttClientManager.extractDeviceIdFromRegistrationTopic(topic);
-        log.info("收到传感器注销 - deviceId={}", deviceId);
+    private void handleSensorUnregistration(String payload) {
+        log.info("收到传感器注销（全局）");
         try {
             JsonNode root = objectMapper.readTree(payload);
             Long sensorId = root.has("sensorId") ? root.get("sensorId").asLong() : null;
             if (sensorId != null) {
-                sensorRegistrationService.handleSensorUnregister(deviceId, sensorId);
+                sensorRegistrationService.handleSensorUnregister(sensorId);
             }
         } catch (Exception e) {
             log.error("解析传感器注销消息失败: {}", e.getMessage());
@@ -159,8 +169,9 @@ public class MqttMessageHandler implements MqttCallback {
     public void connectComplete(boolean reconnect, String serverURI) {
         log.info("MQTT连接完成: reconnect={}, server={}", reconnect, serverURI);
         if (reconnect) {
+            mqttClientManager.subscribeGlobalTopics();
             mqttClientManager.subscribeAllDevices();
-            log.info("MQTT重连后已重新订阅所有设备主题");
+            log.info("MQTT重连后已重新订阅所有主题");
         }
     }
     @Override

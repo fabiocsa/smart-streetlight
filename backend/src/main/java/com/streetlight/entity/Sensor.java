@@ -9,7 +9,8 @@ import java.time.LocalDateTime;
 
 /**
  * 传感器定义实体
- * 每个设备可绑定多个传感器，每个传感器有自己的类型、主题、上报频率等属性。
+ * 传感器独立存在，不持有设备 ID。
+ * 设备与传感器的绑定关系通过 device_sensor 关联表管理（Device 侧 @ManyToMany）。
  */
 @Entity
 @Table(name = "sensor")
@@ -22,9 +23,6 @@ public class Sensor {
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
-
-    @Column(name = "device_id", length = 50)
-    private String deviceId;
 
     @Column(name = "sensor_type", nullable = false, length = 30)
     @Builder.Default
