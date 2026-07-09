@@ -8,12 +8,12 @@
     "clientId": "mock-sender-v3"
   },
   "sensors": {
-    "sensor_13119": {
-      "sensorId": 13119,
-      "displayName": "A02光照",
+    "sensor_31776": {
+      "sensorId": 31776,
+      "displayName": "A01光照",
       "sensorType": "light",
       "groupTag": "",
-      "dataTopic": "streetlight/sensor/12211/data",
+      "dataTopic": "streetlight/sensor/30839/data",
       "enabled": true,
       "interval": 5,
       "dataRange": {
@@ -24,12 +24,28 @@
       "controlMode": "auto",
       "configJson": "{\"min\":0,\"max\":800}"
     },
-    "sensor_25352": {
-      "sensorId": 25352,
+    "sensor_41421": {
+      "sensorId": 41421,
+      "displayName": "A02光照",
+      "sensorType": "light",
+      "groupTag": "",
+      "dataTopic": "streetlight/sensor/40604/data",
+      "enabled": true,
+      "interval": 5,
+      "dataRange": {
+        "min": 0,
+        "max": 800
+      },
+      "lightStatus": "off",
+      "controlMode": "auto",
+      "configJson": "{\"min\":0,\"max\":800}"
+    },
+    "sensor_69115": {
+      "sensorId": 69115,
       "displayName": "B01光照",
       "sensorType": "light",
       "groupTag": "",
-      "dataTopic": "streetlight/sensor/24560/data",
+      "dataTopic": "streetlight/sensor/68230/data",
       "enabled": true,
       "interval": 5,
       "dataRange": {
