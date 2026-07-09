@@ -5,19 +5,15 @@
     "username": "jieshou",
     "password": "jieshou123",
     "topicPrefix": "streetlight",
-    "clientId": "mock-sender-v2"
+    "clientId": "mock-sender-v3"
   },
   "sensors": {
-    "unbound_43374": {
-      "deviceId": "",
+    "sensor_43374": {
       "sensorId": 43374,
       "displayName": "A01光照",
       "sensorType": "light",
-      "deviceGroup": "A01",
-      "deviceName": "A01",
-      "name": "",
-      "location": "",
-      "dataTopic": "streetlight/unbound/light/data",
+      "groupTag": "A01",
+      "dataTopic": "streetlight/sensor/43374/data",
       "enabled": true,
       "interval": 5,
       "dataRange": {

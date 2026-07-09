@@ -51,19 +51,21 @@ public class MqttPublishService {
     }
 
     /**
-     * 发布传感器配置指令到模拟器
+     * 发布传感器配置指令到模拟器（v2）
      * 主题: streetlight/mock-sender/config
+     * deviceId 为空时表示传感器级操作（add/remove/update），非空时表示设备级操作（bind/unbind）。
      */
     public void publishSensorConfig(String deviceId, String action, Sensor sensor) {
         if (!mqttClient.isConnected()) {
-            log.warn("MQTT 未连接，跳过发布传感器配置 - deviceId: {}, action: {}", deviceId, action);
+            log.warn("MQTT 未连接，跳过发布传感器配置 - action: {}", action);
             return;
         }
         try {
             String topic = "streetlight/mock-sender/config";
             Map<String, Object> payload = new LinkedHashMap<>();
             payload.put("action", action);
-            payload.put("deviceId", deviceId);
+            payload.put("deviceId", deviceId != null ? deviceId : "");
+
             Map<String, Object> params = new LinkedHashMap<>();
             params.put("sensorId", sensor.getId());
             params.put("sensorType", sensor.getSensorType());
@@ -80,9 +82,34 @@ public class MqttPublishService {
             MqttMessage message = new MqttMessage(json.getBytes());
             message.setQos(1);
             mqttClient.publish(topic, message);
-            log.info("MQTT发布传感器配置 - topic: {}, action: {}, payload: {}", topic, action, json);
+            log.info("MQTT发布传感器配置 - action: {}, payload: {}", action, json);
         } catch (MqttException | JsonProcessingException e) {
-            log.error("MQTT发布传感器配置失败 - deviceId: {}: {}", deviceId, e.getMessage(), e);
+            log.error("MQTT发布传感器配置失败 - action: {}: {}", action, e.getMessage(), e);
+        }
+    }
+
+    /**
+     * 发布设备-传感器绑定/解绑通知到模拟器。
+     */
+    public void publishBindingConfig(String action, String deviceId, Long sensorId) {
+        if (!mqttClient.isConnected()) {
+            log.warn("MQTT 未连接，跳过发布绑定配置 - action: {}", action);
+            return;
+        }
+        try {
+            String topic = "streetlight/mock-sender/config";
+            Map<String, Object> payload = new LinkedHashMap<>();
+            payload.put("action", action);
+            payload.put("deviceId", deviceId);
+            payload.put("params", Map.of("sensorId", sensorId));
+            payload.put("timestamp", LocalDateTime.now().toString());
+            String json = objectMapper.writeValueAsString(payload);
+            MqttMessage message = new MqttMessage(json.getBytes());
+            message.setQos(1);
+            mqttClient.publish(topic, message);
+            log.info("MQTT发布绑定配置 - action: {}, deviceId: {}, sensorId: {}", action, deviceId, sensorId);
+        } catch (MqttException | JsonProcessingException e) {
+            log.error("MQTT发布绑定配置失败: {}", e.getMessage(), e);
         }
     }
 }

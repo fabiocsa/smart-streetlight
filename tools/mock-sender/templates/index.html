@@ -194,11 +194,10 @@
                 <form id="addSensorForm">
                     <input type="hidden" id="editSensorKey" value="">
                     <div class="mb-3">
-                        <label class="form-label">所属设备ID <span class="text-muted">(可选)</span></label>
-                        <input name="deviceId" class="form-control form-control-sm"
-                               id="deviceIdInput"
-                               placeholder="如 SL-001，留空则传感器独立运行">
-                        <div class="form-text">填写后传感器将通过 MQTT 注册到该设备并接受控制指令；留空则仅上报数据</div>
+                        <label class="form-label">分组标签 <span class="text-muted">(可选)</span></label>
+                        <input name="groupTag" class="form-control form-control-sm"
+                               placeholder="如 路灯A-01，仅用于本地分组显示">
+                        <div class="form-text">纯文本标签，不上报至后端，仅用于模拟器内部卡片分组</div>
                     </div>
                     <div class="mb-3">
                         <label class="form-label">传感器类型</label>
@@ -215,10 +214,10 @@
                                placeholder="如 光照传感器A">
                     </div>
                     <div class="mb-3">
-                        <label class="form-label">所属组名 <span class="text-muted">(可选)</span></label>
-                        <input name="deviceGroup" class="form-control form-control-sm"
-                               placeholder="如 路灯A-01，仅用于卡片分组显示">
-                        <div class="form-text">纯文本标签，不上报至系统，仅用于模拟内部显示</div>
+                        <label class="form-label">分组标签 <span class="text-muted">(可选)</span></label>
+                        <input name="groupTag" class="form-control form-control-sm"
+                               placeholder="如 路灯A-01，仅用于本地分组显示">
+                        <div class="form-text">纯文本标签，不上报至后端，仅用于模拟器内部卡片分组</div>
                     </div>
                     <div class="mb-3">
                         <label class="form-label">数据主题

@@ -45,30 +45,27 @@ public class MqttClientManager {
     @Value("${mqtt.topic-prefix:streetlight}")
     private String topicPrefix;
 
+    public boolean isConnected() {
+        return mqttClient.isConnected();
+    }
+
     @PostConstruct
     public void init() {
-        // 先设置回调（即使未连接，注册回调本身是安全的）
         mqttClient.setCallback(messageHandler);
         log.info("MQTT 回调已注册");
     }
 
-    /**
-     * 应用完全就绪后连接 MQTT Broker 并订阅设备主题
-     */
     @EventListener(ApplicationReadyEvent.class)
     public void onApplicationReady() {
         try {
             connectToBroker();
-            subscribeRegistrationTopics();
+            subscribeGlobalTopics();
             subscribeAllDevices();
         } catch (Exception e) {
             log.error("MQTT 初始化失败: {}", e.getMessage(), e);
         }
     }
 
-    /**
-     * 连接到 MQTT Broker
-     */
     private void connectToBroker() {
         try {
             MqttConnectionOptions options = new MqttConnectionOptions();
@@ -91,48 +88,38 @@ public class MqttClientManager {
         }
     }
 
-    /**
-     * 订阅指定设备的所有相关主题
-     */
+    // ======================== 主题订阅 ========================
+
+    /** 订阅指定设备的控制相关主题 */
     public void subscribeDevice(String deviceId) {
         if (!mqttClient.isConnected()) {
             log.warn("MQTT 未连接，跳过订阅 - deviceId: {}", deviceId);
             return;
         }
         try {
-            String sensorTopic = getSensorTopic(deviceId);
             String responseTopic = getControlResponseTopic(deviceId);
-
             MqttSubscription[] subscriptions = {
-                    new MqttSubscription(sensorTopic, 1),
                     new MqttSubscription(responseTopic, 1)
             };
             mqttClient.subscribe(subscriptions);
-            log.info("已订阅设备主题 - deviceId: {}, topics: [{}, {}]", deviceId, sensorTopic, responseTopic);
+            log.info("已订阅设备控制响应主题 - deviceId: {}, topic: {}", deviceId, responseTopic);
         } catch (MqttException e) {
             log.error("订阅设备主题失败 - deviceId: {}: {}", deviceId, e.getMessage(), e);
         }
     }
 
-    /**
-     * 取消订阅指定设备的所有相关主题
-     */
+    /** 取消订阅指定设备 */
     public void unsubscribeDevice(String deviceId) {
         try {
-            String sensorTopic = getSensorTopic(deviceId);
             String responseTopic = getControlResponseTopic(deviceId);
-
-            String[] topics = {sensorTopic, responseTopic};
-            mqttClient.unsubscribe(topics);
-            log.info("已取消订阅设备主题 - deviceId: {}, topics: [{}, {}]", deviceId, sensorTopic, responseTopic);
+            mqttClient.unsubscribe(new String[]{responseTopic});
+            log.info("已取消订阅设备主题 - deviceId: {}", deviceId);
         } catch (MqttException e) {
             log.error("取消订阅设备主题失败 - deviceId: {}: {}", deviceId, e.getMessage(), e);
         }
     }
 
-    /**
-     * 订阅所有已有设备的主题（启动时/重连时调用）
-     */
+    /** 订阅所有设备的控制主题（启动时/重连时） */
     public void subscribeAllDevices() {
         if (!mqttClient.isConnected()) {
             log.warn("MQTT 未连接，跳过批量订阅");
@@ -140,12 +127,11 @@ public class MqttClientManager {
         }
         List<Device> devices = deviceRepository.findAll();
         if (devices.isEmpty()) {
-            log.warn("数据库中无设备，跳过MQTT主题订阅");
+            log.warn("数据库中无设备，跳过 MQTT 主题订阅");
             return;
         }
         int subscribed = 0;
         for (Device device : devices) {
-            // 逐个订阅时也检查连接状态，防止中途断连导致连锁错误
             if (!mqttClient.isConnected()) {
                 log.warn("MQTT 连接已断开，停止批量订阅（已订阅 {}/{}）", subscribed, devices.size());
                 return;
@@ -156,24 +142,89 @@ public class MqttClientManager {
         log.info("已完成所有设备主题订阅，共 {} 台设备", subscribed);
     }
 
-    /**
-     * 获取设备的传感器数据上报主题
-     */
-    public String getSensorTopic(String deviceId) {
-        return topicPrefix + "/" + deviceId + "/sensor/data";
+    /** 订阅全局传感器主题（注册/注销/数据/状态） */
+    public void subscribeGlobalTopics() {
+        if (!mqttClient.isConnected()) {
+            log.warn("MQTT 未连接，跳过全局传感器主题订阅");
+            return;
+        }
+        try {
+            String sensorRegisterTopic = topicPrefix + "/sensor/register";
+            String sensorUnregisterTopic = topicPrefix + "/sensor/unregister";
+            String sensorDataTopic = topicPrefix + "/sensor/+/data";
+            String sensorStatusTopic = topicPrefix + "/sensor/+/status";
+
+            MqttSubscription[] subscriptions = {
+                    new MqttSubscription(sensorRegisterTopic, 1),
+                    new MqttSubscription(sensorUnregisterTopic, 1),
+                    new MqttSubscription(sensorDataTopic, 1),
+                    new MqttSubscription(sensorStatusTopic, 1),
+            };
+            mqttClient.subscribe(subscriptions);
+            log.info("已订阅全局传感器主题: [{}, {}, {}, {}]",
+                    sensorRegisterTopic, sensorUnregisterTopic, sensorDataTopic, sensorStatusTopic);
+        } catch (MqttException e) {
+            log.error("订阅全局传感器主题失败: {}", e.getMessage(), e);
+        }
     }
 
-    /**
-     * 获取设备的控制响应主题
-     */
+    // ======================== 主题生成 ========================
+
+    /** 传感器数据上报主题: streetlight/sensor/{sensorId}/data */
+    public String getSensorTopic(String sensorId) {
+        return topicPrefix + "/sensor/" + sensorId + "/data";
+    }
+
+    /** 传感器心跳主题: streetlight/sensor/{sensorId}/status */
+    public String getSensorStatusTopic(String sensorId) {
+        return topicPrefix + "/sensor/" + sensorId + "/status";
+    }
+
+    /** 控制响应主题: streetlight/{deviceId}/control/response */
     public String getControlResponseTopic(String deviceId) {
         return topicPrefix + "/" + deviceId + "/control/response";
     }
 
-    /**
-     * 从完整topic路径中提取deviceId
-     * 格式: {prefix}/{deviceId}/sensor/data 或 {prefix}/{deviceId}/control/response
-     */
+    // ======================== 主题判断 ========================
+
+    /** 判断是否为传感器数据主题: streetlight/sensor/{id}/data */
+    public boolean isSensorDataTopic(String topic) {
+        return topic.matches(topicPrefix + "/sensor/[^/]+/data");
+    }
+
+    /** 判断是否为控制响应主题: streetlight/{deviceId}/control/response */
+    public boolean isControlResponseTopic(String topic) {
+        return topic.endsWith("/control/response");
+    }
+
+    /** 判断是否为传感器心跳主题: streetlight/sensor/{id}/status */
+    public boolean isStatusTopic(String topic) {
+        return topic.matches(topicPrefix + "/sensor/[^/]+/status");
+    }
+
+    /** 判断是否为传感器注册主题: streetlight/sensor/register */
+    public boolean isSensorRegisterTopic(String topic) {
+        return topic.equals(topicPrefix + "/sensor/register");
+    }
+
+    /** 判断是否为传感器注销主题: streetlight/sensor/unregister */
+    public boolean isSensorUnregisterTopic(String topic) {
+        return topic.equals(topicPrefix + "/sensor/unregister");
+    }
+
+    // ======================== ID 提取 ========================
+
+    /** 从传感器主题中提取 sensorId: streetlight/sensor/{sensorId}/... → sensorId */
+    public String extractSensorIdFromTopic(String topic) {
+        String[] parts = topic.split("/");
+        // format: {prefix}/sensor/{sensorId}/data or /status
+        if (parts.length >= 3 && "sensor".equals(parts[1])) {
+            return parts[2];
+        }
+        return "";
+    }
+
+    /** 从控制响应主题中提取 deviceId: streetlight/{deviceId}/control/response → deviceId */
     public String extractDeviceIdFromTopic(String topic) {
         String[] parts = topic.split("/");
         if (parts.length >= 2) {
@@ -182,74 +233,12 @@ public class MqttClientManager {
         return "";
     }
 
-    /**
-     * 判断是否为传感器数据主题
-     */
-    public boolean isSensorDataTopic(String topic) {
-        return topic.endsWith("/sensor/data");
-    }
-
-    /**
-     * 判断是否为控制响应主题
-     */
-    public boolean isControlResponseTopic(String topic) {
-        return topic.endsWith("/control/response");
-    }
-
-    /**
-     * 判断是否为设备状态/心跳主题
-     */
-    public boolean isStatusTopic(String topic) {
-        return topic.endsWith("/status");
-    }
-
-    /**
-     * 判断是否为传感器注册主题
-     */
-    public boolean isSensorRegisterTopic(String topic) {
-        return topic.matches(topicPrefix + "/[^/]+/sensor/register");
-    }
-
-    /**
-     * 判断是否为传感器注销主题
-     */
-    public boolean isSensorUnregisterTopic(String topic) {
-        return topic.matches(topicPrefix + "/[^/]+/sensor/unregister");
-    }
-
-    /**
-     * 从传感器注册/注销主题中提取 deviceId
-     */
+    /** 从旧格式注册主题提取 deviceId（已废弃，保留兼容） */
     public String extractDeviceIdFromRegistrationTopic(String topic) {
         String[] parts = topic.split("/");
         if (parts.length >= 2) {
             return parts[1];
         }
         return "";
-    }
-
-    /**
-     * 订阅传感器注册/注销主题。
-     * 设备仅通过 REST API 管理，不经过 MQTT。
-     */
-    public void subscribeRegistrationTopics() {
-        if (!mqttClient.isConnected()) {
-            log.warn("MQTT 未连接，跳过传感器注册主题订阅");
-            return;
-        }
-        try {
-            String sensorRegisterTopic = topicPrefix + "/+/sensor/register";
-            String sensorUnregisterTopic = topicPrefix + "/+/sensor/unregister";
-
-            MqttSubscription[] subscriptions = {
-                    new MqttSubscription(sensorRegisterTopic, 1),
-                    new MqttSubscription(sensorUnregisterTopic, 1)
-            };
-            mqttClient.subscribe(subscriptions);
-            log.info("已订阅传感器注册/注销主题: [{}, {}]",
-                    sensorRegisterTopic, sensorUnregisterTopic);
-        } catch (MqttException e) {
-            log.error("订阅传感器注册主题失败: {}", e.getMessage(), e);
-        }
     }
 }

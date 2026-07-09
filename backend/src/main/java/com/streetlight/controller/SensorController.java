@@ -16,108 +16,75 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
+/**
+ * 传感器管理控制器 (v2)
+ * 传感器独立路由，不再嵌套在设备路径下。
+ * 绑定/解绑操作在 DeviceController 中。
+ */
 @RestController
-@RequestMapping("/api/devices/{deviceId}/sensors")
+@RequestMapping("/api/sensors")
 @RequiredArgsConstructor
 public class SensorController {
 
     private final SensorService sensorService;
 
-    /**
-     * 获取设备的所有传感器
-     */
+    /** 获取所有传感器 */
     @GetMapping
-    public ResponseEntity<List<Sensor>> getSensors(@PathVariable String deviceId) {
-        return ResponseEntity.ok(sensorService.getSensorsByDeviceId(deviceId));
+    public ResponseEntity<List<Sensor>> getAllSensors() {
+        return ResponseEntity.ok(sensorService.getAllSensors());
     }
 
-    /**
-     * 获取单个传感器
-     */
+    /** 获取未绑定传感器列表 */
+    @GetMapping("/unbound")
+    public ResponseEntity<List<Sensor>> getUnboundSensors() {
+        return ResponseEntity.ok(sensorService.getUnboundSensors());
+    }
+
+    /** 获取单个传感器 */
     @GetMapping("/{id}")
-    public ResponseEntity<Sensor> getSensor(@PathVariable String deviceId,
-                                            @PathVariable Long id) {
+    public ResponseEntity<Sensor> getSensor(@PathVariable Long id) {
         return sensorService.getSensorById(id)
                 .map(ResponseEntity::ok)
                 .orElse(ResponseEntity.notFound().build());
     }
 
-    /**
-     * 绑定传感器到设备
-     */
+    /** 创建传感器 */
     @PostMapping
-    public ResponseEntity<Sensor> addSensor(@PathVariable String deviceId,
-                                            @Valid @RequestBody SensorRequest request) {
-        Sensor created = sensorService.addSensor(deviceId, request);
+    public ResponseEntity<Sensor> createSensor(@Valid @RequestBody SensorRequest request) {
+        Sensor created = sensorService.createSensor(request);
         return ResponseEntity.status(HttpStatus.CREATED).body(created);
     }
 
-    /**
-     * 更新传感器配置
-     */
+    /** 更新传感器配置 */
     @PutMapping("/{id}")
-    public ResponseEntity<Sensor> updateSensor(@PathVariable String deviceId,
-                                               @PathVariable Long id,
+    public ResponseEntity<Sensor> updateSensor(@PathVariable Long id,
                                                @Valid @RequestBody SensorUpdateRequest request) {
         Sensor updated = sensorService.updateSensor(id, request);
         return ResponseEntity.ok(updated);
     }
 
-    /**
-     * 解绑传感器
-     */
+    /** 删除传感器 */
     @DeleteMapping("/{id}")
-    public ResponseEntity<Void> deleteSensor(@PathVariable String deviceId,
-                                             @PathVariable Long id) {
+    public ResponseEntity<Void> deleteSensor(@PathVariable Long id) {
         sensorService.deleteSensor(id);
         return ResponseEntity.noContent().build();
     }
 
-    /**
-     * 调整传感器上报频率
-     */
+    /** 调整传感器上报频率 */
     @PutMapping("/{id}/frequency")
-    public ResponseEntity<Sensor> updateFrequency(@PathVariable String deviceId,
-                                                  @PathVariable Long id,
+    public ResponseEntity<Sensor> updateFrequency(@PathVariable Long id,
                                                   @Valid @RequestBody SensorFrequencyRequest request) {
         Sensor updated = sensorService.updateFrequency(id, request);
         return ResponseEntity.ok(updated);
     }
 
-    /**
-     * 同步传感器配置到模拟器
-     */
-    @PostMapping("/sync-to-mock")
-    public Result<Map<String, Object>> syncToMock(@PathVariable String deviceId) {
-        int count = sensorService.syncToMock(deviceId);
+    /** 同步传感器配置到模拟器 */
+    @PostMapping("/{id}/sync-to-mock")
+    public Result<Map<String, Object>> syncToMock(@PathVariable Long id) {
+        int count = sensorService.syncToMock(id);
         Map<String, Object> result = new LinkedHashMap<>();
         result.put("message", "传感器配置已同步到模拟器");
         result.put("syncedCount", count);
         return Result.success(result);
-    }
-
-    /**
-     * 解绑传感器（设 device_id = NULL，不删除记录）
-     */
-    @PostMapping("/{id}/unbind")
-    public ResponseEntity<Sensor> unbindSensor(@PathVariable String deviceId,
-                                                @PathVariable Long id) {
-        Sensor sensor = sensorService.unbindSensor(id);
-        return ResponseEntity.ok(sensor);
-    }
-
-    /**
-     * 传感器换绑到另一设备
-     */
-    @PostMapping("/{id}/rebind")
-    public ResponseEntity<Sensor> rebindSensor(@PathVariable String deviceId,
-                                                @PathVariable Long id,
-                                                @RequestBody Map<String, String> body) {
-        String newDeviceId = body.get("deviceId");
-        if (newDeviceId == null || newDeviceId.isBlank()) {
-            return ResponseEntity.badRequest().build();
-        }
-        Sensor sensor = sensorService.rebindSensor(id, newDeviceId);
-        return ResponseEntity.ok(sensor);
     }
 }

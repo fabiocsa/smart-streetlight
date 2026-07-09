@@ -7,6 +7,8 @@ import org.hibernate.annotations.CreationTimestamp;
 import org.hibernate.annotations.UpdateTimestamp;
 
 import java.time.LocalDateTime;
+import java.util.ArrayList;
+import java.util.List;
 
 @Entity
 @Table(name = "device")
@@ -51,6 +53,15 @@ public class Device {
 
     @Column(length = 200)
     private String location;
+
+    @ManyToMany(fetch = FetchType.LAZY)
+    @JoinTable(
+        name = "device_sensor",
+        joinColumns = @JoinColumn(name = "device_id"),
+        inverseJoinColumns = @JoinColumn(name = "sensor_id")
+    )
+    @Builder.Default
+    private List<Sensor> sensors = new ArrayList<>();
 
     @Column(name = "last_heartbeat")
     private LocalDateTime lastHeartbeat;

@@ -22,7 +22,7 @@
           type="danger"
           @click="handleBatchDelete"
         >
-          <el-icon><Delete /></el-icon> 批量解绑 ({{ selectedIds.length }})
+          <el-icon><Delete /></el-icon> 批量删除 ({{ selectedIds.length }})
         </el-button>
         <el-button type="primary" @click="refreshAll">
           <el-icon><Refresh /></el-icon> 刷新
@@ -75,9 +75,11 @@
       >
         <el-table-column type="selection" width="45" />
         <el-table-column prop="id" label="ID" width="60" sortable />
-        <el-table-column label="所属设备" width="150">
+        <el-table-column label="绑定状态" width="120">
           <template #default="{ row }">
-            <el-tag size="small">{{ row.deviceId }}</el-tag>
+            <el-tag size="small" :type="row.deviceId ? 'success' : 'info'">
+              {{ row.deviceId || '未绑定' }}
+            </el-tag>
           </template>
         </el-table-column>
         <el-table-column prop="displayName" label="传感器名称" min-width="140" sortable />
@@ -122,13 +124,13 @@
           <template #default="{ row }">
             <el-button type="primary" link @click="openEditDialog(row)">编辑</el-button>
             <el-popconfirm
-              title="确定解绑该传感器吗？"
+              title="确定删除该传感器吗？此操作不可恢复。"
               confirm-button-text="确定"
               cancel-button-text="取消"
               @confirm="handleDelete(row)"
             >
               <template #reference>
-                <el-button type="danger" link>解绑</el-button>
+                <el-button type="danger" link>删除</el-button>
               </template>
             </el-popconfirm>
           </template>
@@ -154,7 +156,6 @@
     <!-- 传感器编辑对话框 -->
     <SensorForm
       v-model:visible="dialogVisible"
-      :device-id="editingSensor?.deviceId"
       :edit-data="editingSensor"
       @saved="handleSaved"
     />
@@ -189,7 +190,6 @@ const hasFilter = computed(() =>
 
 const filteredSensors = computed(() => {
   let list = sensorStore.allSensors
-  if (filterDeviceId.value) list = list.filter(s => s.deviceId === filterDeviceId.value)
   if (filterType.value) list = list.filter(s => s.sensorType === filterType.value)
   if (filterEnabled.value !== '' && filterEnabled.value !== null && filterEnabled.value !== undefined) {
     list = list.filter(s => !!s.enabled === filterEnabled.value)
@@ -245,8 +245,8 @@ function handleSaved() {
 
 async function handleDelete(row) {
   try {
-    await sensorStore.remove(row.deviceId, row.id)
-    ElMessage.success('传感器已解绑')
+    await sensorStore.remove(row.id)
+    ElMessage.success('传感器已删除')
   } catch {
     // 错误已在拦截器统一提示
   }
@@ -254,7 +254,7 @@ async function handleDelete(row) {
 
 async function handleToggleEnabled(row, enabled) {
   try {
-    await sensorStore.update(row.deviceId, row.id, { enabled })
+    await sensorStore.update(row.id, { enabled })
     ElMessage.success(enabled ? '传感器已启用' : '传感器已停用')
   } catch {
     // 错误已在拦截器统一提示
@@ -264,7 +264,7 @@ async function handleToggleEnabled(row, enabled) {
 async function handleFrequencyChange(row, val) {
   if (!val || val < 1) return
   try {
-    await sensorStore.updateFreq(row.deviceId, row.id, { reportFrequency: val })
+    await sensorStore.updateFreq(row.id, { reportFrequency: val })
     ElMessage.success(`上报频率已更新为 ${val} 秒`)
   } catch {
     // 错误已在拦截器统一提示
@@ -272,20 +272,11 @@ async function handleFrequencyChange(row, val) {
 }
 
 async function handleBatchDelete() {
-  // 按 deviceId 分组
-  const groups = {}
-  for (const s of filteredSensors.value) {
-    if (selectedIds.value.includes(s.id)) {
-      if (!groups[s.deviceId]) groups[s.deviceId] = []
-      groups[s.deviceId].push(s.id)
-    }
-  }
-
   try {
     await ElMessageBox.confirm(
-      `确定解绑选中的 ${selectedIds.value.length} 个传感器吗？此操作不可恢复。`,
-      '批量解绑确认',
-      { confirmButtonText: '确定解绑', cancelButtonText: '取消', type: 'warning' }
+      `确定删除选中的 ${selectedIds.value.length} 个传感器吗？此操作不可恢复。`,
+      '批量删除确认',
+      { confirmButtonText: '确定删除', cancelButtonText: '取消', type: 'warning' }
     )
   } catch {
     return
@@ -293,29 +284,24 @@ async function handleBatchDelete() {
 
   let totalSuccess = 0
   let totalFail = 0
-  for (const [deviceId, ids] of Object.entries(groups)) {
-    const results = await sensorStore.removeBatch(deviceId, ids)
-    totalSuccess += results.filter(r => r.success).length
-    totalFail += results.filter(r => !r.success).length
+  for (const id of selectedIds.value) {
+    try {
+      await sensorStore.remove(id)
+      totalSuccess++
+    } catch {
+      totalFail++
+    }
   }
 
   if (totalFail > 0) {
-    ElMessage.warning(`成功解绑 ${totalSuccess} 个，${totalFail} 个失败`)
+    ElMessage.warning(`成功删除 ${totalSuccess} 个，${totalFail} 个失败`)
   } else {
-    ElMessage.success(`成功解绑 ${totalSuccess} 个传感器`)
+    ElMessage.success(`成功删除 ${totalSuccess} 个传感器`)
   }
   selectedIds.value = []
 }
 
 async function handleBatchEnable(enabled) {
-  const groups = {}
-  for (const s of filteredSensors.value) {
-    if (selectedIds.value.includes(s.id)) {
-      if (!groups[s.deviceId]) groups[s.deviceId] = []
-      groups[s.deviceId].push(s.id)
-    }
-  }
-
   const label = enabled ? '启用' : '停用'
   try {
     await ElMessageBox.confirm(
@@ -329,10 +315,13 @@ async function handleBatchEnable(enabled) {
 
   let totalSuccess = 0
   let totalFail = 0
-  for (const [deviceId, ids] of Object.entries(groups)) {
-    const results = await sensorStore.updateBatch(deviceId, ids, { enabled })
-    totalSuccess += results.filter(r => r.success).length
-    totalFail += results.filter(r => !r.success).length
+  for (const id of selectedIds.value) {
+    try {
+      await sensorStore.update(id, { enabled })
+      totalSuccess++
+    } catch {
+      totalFail++
+    }
   }
 
   if (totalFail > 0) {

@@ -10,9 +10,9 @@
           v-if="selectedIds.length > 0 && authStore.isAdmin"
           type="danger"
           size="small"
-          @click="handleBatchDelete"
+          @click="handleBatchUnbind"
         >
-          批量解绑 ({{ selectedIds.length }})
+          批量移除绑定 ({{ selectedIds.length }})
         </el-button>
       </div>
     </template>
@@ -60,38 +60,22 @@
           {{ row.configJson || '-' }}
         </template>
       </el-table-column>
-      <el-table-column label="创建时间" width="160">
+      <el-table-column label="操作" width="140" fixed="right">
         <template #default="{ row }">
-          {{ formatTime(row.createdAt) }}
-        </template>
-      </el-table-column>
-      <el-table-column label="操作" width="180" fixed="right">
-        <template #default="{ row }">
-          <el-button v-if="authStore.isAdmin" type="primary" link @click="$emit('edit', row)">编辑</el-button>
           <el-popconfirm
             v-if="authStore.isAdmin"
-            title="确定解绑该传感器吗？传感器将保留在数据库中，可重新绑定。"
-            confirm-button-text="确定解绑"
+            title="确定移除该传感器的绑定吗？传感器将保留在数据库中，可重新绑定。"
+            confirm-button-text="确定移除"
             @confirm="$emit('unbind', row.id)"
           >
             <template #reference>
-              <el-button type="warning" link>解绑</el-button>
-            </template>
-          </el-popconfirm>
-          <el-popconfirm
-            v-if="authStore.isAdmin"
-            title="确定删除该传感器吗？此操作不可恢复。"
-            confirm-button-text="确定删除"
-            @confirm="$emit('delete', row.id)"
-          >
-            <template #reference>
-              <el-button type="danger" link>删除</el-button>
+              <el-button type="warning" link>移除绑定</el-button>
             </template>
           </el-popconfirm>
         </template>
       </el-table-column>
       <template #empty>
-        <el-empty description="暂无传感器，请点击上方按钮添加" />
+        <el-empty description="暂无绑定传感器，请点击上方「绑定传感器」添加" />
       </template>
     </el-table>
   </el-card>
@@ -105,12 +89,12 @@ import { ElMessage, ElMessageBox } from 'element-plus'
 import { formatTime, typeLabel, sensorTypeTag } from '../utils/common'
 
 const props = defineProps({
-  deviceId: { type: String, required: true },
+  deviceId: { type: [String, Number], required: true },
   sensors: { type: Array, default: () => [] },
   loading: Boolean
 })
 
-const emit = defineEmits(['refresh', 'edit', 'delete', 'unbind', 'updateFrequency', 'batchDelete'])
+const emit = defineEmits(['refresh', 'unbind', 'updateFrequency'])
 const sensorStore = useSensorStore()
 const authStore = useAuthStore()
 const tableRef = ref(null)
@@ -122,7 +106,7 @@ function handleSelectionChange(rows) {
 
 async function handleToggle(row, enabled) {
   try {
-    await sensorStore.update(row.deviceId, row.id, { enabled })
+    await sensorStore.update(row.id, { enabled })
     ElMessage.success(enabled ? '传感器已启用' : '传感器已停用')
     emit('refresh')
   } catch {
@@ -130,12 +114,12 @@ async function handleToggle(row, enabled) {
   }
 }
 
-async function handleBatchDelete() {
+async function handleBatchUnbind() {
   try {
     await ElMessageBox.confirm(
-      `确定解绑选中的 ${selectedIds.value.length} 个传感器吗？`,
-      '批量解绑确认',
-      { confirmButtonText: '确定解绑', cancelButtonText: '取消', type: 'warning' }
+      `确定移除选中的 ${selectedIds.value.length} 个传感器的绑定吗？`,
+      '批量移除绑定确认',
+      { confirmButtonText: '确定移除', cancelButtonText: '取消', type: 'warning' }
     )
   } catch {
     return
@@ -145,7 +129,7 @@ async function handleBatchDelete() {
   let failCount = 0
   for (const id of selectedIds.value) {
     try {
-      await sensorStore.remove(props.deviceId, id)
+      await sensorStore.unbindFromDevice(props.deviceId, id)
       successCount++
     } catch {
       failCount++
@@ -153,9 +137,9 @@ async function handleBatchDelete() {
   }
 
   if (failCount > 0) {
-    ElMessage.warning(`成功解绑 ${successCount} 个，${failCount} 个失败`)
+    ElMessage.warning(`成功移除 ${successCount} 个，${failCount} 个失败`)
   } else {
-    ElMessage.success(`成功解绑 ${successCount} 个传感器`)
+    ElMessage.success(`成功移除 ${successCount} 个传感器的绑定`)
   }
   selectedIds.value = []
   emit('refresh')

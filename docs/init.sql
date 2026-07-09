@@ -41,12 +41,12 @@ CREATE TABLE device (
 
 -- ============================================================================
 -- 3. 传感器定义表 (sensor)
---    存储传感器的定义信息，每台设备可绑定多个传感器
+--    存储传感器的定义信息。传感器独立存在，不持有设备 ID。
+--    设备与传感器的绑定关系通过 device_sensor 关联表管理。
 -- ============================================================================
 DROP TABLE IF EXISTS sensor;
 CREATE TABLE sensor (
     id               BIGINT       NOT NULL AUTO_INCREMENT  COMMENT '主键',
-    device_id        VARCHAR(50)  DEFAULT NULL             COMMENT '所属设备标识(FK → device.device_id)，NULL=未绑定',
     sensor_type      VARCHAR(30)  NOT NULL DEFAULT 'light' COMMENT '传感器类型: light(光照) / temperature(温度) / humidity(湿度) / power(功率)',
     display_name     VARCHAR(100) DEFAULT NULL             COMMENT '传感器显示名称(如: 光照传感器A)',
     data_topic       VARCHAR(200) NOT NULL                 COMMENT '数据上报MQTT主题',
@@ -56,11 +56,23 @@ CREATE TABLE sensor (
     created_at       DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
     updated_at       DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
 
-    PRIMARY KEY (id),
-    INDEX idx_device_id (device_id),
-    INDEX idx_device_type (device_id, sensor_type)
+    PRIMARY KEY (id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='传感器定义表';
--- 注意: 外键 fk_sensor_device 已移除，以支持无主传感器 (device_id=NULL)。
+
+-- ============================================================================
+-- 3.1 设备-传感器关联表 (device_sensor)
+--     设备绑定传感器（N:M），传感器不持有设备 ID
+-- ============================================================================
+DROP TABLE IF EXISTS device_sensor;
+CREATE TABLE device_sensor (
+    device_id   BIGINT  NOT NULL COMMENT 'FK → device.id',
+    sensor_id   BIGINT  NOT NULL COMMENT 'FK → sensor.id',
+    bound_at    DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '绑定时间',
+    PRIMARY KEY (device_id, sensor_id),
+    INDEX idx_ds_sensor (sensor_id),
+    CONSTRAINT fk_ds_device FOREIGN KEY (device_id) REFERENCES device(id) ON DELETE CASCADE,
+    CONSTRAINT fk_ds_sensor FOREIGN KEY (sensor_id) REFERENCES sensor(id) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='设备-传感器绑定关系表';
 
 -- ============================================================================
 -- 4. 传感器数据表 (sensor_data) — JSON 存储，支持异构多维数据
@@ -141,13 +153,21 @@ INSERT INTO device (name, device_id, status, threshold_on, threshold_off, light_
     ('路灯C-01', 'SL-007', 'online',  40.0,  90.0, 'off', 'auto',   '教学楼A',     NOW()),
     ('路灯C-02', 'SL-008', 'online',  50.0, 100.0, 'off', 'auto',   '教学楼B',     NOW());
 
--- 插入传感器定义示例数据（多种类型）
-INSERT INTO sensor (device_id, sensor_type, display_name, data_topic, report_frequency, enabled, config_json) VALUES
-    ('SL-001', 'light',       '光照传感器A',  'streetlight/SL-001/sensor/data',  5, 1, '{"min": 0, "max": 800}'),
-    ('SL-001', 'power',       '功率传感器',   'streetlight/SL-001/sensor/data', 10, 1, '{"min": 0, "max": 100}'),
-    ('SL-002', 'light',       '光照传感器',   'streetlight/SL-002/sensor/data',  5, 1, '{"min": 0, "max": 800}'),
-    ('SL-002', 'temperature', '温度传感器',   'streetlight/SL-002/sensor/data', 10, 1, '{"min": -10, "max": 50}'),
-    ('SL-004', 'light',       '光照传感器',   'streetlight/SL-004/sensor/data',  5, 1, '{"min": 0, "max": 600}');
+-- 插入传感器定义示例数据（多种类型，均为独立传感器，未绑定设备）
+INSERT INTO sensor (sensor_type, display_name, data_topic, report_frequency, enabled, config_json) VALUES
+    ('light',       '光照传感器A',  'streetlight/sensor/1/data',  5, 1, '{"min": 0, "max": 800}'),
+    ('power',       '功率传感器',   'streetlight/sensor/2/data', 10, 1, '{"min": 0, "max": 100}'),
+    ('light',       '光照传感器',   'streetlight/sensor/3/data',  5, 1, '{"min": 0, "max": 800}'),
+    ('temperature', '温度传感器',   'streetlight/sensor/4/data', 10, 1, '{"min": -10, "max": 50}'),
+    ('light',       '光照传感器',   'streetlight/sensor/5/data',  5, 1, '{"min": 0, "max": 600}');
+
+-- 插入设备-传感器绑定关系（通过关联表）
+INSERT INTO device_sensor (device_id, sensor_id) VALUES
+    (1, 1),  -- SL-001 绑定光照传感器A + 功率传感器
+    (1, 2),
+    (2, 3),  -- SL-002 绑定光照传感器 + 温度传感器
+    (2, 4),
+    (4, 5);  -- SL-004 绑定光照传感器
 
 -- 插入传感器数据示例（JSON 格式，含多维度数据）
 INSERT INTO sensor_data (device_id, sensor_id, sensor_type, data_json, reported_at) VALUES

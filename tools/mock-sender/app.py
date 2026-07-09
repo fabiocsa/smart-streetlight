@@ -118,13 +118,12 @@ def api_sensor(sensor_key: str):
 @app.route("/api/sensors", methods=["POST"])
 def api_add_sensor():
     data = request.get_json(force=True)
-    device_id = data.get("deviceId", "").strip()
     sensor_id = data.get("sensorId") or int(time.time() * 1000) % 100000
     data["sensorId"] = sensor_id
-    key = sensor_mgr.add_sensor(device_id, data)
+    key = sensor_mgr.add_sensor(data)
     if not key:
         return jsonify({"error": "传感器已存在"}), 409
-    return jsonify({"message": "传感器已添加", "sensorKey": key, "deviceId": device_id or None}), 201
+    return jsonify({"message": "传感器已添加", "sensorKey": key, "sensorId": sensor_id}), 201
 
 
 @app.route("/api/sensors/<sensor_key>", methods=["DELETE"])
@@ -191,40 +190,6 @@ def api_get_history():
 def api_clear_history():
     sensor_mgr.clear_history()
     return jsonify({"message": "发送历史已清空"})
-
-
-@app.route("/api/sensors/<sensor_key>/unbind", methods=["POST"])
-def api_unbind_sensor(sensor_key: str):
-    s = sensor_mgr.get_sensor(sensor_key)
-    if not s:
-        return jsonify({"error": "传感器不存在"}), 404
-    sensor_id = s.get("sensorId")
-    if not sensor_id:
-        return jsonify({"error": "传感器 ID 未知"}), 400
-    ok = sensor_mgr.unbind_sensor(sensor_key, int(sensor_id))
-    if not ok:
-        return jsonify({"error": "解绑失败"}), 500
-    logger.info(f"[API] 传感器 {sensor_key} 已解绑")
-    return jsonify({"message": f"传感器 {sensor_key} 已解绑"})
-
-
-@app.route("/api/sensors/<sensor_key>/rebind", methods=["POST"])
-def api_rebind_sensor(sensor_key: str):
-    data = request.get_json(force=True)
-    new_device_id = data.get("deviceId", "").strip()
-    if not new_device_id:
-        return jsonify({"error": "目标 deviceId 不能为空"}), 400
-    s = sensor_mgr.get_sensor(sensor_key)
-    if not s:
-        return jsonify({"error": "传感器不存在"}), 404
-    sensor_id = s.get("sensorId")
-    if not sensor_id:
-        return jsonify({"error": "传感器 ID 未知"}), 400
-    new_key = sensor_mgr.rebind_sensor(sensor_key, int(sensor_id), new_device_id)
-    if not new_key:
-        return jsonify({"error": "换绑失败"}), 500
-    logger.info(f"[API] 传感器 {sensor_key} 已换绑到 {new_device_id}")
-    return jsonify({"message": f"传感器已绑定到设备 {new_device_id}", "newKey": new_key})
 
 
 @app.route("/api/sensors/<sensor_key>/message-template", methods=["PUT"])
@@ -381,41 +346,36 @@ def _handle_mock_config_command(payload: Dict[str, Any]) -> bool:
         return True
 
     elif action == "add_sensor":
-        if device_id:
-            sensor_id = params.get("sensorId", params.get("id"))
-            if sensor_id is None:
-                sensor_id = int(time.time() * 1000) % 100000
-            key = sensor_mgr.add_sensor(device_id, params)
-            return key is not None
-        return False
+        sensor_id = params.get("sensorId", int(time.time() * 1000) % 100000)
+        params["sensorId"] = sensor_id
+        key = sensor_mgr.add_sensor(params)
+        return key is not None
 
     elif action == "remove_sensor":
-        if device_id:
-            sensor_id = params.get("sensorId")
-            if sensor_id:
-                key = _make_sensor_key(device_id, sensor_id)
-                return sensor_mgr.remove_sensor(key)
-            else:
-                for s in sensor_mgr.list_sensors():
-                    if s["deviceId"] == device_id:
-                        sensor_mgr.remove_sensor(s["sensorKey"])
-                return True
+        sensor_id = params.get("sensorId")
+        if sensor_id:
+            key = _make_sensor_key(sensor_id)
+            return sensor_mgr.remove_sensor(key)
         return False
 
     elif action in ("stop_sensor", "start_sensor"):
-        if device_id:
-            sensor_id = params.get("sensorId")
-            if sensor_id:
-                key = _make_sensor_key(device_id, sensor_id)
-                return sensor_mgr.start_sensor(key) if action == "start_sensor" else sensor_mgr.stop_sensor(key)
-            else:
-                for s in sensor_mgr.list_sensors():
-                    if s["deviceId"] == device_id:
-                        if action == "start_sensor":
-                            sensor_mgr.start_sensor(s["sensorKey"])
-                        else:
-                            sensor_mgr.stop_sensor(s["sensorKey"])
-                return True
+        sensor_id = params.get("sensorId")
+        if sensor_id:
+            key = _make_sensor_key(sensor_id)
+            return sensor_mgr.start_sensor(key) if action == "start_sensor" else sensor_mgr.stop_sensor(key)
+        return False
+
+    elif action == "bind_to_device":
+        sensor_id = params.get("sensorId")
+        target_device_id = device_id or params.get("targetDeviceId", "")
+        if sensor_id and target_device_id:
+            return sensor_mgr.bind_to_device(int(sensor_id), target_device_id)
+        return False
+
+    elif action == "unbind_from_device":
+        sensor_id = params.get("sensorId")
+        if sensor_id:
+            return sensor_mgr.unbind_from_device(int(sensor_id))
         return False
 
     else:

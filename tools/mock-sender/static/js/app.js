@@ -72,7 +72,8 @@ function buildCard(s) {
     const typeLabel = TYPE_LABELS[s.sensorType] || s.sensorType;
     const isRunning = s.running;
     const autoMode = s.autoSendMode || 'algorithm';
-    const deviceGroup = s.deviceGroup || s.deviceName || '';
+    const groupTag = s.groupTag || '';
+    const boundDeviceId = s.boundDeviceId || '';
     const safeKey = escAttr(s.sensorKey);
 
     let cardStateClass = 'stopped';
@@ -110,7 +111,8 @@ function buildCard(s) {
             </div>
         </div>
         <div class="sensor-card-body">
-            ${deviceGroup ? `<div class="mb-2"><span class="device-group-tag"><i class="bi bi-folder"></i> ${escHtml(deviceGroup)}</span></div>` : ''}
+            ${groupTag ? `<div class="mb-2"><span class="device-group-tag"><i class="bi bi-folder"></i> ${escHtml(groupTag)}</span></div>` : ''}
+            ${boundDeviceId ? `<div class="card-row"><span class="label">绑定设备</span><span class="value"><span class="badge bg-success">${escHtml(boundDeviceId)}</span></span></div>` : `<div class="card-row"><span class="label">绑定设备</span><span class="value"><span class="badge bg-secondary">未绑定</span></span></div>`}
             <div class="card-row"><span class="label">类型</span><span class="value">${typeIcon} ${typeLabel}</span></div>
             <div class="card-row"><span class="label">主题</span><span class="value mono">${escHtml(s.dataTopic || '-')}</span></div>
             <div class="card-row"><span class="label">频率</span><span class="value">每 ${s.interval || 5} 秒</span></div>
@@ -235,14 +237,14 @@ function addSensor() {
     const data = {};
     fd.forEach((v, k) => { data[k] = v; });
 
-    const deviceId = (data.deviceId || '').trim();
-
+    const sensorId = parseInt(data.sensorId) || Math.floor(Date.now() % 100000);
+    const sensorType = data.sensorType || 'light';
     const body = {
-        deviceId: deviceId,
-        sensorType: data.sensorType || 'light',
+        sensorId: sensorId,
+        sensorType: sensorType,
         displayName: data.displayName || '',
-        deviceGroup: data.deviceGroup || '',
-        dataTopic: data.dataTopic || (deviceId ? `streetlight/${deviceId}/sensor/data` : `streetlight/unbound/${data.sensorType || 'light'}/data`),
+        groupTag: data.groupTag || '',
+        dataTopic: data.dataTopic || `streetlight/sensor/${sensorId}/data`,
         interval: parseInt(data.interval) || 5,
         enabled: true,
         controlMode: data.controlMode || 'auto',
@@ -281,10 +283,9 @@ function editSensor(sensorKey) {
 
     const form = document.getElementById('addSensorForm');
     if (!form) return;
-    form.querySelector('[name="deviceId"]').value = s.deviceId || '';
     form.querySelector('[name="sensorType"]').value = s.sensorType || 'light';
     form.querySelector('[name="displayName"]').value = s.displayName || '';
-    form.querySelector('[name="deviceGroup"]').value = s.deviceGroup || s.deviceName || '';
+    form.querySelector('[name="groupTag"]').value = s.groupTag || '';
     form.querySelector('[name="dataTopic"]').value = s.dataTopic || '';
     form.querySelector('[name="interval"]').value = s.interval || 5;
     form.querySelector('[name="controlMode"]').value = s.controlMode || 'auto';
@@ -308,7 +309,7 @@ function updateSensor(sensorKey) {
     const body = {
         sensorType: data.sensorType || 'light',
         displayName: data.displayName || '',
-        deviceGroup: data.deviceGroup || '',
+        groupTag: data.groupTag || '',
         interval: parseInt(data.interval) || 5,
         dataTopic: data.dataTopic || '',
         controlMode: data.controlMode || 'auto',
@@ -341,16 +342,9 @@ function updateSensor(sensorKey) {
 }
 
 function autoFillDataTopic() {
-    const deviceIdEl = document.getElementById('deviceIdInput');
-    const deviceId = deviceIdEl?.value?.trim();
-    const sensorTypeEl = document.querySelector('[name="sensorType"]');
-    const sensorType = sensorTypeEl?.value || 'light';
+    const sensorId = Math.floor(Date.now() % 100000);
     const el = document.getElementById('dataTopicInput');
-    if (deviceId) {
-        if (el) el.value = `streetlight/${deviceId}/sensor/data`;
-    } else {
-        if (el) el.value = `streetlight/unbound/${sensorType}/data`;
-    }
+    if (el) el.value = `streetlight/sensor/${sensorId}/data`;
 }
 
 // ============================ MQTT 配置 ============================
