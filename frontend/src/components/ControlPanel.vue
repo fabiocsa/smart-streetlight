@@ -406,9 +406,22 @@ async function loadLogs() {
   }
 }
 
+// 当 deviceId 变为可用时自动加载操作记录（解决父组件异步加载导致的首次空白）
+let logsLoaded = false
+watch(() => props.device?.deviceId, (id) => {
+  if (id && !logsLoaded) {
+    logsLoaded = true
+    loadLogs()
+  }
+}, { immediate: true })
+
 onMounted(() => {
   connectWs()
-  loadLogs()
+  // 兜底：如果 deviceId 在 onMounted 时已有值（热更新场景）
+  if (props.device?.deviceId && !logsLoaded) {
+    logsLoaded = true
+    loadLogs()
+  }
 })
 </script>
 

@@ -23,11 +23,24 @@ public class DeviceController {
         return ResponseEntity.ok(deviceService.getAllDevices());
     }
 
+    /**
+     * 获取设备详情。支持数字 DB id 和业务键（如 "SL-001"）两种查找方式。
+     * 告警等模块持有的是业务键 deviceId，前端路由也使用业务键。
+     */
     @GetMapping("/{id}")
-    public ResponseEntity<Device> getDeviceById(@PathVariable Long id) {
-        return deviceService.getDeviceById(id)
-                .map(ResponseEntity::ok)
-                .orElse(ResponseEntity.notFound().build());
+    public ResponseEntity<Device> getDeviceById(@PathVariable String id) {
+        // 先尝试按数字 DB id 查找
+        try {
+            Long numericId = Long.parseLong(id);
+            return deviceService.getDeviceById(numericId)
+                    .map(ResponseEntity::ok)
+                    .orElse(ResponseEntity.notFound().build());
+        } catch (NumberFormatException e) {
+            // 非数字 → 按业务键查找（如 "SL-001"）
+            return deviceService.getDeviceByDeviceId(id)
+                    .map(ResponseEntity::ok)
+                    .orElse(ResponseEntity.notFound().build());
+        }
     }
 
     @PostMapping
