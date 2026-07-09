@@ -45,6 +45,20 @@ public class Sensor {
     @Column(name = "config_json", length = 500)
     private String configJson;
 
+    /**
+     * 模拟器内部传感器 ID（如 43374），用于注册去重。
+     * 为 null 表示后端手动创建的传感器（非模拟器自动注册）。
+     */
+    @Column(name = "simulator_sensor_id", unique = true)
+    private Long simulatorSensorId;
+
+    /**
+     * 当前绑定的设备 business key（如 "SL-001"），未绑定时为 null。
+     * 非数据库字段，由 Service 层在查询时填充。
+     */
+    @Transient
+    private String boundDeviceId;
+
     @CreationTimestamp
     @Column(name = "created_at", updatable = false)
     private LocalDateTime createdAt;

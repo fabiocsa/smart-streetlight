@@ -10,6 +10,7 @@ import org.eclipse.paho.mqttv5.common.MqttException;
 import org.eclipse.paho.mqttv5.common.MqttMessage;
 import org.springframework.stereotype.Service;
 
+import java.nio.charset.StandardCharsets;
 import java.time.LocalDateTime;
 import java.util.LinkedHashMap;
 import java.util.Map;
@@ -41,7 +42,7 @@ public class MqttPublishService {
                 payload.put("brightness", brightness);
             }
             String json = objectMapper.writeValueAsString(payload);
-            MqttMessage message = new MqttMessage(json.getBytes());
+            MqttMessage message = new MqttMessage(json.getBytes(StandardCharsets.UTF_8));
             message.setQos(1);
             mqttClient.publish(topic, message);
             log.info("MQTT发布指令 - topic: {}, payload: {}", topic, json);
@@ -67,7 +68,10 @@ public class MqttPublishService {
             payload.put("deviceId", deviceId != null ? deviceId : "");
 
             Map<String, Object> params = new LinkedHashMap<>();
-            params.put("sensorId", sensor.getId());
+            // 优先使用 simulatorSensorId（模拟器内部 ID），DB id 作为兜底
+            Long simSensorId = sensor.getSimulatorSensorId() != null
+                    ? sensor.getSimulatorSensorId() : sensor.getId();
+            params.put("sensorId", simSensorId);
             params.put("sensorType", sensor.getSensorType());
             params.put("displayName", sensor.getDisplayName());
             params.put("dataTopic", sensor.getDataTopic());
@@ -79,7 +83,7 @@ public class MqttPublishService {
             payload.put("params", params);
             payload.put("timestamp", LocalDateTime.now().toString());
             String json = objectMapper.writeValueAsString(payload);
-            MqttMessage message = new MqttMessage(json.getBytes());
+            MqttMessage message = new MqttMessage(json.getBytes(StandardCharsets.UTF_8));
             message.setQos(1);
             mqttClient.publish(topic, message);
             log.info("MQTT发布传感器配置 - action: {}, payload: {}", action, json);
@@ -104,7 +108,7 @@ public class MqttPublishService {
             payload.put("params", Map.of("sensorId", sensorId));
             payload.put("timestamp", LocalDateTime.now().toString());
             String json = objectMapper.writeValueAsString(payload);
-            MqttMessage message = new MqttMessage(json.getBytes());
+            MqttMessage message = new MqttMessage(json.getBytes(StandardCharsets.UTF_8));
             message.setQos(1);
             mqttClient.publish(topic, message);
             log.info("MQTT发布绑定配置 - action: {}, deviceId: {}, sensorId: {}", action, deviceId, sensorId);

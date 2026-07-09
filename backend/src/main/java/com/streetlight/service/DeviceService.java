@@ -87,29 +87,6 @@ public class DeviceService {
         });
     }
 
-    /**
-     * 如果设备不存在则自动创建（从 MQTT 消息中自动注册）。
-     */
-    @Transactional
-    public Device addDeviceIfNotExists(String deviceId) {
-        return deviceRepository.findByDeviceId(deviceId).orElseGet(() -> {
-            Device device = Device.builder()
-                    .deviceId(deviceId)
-                    .name(deviceId)
-                    .status("online")
-                    .lightStatus("off")
-                    .controlMode("auto")
-                    .thresholdOn(50.0)
-                    .thresholdOff(100.0)
-                    .location("")
-                    .build();
-            Device saved = deviceRepository.save(device);
-            mqttClientManager.subscribeDevice(deviceId);
-            log.info("MQTT 消息自动注册设备 - deviceId: {}", deviceId);
-            return saved;
-        });
-    }
-
     public List<Device> getDevicesByStatus(String status) {
         return deviceRepository.findByStatus(status.toLowerCase());
     }
@@ -127,7 +104,7 @@ public class DeviceService {
 
     /**
      * 设备绑定传感器。
-     * 将已有传感器绑定到该设备，并通过 MQTT 通知模拟器。
+     * 将已有传感器绑定到该设备，并通过 MQTT 通知模拟器（使用模拟器内部 sensorId）。
      */
     @Transactional
     public void bindSensor(Long deviceId, Long sensorId) {
@@ -143,10 +120,12 @@ public class DeviceService {
         device.getSensors().add(sensor);
         deviceRepository.save(device);
 
-        // 通过 MQTT 通知模拟器传感器已绑定到设备
-        mqttPublishService.publishBindingConfig("bind_to_device", device.getDeviceId(), sensorId);
+        // 通过 MQTT 通知模拟器（用 simulatorSensorId，模拟器只认识自己的内部 ID）
+        Long simSensorId = sensor.getSimulatorSensorId() != null ? sensor.getSimulatorSensorId() : sensorId;
+        mqttPublishService.publishBindingConfig("bind_to_device", device.getDeviceId(), simSensorId);
 
-        log.info("设备绑定传感器 - deviceId: {}, sensorId: {}", device.getDeviceId(), sensorId);
+        log.info("设备绑定传感器 - deviceId: {}, sensorId: {}, simulatorSensorId: {}",
+                device.getDeviceId(), sensorId, simSensorId);
     }
 
     /**
@@ -162,29 +141,24 @@ public class DeviceService {
         device.getSensors().removeIf(s -> s.getId().equals(sensorId));
         deviceRepository.save(device);
 
-        // 通过 MQTT 通知模拟器传感器已解绑
-        mqttPublishService.publishBindingConfig("unbind_from_device", device.getDeviceId(), sensorId);
+        // 通过 MQTT 通知模拟器（用 simulatorSensorId，模拟器只认识自己的内部 ID）
+        Long simSensorId = sensor.getSimulatorSensorId() != null ? sensor.getSimulatorSensorId() : sensorId;
+        mqttPublishService.publishBindingConfig("unbind_from_device", device.getDeviceId(), simSensorId);
 
-        log.info("设备解绑传感器 - deviceId: {}, sensorId: {}", device.getDeviceId(), sensorId);
+        log.info("设备解绑传感器 - deviceId: {}, sensorId: {}, simulatorSensorId: {}",
+                device.getDeviceId(), sensorId, simSensorId);
     }
 
     /**
      * 通过 device_sensor 关联表反查传感器所属的设备 business key。
+     * 先用模拟器 sensorId 查（MQTT topic 中的 sensorId 是模拟器内部 ID），
+     * 再用 DB 主键查（兼容后端 REST API 直接传 DB id 的场景）。
      *
      * @return device_id（如 "SL-001"），未绑定时返回 sensor_{sensorId}
      */
     public String resolveDeviceIdForSensor(Long sensorId) {
-        Optional<Sensor> sensorOpt = sensorRepository.findById(sensorId);
-        if (sensorOpt.isEmpty()) {
-            return "unknown";
-        }
-        // 查找绑定此传感器的设备
-        List<Device> devices = deviceRepository.findAll();
-        for (Device device : devices) {
-            if (device.getSensors().stream().anyMatch(s -> s.getId().equals(sensorId))) {
-                return device.getDeviceId();
-            }
-        }
-        return "sensor_" + sensorId; // fallback: 未绑定
+        return sensorRepository.findDeviceIdBySimulatorSensorId(sensorId)
+                .or(() -> sensorRepository.findDeviceIdBySensorId(sensorId))
+                .orElse("sensor_" + sensorId);
     }
 }

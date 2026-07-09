@@ -18,6 +18,7 @@ import org.eclipse.paho.mqttv5.common.packet.MqttProperties;
 import org.springframework.context.annotation.Lazy;
 import org.springframework.stereotype.Component;
 
+import java.nio.charset.StandardCharsets;
 import java.time.LocalDateTime;
 import java.util.LinkedHashMap;
 import java.util.Map;
@@ -60,7 +61,7 @@ public class MqttMessageHandler implements MqttCallback {
 
     @Override
     public void messageArrived(String topic, MqttMessage message) {
-        String payload = new String(message.getPayload());
+        String payload = new String(message.getPayload(), StandardCharsets.UTF_8);
         log.info("收到MQTT消息 - topic: {}, payload: {}", topic, payload);
         try {
             if (mqttClientManager.isSensorDataTopic(topic)) {

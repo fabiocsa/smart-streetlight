@@ -7,25 +7,7 @@
     "topicPrefix": "streetlight",
     "clientId": "mock-sender-v3"
   },
-  "sensors": {
-    "sensor_43374": {
-      "sensorId": 43374,
-      "displayName": "A01光照",
-      "sensorType": "light",
-      "groupTag": "A01",
-      "dataTopic": "streetlight/sensor/43374/data",
-      "enabled": true,
-      "interval": 5,
-      "dataRange": {
-        "min": 0,
-        "max": 800
-      },
-      "lightStatus": "off",
-      "controlMode": "auto",
-      "configJson": "{\"min\":0,\"max\":800}"
-    }
-  },
-  "backendUrl": "http://localhost:8080/api",
+  "sensors": {},
   "simulation": {
     "latitude": 29.5,
     "longitude": 106.5,

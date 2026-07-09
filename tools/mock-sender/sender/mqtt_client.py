@@ -68,7 +68,6 @@ class MqttClientManager:
         # 回调
         self.on_control_command: Optional[Callable] = None
         self.on_mock_config: Optional[Callable] = None
-        self.on_registration_ack: Optional[Callable] = None
         self.on_connected: Optional[Callable] = None
         self.on_disconnected: Optional[Callable] = None
 
@@ -245,18 +244,6 @@ class MqttClientManager:
     # 传感器注册 / 注销 (MQTT)
     # ------------------------------------------------------------------
 
-    def publish_registration(self, payload: dict) -> bool:
-        """[已废弃] 发布设备注册消息。设备仅通过 REST API 管理。"""
-        prefix = self._config.get("topicPrefix", "streetlight")
-        topic = f"{prefix}/register"
-        return self.publish(topic, payload)
-
-    def publish_deregistration(self, device_id: str) -> bool:
-        """[已废弃] 发布设备注销消息。"""
-        topic = self._topic("{prefix}/{device_id}/deregister", device_id)
-        payload = {"deviceId": device_id, "timestamp": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())}
-        return self.publish(topic, payload)
-
     def publish_sensor_register(self, sensor_info: dict) -> bool:
         """发布传感器注册到全局主题 streetlight/sensor/register（v3: 无 deviceId）。"""
         prefix = self._config.get("topicPrefix", "streetlight")
@@ -325,13 +312,6 @@ class MqttClientManager:
                     self.on_mock_config(payload)
                 return
 
-            # 判断是否为注册确认: streetlight/{deviceId}/register/ack
-            if topic.endswith("/register/ack"):
-                logger.info(f"收到注册确认: {payload}")
-                if self.on_registration_ack:
-                    self.on_registration_ack(topic, payload)
-                return
-
             # 判断是否为控制指令: streetlight/{deviceId}/control
             parts = topic.split("/")
             if len(parts) >= 4 and parts[3] == "control":
@@ -395,12 +375,6 @@ class MqttClientManager:
         """订阅 Mock Sender 全局配置指令主题。"""
         prefix = self._config.get("topicPrefix", "streetlight")
         topic = f"{prefix}/mock-sender/config"
-        return self._subscribe(topic)
-
-    def _subscribe_registration_ack(self) -> bool:
-        """订阅注册确认主题。"""
-        prefix = self._config.get("topicPrefix", "streetlight")
-        topic = f"{prefix}/+/register/ack"
         return self._subscribe(topic)
 
     def _subscribe(self, topic: str, qos: int = 1) -> bool:

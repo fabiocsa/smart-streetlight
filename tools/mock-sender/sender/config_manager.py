@@ -22,7 +22,6 @@ DEFAULT_CONFIG: Dict[str, Any] = {
         "topicPrefix": "streetlight",
         "clientId": "mock-sender-v3",
     },
-    "backendUrl": "http://localhost:8080/api",
     "simulation": {
         "latitude": 29.5,
         "longitude": 106.5,
@@ -145,19 +144,6 @@ class ConfigManager:
         with self._lock:
             sim = self._config.setdefault("simulation", {})
             sim.update(updates)
-            return self.save()
-
-    # ------------------------------------------------------------------
-    # 后端 URL 配置
-    # ------------------------------------------------------------------
-
-    def get_backend_url(self) -> str:
-        with self._lock:
-            return self._config.get("backendUrl", "http://localhost:8080/api")
-
-    def set_backend_url(self, url: str) -> bool:
-        with self._lock:
-            self._config["backendUrl"] = url
             return self.save()
 
     # ------------------------------------------------------------------

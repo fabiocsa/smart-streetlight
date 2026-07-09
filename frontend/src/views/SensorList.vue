@@ -15,7 +15,7 @@
           type="warning"
           @click="handleBatchEnable(false)"
         >
-          批量停用 ({{ selectedIds.length }})
+          批量删除 ({{ selectedIds.length }})
         </el-button>
         <el-button
           v-if="selectedIds.length > 0"
@@ -77,8 +77,8 @@
         <el-table-column prop="id" label="ID" width="60" sortable />
         <el-table-column label="绑定状态" width="120">
           <template #default="{ row }">
-            <el-tag size="small" :type="row.deviceId ? 'success' : 'info'">
-              {{ row.deviceId || '未绑定' }}
+            <el-tag size="small" :type="row.boundDeviceId ? 'success' : 'info'">
+              {{ row.boundDeviceId || '未绑定' }}
             </el-tag>
           </template>
         </el-table-column>
@@ -124,7 +124,7 @@
           <template #default="{ row }">
             <el-button type="primary" link @click="openEditDialog(row)">编辑</el-button>
             <el-popconfirm
-              title="确定删除该传感器吗？此操作不可恢复。"
+              title="确定删除该传感器吗？模拟器仍在运行时会自动重新识别。"
               confirm-button-text="确定"
               cancel-button-text="取消"
               @confirm="handleDelete(row)"
@@ -246,7 +246,7 @@ function handleSaved() {
 async function handleDelete(row) {
   try {
     await sensorStore.remove(row.id)
-    ElMessage.success('传感器已删除')
+    ElMessage.success('传感器已删除，模拟器仍在运行时会自动重新识别')
   } catch {
     // 错误已在拦截器统一提示
   }
@@ -274,7 +274,7 @@ async function handleFrequencyChange(row, val) {
 async function handleBatchDelete() {
   try {
     await ElMessageBox.confirm(
-      `确定删除选中的 ${selectedIds.value.length} 个传感器吗？此操作不可恢复。`,
+      `确定删除选中的 ${selectedIds.value.length} 个传感器吗？模拟器仍在运行时会自动重新识别。`,
       '批量删除确认',
       { confirmButtonText: '确定删除', cancelButtonText: '取消', type: 'warning' }
     )
