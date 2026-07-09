@@ -5,7 +5,7 @@
         <el-button type="default" @click="router.back()">
           <el-icon><ArrowLeft /></el-icon> 返回
         </el-button>
-        <h2 style="display: inline; margin-left: 8px">设备详情</h2>
+        <h2 style="display: inline; margin-left: 8px">{{ form.name || '设备详情' }}</h2>
       </div>
       <div>
         <el-popconfirm
@@ -94,6 +94,7 @@
       :loading="sensorStore.loading"
       @refresh="loadSensors"
       @edit="openSensorDialog"
+      @unbind="handleDeleteSensor"
       @delete="handleDeleteSensor"
       @update-frequency="handleUpdateFrequency"
     />
@@ -191,9 +192,10 @@ function openSensorDialog(sensor) {
 
 async function handleDeleteSensor(id) {
   try {
-    await sensorStore.remove(form.value.deviceId, id)
-    ElMessage.success('传感器已解绑')
-    // store 已局部更新，同步本地数据
+    // 使用解绑（device_id=NULL）而非删除
+    await sensorStore.unbind(form.value.deviceId, id)
+    ElMessage.success('传感器已解绑（保留记录，可重新绑定）')
+    // 从当前设备列表移除（但保留在全局列表中）
     sensors.value = sensors.value.filter(s => s.id !== id)
   } catch {
     // 错误已在拦截器统一提示

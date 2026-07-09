@@ -213,6 +213,95 @@ def api_sync_from_backend():
     })
 
 
+@app.route("/api/sensors/sync-from-db", methods=["POST"])
+def api_sync_from_db():
+    """从 MySQL 数据库直接同步传感器列表。"""
+    count = sensor_mgr.sync_from_database()
+    return jsonify({
+        "message": f"已从数据库同步 {count} 个传感器",
+        "syncedCount": count,
+    })
+
+
+@app.route("/api/sensors/<sensor_key>/unbind", methods=["POST"])
+def api_unbind_sensor(sensor_key: str):
+    """解绑传感器（DB device_id=NULL），停止 worker 并从列表中移除。"""
+    s = sensor_mgr.get_sensor(sensor_key)
+    if not s:
+        return jsonify({"error": "传感器不存在"}), 404
+
+    sensor_id = s.get("sensorId")
+    if not sensor_id:
+        return jsonify({"error": "传感器 ID 未知，无法操作数据库"}), 400
+
+    ok = sensor_mgr.unbind_sensor(sensor_key, int(sensor_id))
+    if not ok:
+        return jsonify({"error": "解绑失败，请检查数据库连接"}), 500
+
+    logger.info(f"[API] 传感器 {sensor_key} 已解绑 (DB device_id=NULL)")
+    return jsonify({"message": f"传感器 {sensor_key} 已解绑", "sensorKey": sensor_key})
+
+
+@app.route("/api/sensors/<sensor_key>/rebind", methods=["POST"])
+def api_rebind_sensor(sensor_key: str):
+    """将传感器换绑到另一设备。"""
+    data = request.get_json(force=True)
+    new_device_id = data.get("deviceId", "").strip()
+    if not new_device_id:
+        return jsonify({"error": "目标 deviceId 不能为空"}), 400
+
+    s = sensor_mgr.get_sensor(sensor_key)
+    if not s:
+        return jsonify({"error": "传感器不存在"}), 404
+
+    sensor_id = s.get("sensorId")
+    if not sensor_id:
+        return jsonify({"error": "传感器 ID 未知，无法操作数据库"}), 400
+
+    new_key = sensor_mgr.rebind_sensor(sensor_key, int(sensor_id), new_device_id)
+    if not new_key:
+        return jsonify({"error": "换绑失败，请检查数据库连接或目标设备是否存在"}), 500
+
+    logger.info(f"[API] 传感器 {sensor_key} 已换绑到设备 {new_device_id} (新key={new_key})")
+    return jsonify({
+        "message": f"传感器已绑定到设备 {new_device_id}",
+        "newKey": new_key,
+    })
+
+
+@app.route("/api/devices/list", methods=["GET"])
+def api_list_devices():
+    """获取所有设备列表（供换绑选择器使用）。"""
+    if db_client:
+        devices = db_client.get_all_devices()
+        return jsonify([{"deviceId": d["device_id"], "name": d.get("name", ""),
+                         "location": d.get("location", "")} for d in devices])
+    return jsonify([])
+
+
+@app.route("/api/sensors/<sensor_key>/message-template", methods=["PUT"])
+def api_update_message_template(sensor_key: str):
+    """更新传感器的自定义消息模板。"""
+    data = request.get_json(force=True)
+    template = data.get("template", "")
+    ok = sensor_mgr.update_sensor_config(sensor_key, {"messageTemplate": template})
+    if not ok:
+        return jsonify({"error": "传感器不存在"}), 404
+    logger.info(f"传感器 {sensor_key} 消息模板已更新")
+    return jsonify({"message": "消息模板已更新"})
+
+
+@app.route("/api/sensors/<sensor_key>/message-template", methods=["GET"])
+def api_get_message_template(sensor_key: str):
+    """获取传感器的消息模板。"""
+    s = sensor_mgr.get_sensor(sensor_key)
+    if not s:
+        return jsonify({"error": "传感器不存在"}), 404
+    worker = sensor_mgr._workers.get(sensor_key)
+    template = worker.config.get("messageTemplate", "") if worker else ""
+    return jsonify({"template": template})
+
+
 # ================================ API: MQTT 配置 ================================
 
 @app.route("/api/config/mqtt")
@@ -260,6 +349,44 @@ def api_update_backend_url():
         return jsonify({"error": "backendUrl 不能为空"}), 400
     config_mgr.set_backend_url(url)
     return jsonify({"message": f"后端 URL 已更新为 {url}"})
+
+
+@app.route("/api/config/database")
+def api_get_database_config():
+    """获取数据库连接配置。"""
+    cfg = config_mgr.get_database_config()
+    cfg = dict(cfg)
+    cfg["password"] = "******" if cfg.get("password") else ""
+    return jsonify(cfg)
+
+
+@app.route("/api/config/database", methods=["PUT"])
+def api_update_database_config():
+    """更新数据库连接配置并重新初始化连接。"""
+    data = request.get_json(force=True)
+    current = config_mgr.get_database_config()
+
+    if data.get("password") in ("******", ""):
+        data["password"] = current.get("password", "")
+
+    ok = config_mgr.update_database_config(data)
+    if not ok:
+        return jsonify({"error": "保存数据库配置失败"}), 500
+
+    # 热重连数据库
+    global db_client
+    from sender.db_client import DbClient
+    try:
+        if db_client:
+            db_client.close()
+        db_client = DbClient(config_mgr.get_database_config())
+        sensor_mgr.set_db_client(db_client)
+        logger.info("数据库连接已重新初始化")
+    except Exception as e:
+        logger.error(f"重连数据库失败: {e}")
+        return jsonify({"warning": f"配置已保存但连接失败: {e}"}), 200
+
+    return jsonify({"message": "数据库配置已更新并重新连接"})
 
 
 # ================================ API: 日志流 (SSE) ================================
@@ -415,14 +542,26 @@ _start_time = 0.0
 
 
 def main():
-    global _start_time, config_mgr, mqtt_mgr, sensor_mgr
+    global _start_time, config_mgr, mqtt_mgr, sensor_mgr, db_client
 
     _start_time = time.time()
 
     # 初始化组件
     config_mgr = ConfigManager()
     mqtt_mgr = MqttClientManager()
-    sensor_mgr = SensorManager(config_mgr, mqtt_mgr)
+
+    # 初始化数据库连接池
+    db_client = None
+    db_cfg = config_mgr.get_database_config()
+    if db_cfg and db_cfg.get("host"):
+        try:
+            from sender.db_client import DbClient
+            db_client = DbClient(db_cfg)
+            logger.info("数据库连接池已初始化")
+        except Exception as e:
+            logger.warning(f"数据库连接初始化失败: {e}")
+
+    sensor_mgr = SensorManager(config_mgr, mqtt_mgr, db_client)
 
     # 注册 MQTT 回调
     mqtt_mgr.on_control_command = sensor_mgr.handle_control_command
@@ -435,23 +574,28 @@ def main():
     # 从本地配置加载传感器
     sensor_mgr.load_from_config()
 
-    # 从后端 REST API 同步传感器（异步延迟执行，等待 MQTT 连接就绪）
+    # 从数据库同步传感器（异步延迟执行，等待 MQTT 连接就绪）
     def _sync_from_backend():
         time.sleep(2)  # 等 MQTT 连接稳定
-        backend_url = config_mgr.get_backend_url()
-        logger.info(f"尝试从后端同步传感器: {backend_url}")
-        sensor_mgr.load_from_backend()
+        if db_client:
+            logger.info("尝试从数据库同步传感器...")
+            sensor_mgr.load_from_backend()
+        else:
+            backend_url = config_mgr.get_backend_url()
+            logger.info(f"数据库未连接，尝试从 REST API 同步: {backend_url}")
+            sensor_mgr.load_from_backend()
 
     sync_thread = threading.Thread(target=_sync_from_backend, daemon=True)
     sync_thread.start()
 
     # 获取端口
     port = 5050
+    db_status = "已连接" if db_client else "未连接 (使用 REST 回退)"
     logger.info("=" * 55)
     logger.info("  智慧路灯 Mock 模拟数据发送器")
     logger.info(f"  Web UI: http://localhost:{port}")
     logger.info(f"  MQTT:   {mqtt_cfg['broker']}:{mqtt_cfg['port']}")
-    logger.info(f"  后端:   {config_mgr.get_backend_url()}")
+    logger.info(f"  数据库: {db_status}")
     logger.info("=" * 55)
     logger.info("  按 Ctrl+C 停止")
     logger.info("")
@@ -464,6 +608,8 @@ def main():
         logger.info("正在关闭...")
         sensor_mgr.stop_all()
         mqtt_mgr.disconnect()
+        if db_client:
+            db_client.close()
         logger.info("已安全退出")
 
 

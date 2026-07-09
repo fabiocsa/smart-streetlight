@@ -312,8 +312,10 @@ def generate_sensor_data(
     cloud_opacity = _cloud_state["opacity"]
 
     # -- 构建 payload --
+    # 无主传感器使用有效标识符（空 device_id 替换为 "unbound"）
+    effective_device_id = device_id if device_id else "unbound"
     payload = {
-        "deviceId": device_id,
+        "deviceId": effective_device_id,
         "illuminance": illuminance,
         "lightIntensity": illuminance,
         "temperature": temperature,
@@ -366,6 +368,68 @@ def _calc_illuminance(device_id: str, elapsed_seconds: float,
     dev_offset = (hash(device_id) % 17 - 8) / 100.0
     variation = 1.0 + dev_offset
     return round(max(0, (base + noise) * variation), 1)
+
+
+# ---------------------------------------------------------------------------
+# 消息模板渲染
+# ---------------------------------------------------------------------------
+
+def render_message_template(template: str, context: Dict[str, Any]) -> str:
+    """
+    使用上下文变量渲染消息模板。
+
+    支持的变量:
+      {{deviceId}} {{lightIntensity}} {{illuminance}} {{temperature}}
+      {{voltage}} {{power}} {{cloudCover}} {{status}} {{timestamp}}
+      {{sensorType}} {{displayName}} {{location}} {{controlMode}}
+
+    也支持 {{payload}} 来插入整个生成的 payload JSON。
+    """
+    result = template
+    # 简单变量替换
+    for key, value in context.items():
+        if isinstance(value, (int, float)):
+            result = result.replace(f"{{{{{key}}}}}", str(value))
+        elif isinstance(value, str):
+            result = result.replace(f"{{{{{key}}}}}", value)
+        elif isinstance(value, dict):
+            import json as _json
+            result = result.replace(f"{{{{{key}}}}}", _json.dumps(value, ensure_ascii=False))
+    return result
+
+
+def generate_sensor_data_with_template(
+    template: str,
+    device_id: str,
+    light_status: str,
+    data_range: Optional[Dict[str, float]] = None,
+    extra_fields: Optional[Dict[str, Any]] = None,
+    brightness: Optional[int] = None,
+    sim_config: Optional[Dict[str, Any]] = None,
+) -> str:
+    """
+    根据自定义模板生成传感器数据消息字符串。
+    如果模板为空，返回默认 JSON payload（向后兼容）。
+    """
+    # 先生成标准 payload 作为上下文
+    payload = generate_sensor_data(
+        device_id=device_id,
+        light_status=light_status,
+        data_range=data_range,
+        extra_fields=extra_fields,
+        brightness=brightness,
+        sim_config=sim_config,
+    )
+
+    if not template or not template.strip():
+        import json as _json
+        return _json.dumps(payload, ensure_ascii=False)
+
+    # 添加额外上下文
+    context = dict(payload)
+    context["payload"] = payload  # 支持 {{payload}} 引用整个对象
+
+    return render_message_template(template, context)
 
 
 # ---------------------------------------------------------------------------

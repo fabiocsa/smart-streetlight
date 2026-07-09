@@ -65,17 +65,27 @@
           {{ formatTime(row.createdAt) }}
         </template>
       </el-table-column>
-      <el-table-column label="操作" width="140" fixed="right">
+      <el-table-column label="操作" width="180" fixed="right">
         <template #default="{ row }">
           <el-button v-if="authStore.isAdmin" type="primary" link @click="$emit('edit', row)">编辑</el-button>
           <el-popconfirm
             v-if="authStore.isAdmin"
-            title="确定解绑该传感器吗？"
-            confirm-button-text="确定"
+            title="确定解绑该传感器吗？传感器将保留在数据库中，可重新绑定。"
+            confirm-button-text="确定解绑"
+            @confirm="$emit('unbind', row.id)"
+          >
+            <template #reference>
+              <el-button type="warning" link>解绑</el-button>
+            </template>
+          </el-popconfirm>
+          <el-popconfirm
+            v-if="authStore.isAdmin"
+            title="确定删除该传感器吗？此操作不可恢复。"
+            confirm-button-text="确定删除"
             @confirm="$emit('delete', row.id)"
           >
             <template #reference>
-              <el-button type="danger" link>解绑</el-button>
+              <el-button type="danger" link>删除</el-button>
             </template>
           </el-popconfirm>
         </template>
@@ -100,7 +110,7 @@ const props = defineProps({
   loading: Boolean
 })
 
-const emit = defineEmits(['refresh', 'edit', 'delete', 'updateFrequency', 'batchDelete'])
+const emit = defineEmits(['refresh', 'edit', 'delete', 'unbind', 'updateFrequency', 'batchDelete'])
 const sensorStore = useSensorStore()
 const authStore = useAuthStore()
 const tableRef = ref(null)
