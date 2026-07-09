@@ -13,14 +13,15 @@
     "location": "校门口"
   },
   "sensors": {
-    "SL-001_78939": {
-      "deviceId": "SL-001",
-      "sensorId": 78939,
+    "A01_17128": {
+      "deviceId": "A01",
+      "sensorId": 17128,
       "displayName": "A01光照",
       "sensorType": "light",
-      "deviceName": "路灯A-01",
-      "name": "A01光照",
-      "location": "校门口",
+      "deviceGroup": "A01",
+      "deviceName": "A01",
+      "name": "A01",
+      "location": "",
       "dataTopic": "streetlight/SL-001/sensor/data",
       "enabled": true,
       "interval": 5,
@@ -29,7 +30,8 @@
         "max": 800
       },
       "lightStatus": "off",
-      "controlMode": "manual"
+      "controlMode": "auto",
+      "configJson": "{\"min\":0,\"max\":800}"
     }
   },
   "backendUrl": "http://localhost:8080/api",
