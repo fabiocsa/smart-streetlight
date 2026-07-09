@@ -46,6 +46,7 @@ class MqttClientManager:
         # 回调
         self.on_control_command: Optional[Callable] = None
         self.on_mock_config: Optional[Callable] = None
+        self.on_registration_ack: Optional[Callable] = None
         self.on_connected: Optional[Callable] = None
         self.on_disconnected: Optional[Callable] = None
 
@@ -174,6 +175,34 @@ class MqttClientManager:
         return self.publish(topic, payload)
 
     # ------------------------------------------------------------------
+    # 设备注册 / 注销
+    # ------------------------------------------------------------------
+
+    def publish_registration(self, payload: dict) -> bool:
+        """发布设备注册消息到 streetlight/register。"""
+        prefix = self._config.get("topicPrefix", "streetlight")
+        topic = f"{prefix}/register"
+        return self.publish(topic, payload)
+
+    def publish_deregistration(self, device_id: str) -> bool:
+        """发布设备注销消息到 streetlight/{deviceId}/deregister。"""
+        topic = self._topic("{prefix}/{device_id}/deregister", device_id)
+        payload = {"deviceId": device_id, "timestamp": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())}
+        return self.publish(topic, payload)
+
+    def publish_sensor_register(self, device_id: str, sensor_info: dict) -> bool:
+        """发布传感器动态注册消息到 streetlight/{deviceId}/sensor/register。"""
+        topic = self._topic("{prefix}/{device_id}/sensor/register", device_id)
+        return self.publish(topic, sensor_info)
+
+    def publish_sensor_unregister(self, device_id: str, sensor_id: int) -> bool:
+        """发布传感器注销消息到 streetlight/{deviceId}/sensor/unregister。"""
+        topic = self._topic("{prefix}/{device_id}/sensor/unregister", device_id)
+        payload = {"deviceId": device_id, "sensorId": sensor_id,
+                   "timestamp": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())}
+        return self.publish(topic, payload)
+
+    # ------------------------------------------------------------------
     # 内部回调
     # ------------------------------------------------------------------
 
@@ -181,10 +210,9 @@ class MqttClientManager:
         if rc == 0:
             self._connected = True
             logger.info("MQTT 已连接到 Broker")
-            # 订阅控制指令
             self._subscribe_all_controls()
-            # 订阅 Mock Sender 配置指令
             self._subscribe_mock_config()
+            self._subscribe_registration_ack()
             if self.on_connected:
                 self.on_connected()
         else:
@@ -206,6 +234,13 @@ class MqttClientManager:
                 logger.info(f"收到配置指令: {payload}")
                 if self.on_mock_config:
                     self.on_mock_config(payload)
+                return
+
+            # 判断是否为注册确认: streetlight/{deviceId}/register/ack
+            if topic.endswith("/register/ack"):
+                logger.info(f"收到注册确认: {payload}")
+                if self.on_registration_ack:
+                    self.on_registration_ack(topic, payload)
                 return
 
             # 判断是否为控制指令: streetlight/{deviceId}/control
@@ -248,6 +283,12 @@ class MqttClientManager:
         """订阅 Mock Sender 全局配置指令主题。"""
         prefix = self._config.get("topicPrefix", "streetlight")
         topic = f"{prefix}/mock-sender/config"
+        return self._subscribe(topic)
+
+    def _subscribe_registration_ack(self) -> bool:
+        """订阅注册确认主题。"""
+        prefix = self._config.get("topicPrefix", "streetlight")
+        topic = f"{prefix}/+/register/ack"
         return self._subscribe(topic)
 
     def _subscribe(self, topic: str, qos: int = 1) -> bool:

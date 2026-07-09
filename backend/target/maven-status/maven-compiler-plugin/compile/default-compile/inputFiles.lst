@@ -14,6 +14,7 @@ D:\文文又档档\111实训\smart-streetlight\backend\src\main\java\com\streetlight\re
 D:\文文又档档\111实训\smart-streetlight\backend\src\main\java\com\streetlight\controller\AlarmRuleController.java
 D:\文文又档档\111实训\smart-streetlight\backend\src\main\java\com\streetlight\config\RestTemplateConfig.java
 D:\文文又档档\111实训\smart-streetlight\backend\src\main\java\com\streetlight\config\CorsConfig.java
+D:\文文又档档\111实训\smart-streetlight\backend\src\main\java\com\streetlight\service\DeviceRegistrationService.java
 D:\文文又档档\111实训\smart-streetlight\backend\src\main\java\com\streetlight\repository\ChatSessionRepository.java
 D:\文文又档档\111实训\smart-streetlight\backend\src\main\java\com\streetlight\controller\DashboardController.java
 D:\文文又档档\111实训\smart-streetlight\backend\src\main\java\com\streetlight\dto\BatchControlRequest.java

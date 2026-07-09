@@ -4,6 +4,7 @@ import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.streetlight.service.ControlService;
+import com.streetlight.service.DeviceRegistrationService;
 import com.streetlight.service.DeviceService;
 import com.streetlight.service.SensorDataService;
 import com.streetlight.websocket.WebSocketHandler;
@@ -30,18 +31,21 @@ public class MqttMessageHandler implements MqttCallback {
     private final DeviceService deviceService;
     private final MqttClientManager mqttClientManager;
     private final WebSocketHandler webSocketHandler;
+    private final DeviceRegistrationService registrationService;
     private final ObjectMapper objectMapper = new ObjectMapper();
 
     public MqttMessageHandler(SensorDataService sensorDataService,
                                ControlService controlService,
                                @Lazy DeviceService deviceService,
                                @Lazy MqttClientManager mqttClientManager,
-                               WebSocketHandler webSocketHandler) {
+                               WebSocketHandler webSocketHandler,
+                               DeviceRegistrationService registrationService) {
         this.sensorDataService = sensorDataService;
         this.controlService = controlService;
         this.deviceService = deviceService;
         this.mqttClientManager = mqttClientManager;
         this.webSocketHandler = webSocketHandler;
+        this.registrationService = registrationService;
     }
 
     @Override
@@ -65,6 +69,14 @@ public class MqttMessageHandler implements MqttCallback {
                 handleControlResponse(topic, payload);
             } else if (mqttClientManager.isStatusTopic(topic)) {
                 handleHeartbeat(topic, payload);
+            } else if (mqttClientManager.isRegistrationTopic(topic)) {
+                handleDeviceRegistration(topic, payload);
+            } else if (mqttClientManager.isDeregistrationTopic(topic)) {
+                handleDeviceDeregistration(topic, payload);
+            } else if (mqttClientManager.isSensorRegisterTopic(topic)) {
+                handleSensorRegistration(topic, payload);
+            } else if (mqttClientManager.isSensorUnregisterTopic(topic)) {
+                handleSensorUnregistration(topic, payload);
             } else {
                 log.warn("未知的MQTT主题: {}", topic);
             }
@@ -149,6 +161,44 @@ public class MqttMessageHandler implements MqttCallback {
         if (reconnect) {
             mqttClientManager.subscribeAllDevices();
             log.info("MQTT重连后已重新订阅所有设备主题");
+        }
+    }
+
+    // ============ 设备注册/注销处理 ============
+
+    private void handleDeviceRegistration(String topic, String payload) {
+        log.info("收到设备注册消息 - topic: {}", topic);
+        registrationService.handleDeviceRegistration(payload);
+    }
+
+    private void handleDeviceDeregistration(String topic, String payload) {
+        String deviceId = mqttClientManager.extractDeviceIdFromRegistrationTopic(topic);
+        log.info("收到设备注销消息 - deviceId: {}", deviceId);
+        registrationService.handleDeviceDeregistration(deviceId);
+    }
+
+    private void handleSensorRegistration(String topic, String payload) {
+        String deviceId = mqttClientManager.extractDeviceIdFromRegistrationTopic(topic);
+        log.info("收到传感器注册消息 - deviceId: {}, payload: {}", deviceId, payload);
+        try {
+            JsonNode root = objectMapper.readTree(payload);
+            registrationService.handleSensorRegister(deviceId, root);
+        } catch (Exception e) {
+            log.error("解析传感器注册消息失败: {}", e.getMessage());
+        }
+    }
+
+    private void handleSensorUnregistration(String topic, String payload) {
+        String deviceId = mqttClientManager.extractDeviceIdFromRegistrationTopic(topic);
+        log.info("收到传感器注销消息 - deviceId: {}, payload: {}", deviceId, payload);
+        try {
+            JsonNode root = objectMapper.readTree(payload);
+            Long sensorId = root.has("sensorId") ? root.get("sensorId").asLong() : null;
+            if (sensorId != null) {
+                registrationService.handleSensorUnregister(deviceId, sensorId);
+            }
+        } catch (Exception e) {
+            log.error("解析传感器注销消息失败: {}", e.getMessage());
         }
     }
 
