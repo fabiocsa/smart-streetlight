@@ -260,75 +260,146 @@
     </div>
 </div>
 
-<!-- ==================== 添加传感器模态框 ==================== -->
+<!-- ==================== 添加/编辑传感器模态框 ==================== -->
 <div class="modal fade" id="addSensorModal" tabindex="-1">
-    <div class="modal-dialog">
+    <div class="modal-dialog modal-lg">
         <div class="modal-content">
             <div class="modal-header">
-                <h5 class="modal-title"><i class="bi bi-plus-circle"></i> 添加传感器</h5>
+                <h5 class="modal-title" id="addSensorModalTitle">
+                    <i class="bi bi-plus-circle"></i> 添加传感器
+                </h5>
                 <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
             </div>
             <div class="modal-body">
                 <form id="addSensorForm">
-                    <div class="mb-3">
-                        <label class="form-label">设备 ID <span class="text-danger">*</span></label>
-                        <input name="deviceId" class="form-control" placeholder="如 SL-001" required>
-                        <div class="form-text">要与后端设备管理中的 deviceId 一致</div>
-                    </div>
-                    <div class="mb-3">
-                        <label class="form-label">设备名称</label>
-                        <input name="deviceName" class="form-control" placeholder="如 路灯A-01">
-                    </div>
-                    <div class="mb-3">
-                        <label class="form-label">传感器名称</label>
-                        <input name="displayName" class="form-control" placeholder="如 光照传感器A">
-                    </div>
-                    <div class="mb-3">
-                        <label class="form-label">传感器类型</label>
-                        <select name="sensorType" class="form-select">
-                            <option value="light">光照</option>
-                            <option value="temperature">温度</option>
-                            <option value="humidity">湿度</option>
-                            <option value="power">功率</option>
-                        </select>
-                    </div>
-                    <div class="mb-3">
-                        <label class="form-label">数据主题</label>
-                        <input name="dataTopic" class="form-control" placeholder="如 streetlight/SL-001/sensor/data">
-                    </div>
-                    <div class="mb-3">
-                        <label class="form-label">位置</label>
-                        <input name="location" class="form-control" placeholder="如 实验楼前">
-                    </div>
-                    <div class="row mb-3">
-                        <div class="col-6">
-                            <label class="form-label">发送频率 (秒)</label>
-                            <input name="interval" class="form-control" type="number" value="5" min="1">
+                    <!-- ===== 设备选择区 ===== -->
+                    <div class="form-section">
+                        <div class="form-section-title">
+                            <i class="bi bi-hdd-stack"></i> 绑定设备
+                            <button type="button" class="btn btn-sm btn-link text-decoration-none"
+                                    onclick="toggleUnboundMode()" id="btnUnboundToggle"
+                                    title="切换为无主传感器（不绑定设备）">
+                                设为未绑定
+                            </button>
                         </div>
-                        <div class="col-6">
-                            <label class="form-label">控制模式</label>
-                            <select name="controlMode" class="form-select">
-                                <option value="auto">自动</option>
-                                <option value="manual">手动</option>
-                            </select>
+                        <div id="deviceBindArea">
+                            <div class="mb-3">
+                                <label class="form-label">选择设备 <span class="text-danger">*</span></label>
+                                <div class="searchable-select" id="deviceSelectWrapper">
+                                    <div class="ss-input-wrap">
+                                        <input id="deviceSearchInput" class="form-control"
+                                               placeholder="输入设备ID或名称搜索..." autocomplete="off"
+                                               onfocus="openDeviceDropdown()"
+                                               oninput="filterDeviceOptions()"
+                                               onkeydown="handleDeviceKeydown(event)">
+                                        <i class="bi bi-chevron-down ss-arrow"></i>
+                                    </div>
+                                    <div class="ss-dropdown" id="deviceDropdown"></div>
+                                </div>
+                                <input type="hidden" name="deviceId" id="deviceIdHidden">
+                                <div class="form-text">搜索并选择已有设备，或 <a href="javascript:void(0)" onclick="toggleManualDeviceInput()" id="manualDeviceLink">手动输入新设备ID</a></div>
+                            </div>
+                            <div id="manualDeviceInput" style="display:none">
+                                <input name="deviceIdManual" class="form-control form-control-sm"
+                                       placeholder="手动输入设备 ID（如 SL-009）">
+                                <div class="form-text text-warning small">设备需已在数据库中，否则传感器数据无法关联</div>
+                            </div>
+                            <div class="row g-2 mb-3 device-info-fields">
+                                <div class="col-6">
+                                    <label class="form-label small">设备名称</label>
+                                    <input name="deviceName" class="form-control form-control-sm" readonly
+                                           id="deviceNameFilled" placeholder="选择设备后自动填充">
+                                </div>
+                                <div class="col-6">
+                                    <label class="form-label small">安装位置</label>
+                                    <input name="location" class="form-control form-control-sm" readonly
+                                           id="locationFilled" placeholder="选择设备后自动填充">
+                                </div>
+                            </div>
+                        </div>
+                        <div id="unboundHint" style="display:none" class="alert alert-warning py-2 mb-0 small">
+                            <i class="bi bi-info-circle"></i> 未绑定传感器将独立运行，数据主题使用 <code>streetlight/unbound/{id}/sensor/data</code>
                         </div>
                     </div>
-                    <div class="row mb-3">
-                        <div class="col-6">
-                            <label class="form-label">光照最小值</label>
-                            <input name="min" class="form-control" type="number" value="0" min="0">
+
+                    <!-- ===== 传感器配置区 ===== -->
+                    <div class="form-section">
+                        <div class="form-section-title"><i class="bi bi-cpu"></i> 传感器配置</div>
+                        <div class="row g-2 mb-3">
+                            <div class="col-6">
+                                <label class="form-label">传感器类型</label>
+                                <select name="sensorType" class="form-select form-select-sm"
+                                        onchange="onSensorTypeChange(this.value)">
+                                    <option value="light" data-icon="☀️">☀️ 光照</option>
+                                    <option value="temperature" data-icon="🌡️">🌡️ 温度</option>
+                                    <option value="humidity" data-icon="💧">💧 湿度</option>
+                                    <option value="power" data-icon="⚡">⚡ 功率</option>
+                                </select>
+                            </div>
+                            <div class="col-6">
+                                <label class="form-label">显示名称</label>
+                                <input name="displayName" class="form-control form-control-sm"
+                                       id="displayNameInput" placeholder="自动生成或手动输入">
+                            </div>
                         </div>
-                        <div class="col-6">
-                            <label class="form-label">光照最大值</label>
-                            <input name="max" class="form-control" type="number" value="800" min="1">
+                        <div class="mb-3">
+                            <label class="form-label">
+                                数据主题
+                                <button type="button" class="btn btn-sm btn-link text-decoration-none small"
+                                        onclick="autoFillDataTopic()" title="根据设备和类型自动生成">
+                                    <i class="bi bi-lightning"></i> 自动生成
+                                </button>
+                            </label>
+                            <input name="dataTopic" class="form-control form-control-sm"
+                                   id="dataTopicInput"
+                                   placeholder="如 streetlight/SL-001/sensor/data">
+                        </div>
+                        <div class="row g-2 mb-3">
+                            <div class="col-4">
+                                <label class="form-label">上报频率</label>
+                                <div class="input-group input-group-sm">
+                                    <input name="interval" class="form-control" type="number"
+                                           id="intervalInput" value="5" min="1" max="3600">
+                                    <span class="input-group-text">秒</span>
+                                </div>
+                            </div>
+                            <div class="col-4">
+                                <label class="form-label">控制模式</label>
+                                <select name="controlMode" class="form-select form-select-sm">
+                                    <option value="auto">🤖 自动</option>
+                                    <option value="manual">✋ 手动</option>
+                                </select>
+                            </div>
+                            <div class="col-4">
+                                <label class="form-label">数据格式</label>
+                                <select name="dataFormat" class="form-select form-select-sm"
+                                        onchange="onDataFormatChange(this.value)">
+                                    <option value="standard">标准格式</option>
+                                    <option value="compact">精简格式</option>
+                                    <option value="custom">自定义模板</option>
+                                </select>
+                            </div>
+                        </div>
+                        <div class="row g-2 mb-3">
+                            <div class="col-6">
+                                <label class="form-label">光照范围: 最小 (Lux)</label>
+                                <input name="min" class="form-control form-control-sm" type="number"
+                                       id="minLuxInput" value="0" min="0" max="2000">
+                            </div>
+                            <div class="col-6">
+                                <label class="form-label">光照范围: 最大 (Lux)</label>
+                                <input name="max" class="form-control form-control-sm" type="number"
+                                       id="maxLuxInput" value="800" min="1" max="2000">
+                            </div>
                         </div>
                     </div>
                 </form>
             </div>
             <div class="modal-footer">
                 <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">取消</button>
-                <button type="button" class="btn btn-primary" onclick="addSensor()">
-                    <i class="bi bi-plus-lg"></i> 添加
+                <button type="button" class="btn btn-primary" id="btnAddSensorSubmit"
+                        onclick="addSensor()">
+                    <i class="bi bi-plus-lg"></i> 添加传感器
                 </button>
             </div>
         </div>

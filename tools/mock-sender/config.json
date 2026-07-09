@@ -7,7 +7,26 @@
     "topicPrefix": "streetlight",
     "clientId": "mock-sender-v2"
   },
-  "sensors": {},
+  "sensors": {
+    "SL-001_78939": {
+      "deviceId": "SL-001",
+      "sensorId": 78939,
+      "displayName": "A01光照",
+      "sensorType": "light",
+      "deviceName": "路灯A-01",
+      "name": "A01光照",
+      "location": "校门口",
+      "dataTopic": "streetlight/SL-001/sensor/data",
+      "enabled": true,
+      "interval": 5,
+      "dataRange": {
+        "min": 0,
+        "max": 800
+      },
+      "lightStatus": "off",
+      "controlMode": "auto"
+    }
+  },
   "backendUrl": "http://localhost:8080/api",
   "simulation": {
     "latitude": 29.5,
@@ -20,5 +39,13 @@
       "annualAmplitude": 13.5,
       "dailyAmplitude": 5.0
     }
+  },
+  "database": {
+    "host": "8.130.102.89",
+    "port": 3306,
+    "database": "streetlight",
+    "user": "remote_user",
+    "password": "123456",
+    "poolSize": 5
   }
 }
