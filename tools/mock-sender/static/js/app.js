@@ -21,6 +21,7 @@ document.addEventListener('DOMContentLoaded', () => {
     loadSensors();
     loadMqttConfig();
     loadDbConfig();
+    loadAllDevices();
     startUptimeTimer();
     startPolling();
     connectLogStream();
@@ -154,16 +155,283 @@ function updateSensorCount(sensors) {
         `<i class="bi bi-cpu"></i> 传感器: ${running}/${sensors.length}`;
 }
 
+// ============================ 搜索下拉组件 (设备选择器) ============================
+
+let allDevices = [];           // 缓存的设备列表
+let filteredDevices = [];      // 过滤后的设备列表
+let highlightIdx = -1;         // 键盘高亮索引
+let isUnboundMode = false;     // 是否为未绑定模式
+let isManualDeviceInput = false; // 是否手动输入设备ID
+let selectedDevice = null;     // 当前选中的设备对象
+
+function loadAllDevices() {
+    fetch('/api/devices/list')
+        .then(r => r.json())
+        .then(devices => {
+            allDevices = devices || [];
+        })
+        .catch(() => { allDevices = []; });
+}
+
+function openDeviceDropdown() {
+    if (isUnboundMode || isManualDeviceInput) return;
+    filteredDevices = [...allDevices];
+    highlightIdx = -1;
+    renderDeviceDropdown();
+    document.getElementById('deviceSelectWrapper').classList.add('open');
+}
+
+function filterDeviceOptions() {
+    const q = document.getElementById('deviceSearchInput').value.toLowerCase().trim();
+    if (!q) {
+        filteredDevices = [...allDevices];
+    } else {
+        filteredDevices = allDevices.filter(d =>
+            d.deviceId.toLowerCase().includes(q) ||
+            (d.name && d.name.toLowerCase().includes(q)) ||
+            (d.location && d.location.toLowerCase().includes(q))
+        );
+    }
+    highlightIdx = -1;
+    renderDeviceDropdown();
+    const wrapper = document.getElementById('deviceSelectWrapper');
+    if (!wrapper.classList.contains('open')) wrapper.classList.add('open');
+}
+
+function renderDeviceDropdown() {
+    const dd = document.getElementById('deviceDropdown');
+    if (filteredDevices.length === 0) {
+        const q = document.getElementById('deviceSearchInput').value.trim();
+        dd.innerHTML = q
+            ? `<div class="ss-no-results">未找到匹配设备<br><small>尝试其他关键词或手动输入</small></div>
+               <div class="ss-add-new" onmousedown="event.preventDefault();toggleManualDeviceInput()">
+                   <i class="bi bi-plus-circle"></i> 使用 "${escHtml(q)}" 作为新设备ID</div>`
+            : '<div class="ss-no-results">暂无设备数据<br><small>请检查数据库连接或手动输入</small></div>';
+        return;
+    }
+
+    // ★ 修复: 不在 onmouseenter 中重新渲染 DOM（会导致 click 事件丢失）
+    //    改用 CSS class 直接操作，不销毁元素。
+    dd.innerHTML = filteredDevices.map((d, i) => {
+        const selClass = selectedDevice && selectedDevice.deviceId === d.deviceId ? ' selected' : '';
+        return `<div class="ss-option${selClass}" data-idx="${i}"
+                     onmousedown="onOptionMouseDown(event, ${i})"
+                     onmouseenter="onOptionHover(${i})">
+            <span>
+                <span class="ss-device-id">${escHtml(d.deviceId)}</span>
+                <span class="ss-device-name">${escHtml(d.name || '')}</span>
+            </span>
+            <span class="ss-device-location">${escHtml(d.location || '')}</span>
+        </div>`;
+    }).join('');
+
+    // 初始高亮
+    updateDropdownHighlight();
+}
+
+// ★ 修复: 不再重新渲染，只切换 CSS class
+function updateDropdownHighlight() {
+    const dd = document.getElementById('deviceDropdown');
+    const options = dd.querySelectorAll('.ss-option');
+    options.forEach((opt, i) => {
+        opt.classList.toggle('highlight', i === highlightIdx);
+    });
+}
+
+function onOptionHover(idx) {
+    if (highlightIdx === idx) return;
+    highlightIdx = idx;
+    updateDropdownHighlight();
+}
+
+function onOptionMouseDown(e, idx) {
+    // ★ 修复: 使用 mousedown 而非 click，避免 blur/focus 干扰
+    //    preventDefault 阻止输入框失去焦点
+    e.preventDefault();
+    selectDevice(idx);
+}
+
+function handleDeviceKeydown(e) {
+    const wrapper = document.getElementById('deviceSelectWrapper');
+    if (!wrapper.classList.contains('open')) {
+        if (e.key === 'ArrowDown') { openDeviceDropdown(); e.preventDefault(); }
+        return;
+    }
+    if (e.key === 'ArrowDown') {
+        e.preventDefault();
+        highlightIdx = Math.min(highlightIdx + 1, filteredDevices.length - 1);
+        updateDropdownHighlight();
+    } else if (e.key === 'ArrowUp') {
+        e.preventDefault();
+        highlightIdx = Math.max(highlightIdx - 1, -1);
+        updateDropdownHighlight();
+    } else if (e.key === 'Enter') {
+        e.preventDefault();
+        if (highlightIdx >= 0 && highlightIdx < filteredDevices.length) {
+            selectDevice(highlightIdx);
+        }
+    } else if (e.key === 'Escape') {
+        closeDeviceDropdown();
+    }
+}
+
+function selectDevice(idx) {
+    if (idx < 0 || idx >= filteredDevices.length) return;
+    const d = filteredDevices[idx];
+    selectedDevice = d;
+
+    // 依次设置各字段（每个都可能为空，做好防御）
+    const searchInput = document.getElementById('deviceSearchInput');
+    const hiddenInput = document.getElementById('deviceIdHidden');
+    const nameInput = document.getElementById('deviceNameFilled');
+    const locationInput = document.getElementById('locationFilled');
+
+    if (searchInput) searchInput.value = `${d.deviceId} — ${d.name || ''}`;
+    if (hiddenInput) hiddenInput.value = d.deviceId;
+    if (nameInput) nameInput.value = d.name || '';
+    if (locationInput) locationInput.value = d.location || '';
+
+    autoFillDataTopic();
+    closeDeviceDropdown();
+}
+
+function closeDeviceDropdown() {
+    const wrapper = document.getElementById('deviceSelectWrapper');
+    if (wrapper) wrapper.classList.remove('open');
+    highlightIdx = -1;
+}
+
+// 点击外部关闭下拉（使用 mousedown 确保在 click 之前捕获）
+document.addEventListener('mousedown', function(e) {
+    const wrapper = document.getElementById('deviceSelectWrapper');
+    if (wrapper && !wrapper.classList.contains('open')) return;
+    if (wrapper && !wrapper.contains(e.target)) {
+        // 延迟关闭，让选项的 mousedown 先执行
+        setTimeout(() => closeDeviceDropdown(), 150);
+    }
+});
+
+function toggleUnboundMode() {
+    isUnboundMode = !isUnboundMode;
+    const area = document.getElementById('deviceBindArea');
+    const hint = document.getElementById('unboundHint');
+    const btn = document.getElementById('btnUnboundToggle');
+    const hiddenInput = document.getElementById('deviceIdHidden');
+
+    if (isUnboundMode) {
+        area.style.display = 'none';
+        hint.style.display = '';
+        hiddenInput.value = '';
+        selectedDevice = null;
+        document.getElementById('deviceSearchInput').value = '';
+        document.getElementById('deviceNameFilled').value = '';
+        document.getElementById('locationFilled').value = '';
+        document.getElementById('dataTopicInput').value = '';
+        btn.innerHTML = '绑定到设备';
+        btn.title = '切换回设备绑定模式';
+    } else {
+        area.style.display = '';
+        hint.style.display = 'none';
+        document.getElementById('dataTopicInput').value = '';
+        btn.innerHTML = '设为未绑定';
+        btn.title = '切换为无主传感器（不绑定设备）';
+    }
+}
+
+function toggleManualDeviceInput() {
+    closeDeviceDropdown();
+    isManualDeviceInput = !isManualDeviceInput;
+    const manualDiv = document.getElementById('manualDeviceInput');
+    const searchInput = document.getElementById('deviceSearchInput');
+    const hiddenInput = document.getElementById('deviceIdHidden');
+
+    if (isManualDeviceInput) {
+        manualDiv.style.display = '';
+        searchInput.value = '';
+        searchInput.placeholder = '已切换为手动输入模式';
+        searchInput.disabled = true;
+        hiddenInput.value = '';
+        selectedDevice = null;
+        document.getElementById('deviceNameFilled').value = '';
+        document.getElementById('locationFilled').value = '';
+    } else {
+        manualDiv.style.display = 'none';
+        searchInput.disabled = false;
+        searchInput.placeholder = '输入设备ID或名称搜索...';
+        document.querySelector('#manualDeviceInput input').value = '';
+    }
+}
+
+// ============================ 智能默认值 & 自动填充 ============================
+
+const sensorDefaults = {
+    light:    { displayName: '光照传感器', interval: 5,  min: 0,   max: 800 },
+    temperature: { displayName: '温度传感器', interval: 10, min: -20, max: 60 },
+    humidity: { displayName: '湿度传感器', interval: 10, min: 0,   max: 100 },
+    power:    { displayName: '功率传感器', interval: 15, min: 0,   max: 200 },
+};
+
+function onSensorTypeChange(type) {
+    const def = sensorDefaults[type] || sensorDefaults.light;
+    // 仅在新添加模式下自动填充（编辑模式下不覆盖已有值）
+    const btn = document.getElementById('btnAddSensorSubmit');
+    if (btn.onclick !== addSensor && btn.onclick.toString().includes('updateSensor')) return;
+
+    document.getElementById('displayNameInput').value = def.displayName;
+    document.getElementById('intervalInput').value = def.interval;
+    document.getElementById('minLuxInput').value = def.min;
+    document.getElementById('maxLuxInput').value = def.max;
+    autoFillDataTopic();
+}
+
+function autoFillDataTopic() {
+    const deviceId = getEffectiveDeviceId();
+    const sensorType = document.querySelector('[name="sensorType"]').value || 'light';
+    if (deviceId) {
+        document.getElementById('dataTopicInput').value =
+            `streetlight/${deviceId}/sensor/data`;
+    } else if (isUnboundMode) {
+        document.getElementById('dataTopicInput').value = '';
+    }
+}
+
+function getEffectiveDeviceId() {
+    if (isUnboundMode) return '';
+    if (isManualDeviceInput) {
+        return document.querySelector('[name="deviceIdManual"]').value.trim();
+    }
+    return document.getElementById('deviceIdHidden').value.trim();
+}
+
+function onDataFormatChange(format) {
+    if (format === 'custom') {
+        // 提示用户使用消息模板编辑器
+        const sensorKey = document.getElementById('btnAddSensorSubmit').dataset.sensorKey;
+        if (sensorKey) {
+            alert('保存后可在传感器列表点击 < > 按钮编辑自定义消息模板');
+        }
+    }
+}
+
+// ============================ 添加 / 编辑传感器 ============================
+
 function addSensor() {
+    const deviceId = getEffectiveDeviceId();
+
+    if (!deviceId && !isUnboundMode) {
+        alert('请选择或输入设备 ID，或点击"设为未绑定"创建无主传感器');
+        return;
+    }
+
     const form = document.getElementById('addSensorForm');
     const data = {
-        deviceId: form.deviceId.value.trim(),
+        deviceId: deviceId,
         deviceName: form.deviceName.value.trim() || '',
-        displayName: form.displayName.value.trim() || '',
+        displayName: form.displayName.value.trim() || form.sensorType.value || '',
         sensorType: form.sensorType.value,
         dataTopic: form.dataTopic.value.trim() || '',
-        name: form.displayName.value.trim() || form.deviceId.value.trim(),
-        location: form.location.value.trim(),
+        name: form.displayName.value.trim() || deviceId || 'unbound',
+        location: form.location.value.trim() || '',
         interval: parseInt(form.interval.value) || 5,
         controlMode: form.controlMode.value,
         dataRange: {
@@ -171,11 +439,6 @@ function addSensor() {
             max: parseFloat(form.max.value) || 800,
         },
     };
-
-    if (!data.deviceId) {
-        alert('设备 ID 不能为空');
-        return;
-    }
 
     fetch('/api/sensors', {
         method: 'POST',
@@ -190,14 +453,14 @@ function addSensor() {
         }
         const modal = bootstrap.Modal.getInstance(document.getElementById('addSensorModal'));
         if (modal) modal.hide();
-        form.reset();
+        resetSensorForm();
         loadSensors();
     })
     .catch(err => alert('添加失败: ' + err.message));
 }
 
 function removeSensor(sensorKey) {
-    if (!confirm(`确定删除传感器 ${sensorKey}？`)) return;
+    if (!confirm(`确定删除传感器 ${sensorKey}？\n\n此操作不可恢复。如需保留记录，请使用"解绑"功能。`)) return;
 
     fetch(`/api/sensors/${encodeURIComponent(sensorKey)}`, { method: 'DELETE' })
         .then(r => r.json())
@@ -206,23 +469,53 @@ function removeSensor(sensorKey) {
 }
 
 function editSensor(sensorKey) {
+    // 先加载设备列表
+    loadAllDevices();
+
     fetch(`/api/sensors/${encodeURIComponent(sensorKey)}`)
         .then(r => r.json())
         .then(s => {
             if (s.error) { alert(s.error); return; }
             const form = document.getElementById('addSensorForm');
-            form.deviceId.value = s.deviceId || '';
-            form.deviceId.readOnly = true;
-            form.deviceName.value = s.deviceName || '';
-            form.displayName.value = s.displayName || '';
+            const title = document.getElementById('addSensorModalTitle');
+            title.innerHTML = '<i class="bi bi-pencil"></i> 编辑传感器';
+
+            // 设备选择
+            if (s.deviceId) {
+                isUnboundMode = false;
+                document.getElementById('deviceBindArea').style.display = '';
+                document.getElementById('unboundHint').style.display = 'none';
+                document.getElementById('btnUnboundToggle').innerHTML = '设为未绑定';
+                selectedDevice = { deviceId: s.deviceId, name: s.deviceName || '', location: s.location || '' };
+                document.getElementById('deviceSearchInput').value = `${s.deviceId} — ${s.deviceName || ''}`;
+                document.getElementById('deviceIdHidden').value = s.deviceId;
+                document.getElementById('deviceNameFilled').value = s.deviceName || '';
+                document.getElementById('locationFilled').value = s.location || '';
+                document.getElementById('deviceSearchInput').disabled = true; // 编辑模式不可改设备
+            } else {
+                isUnboundMode = true;
+                document.getElementById('deviceBindArea').style.display = 'none';
+                document.getElementById('unboundHint').style.display = '';
+                document.getElementById('btnUnboundToggle').innerHTML = '绑定到设备';
+                document.getElementById('deviceIdHidden').value = '';
+            }
+
+            // 传感器字段
             form.sensorType.value = s.sensorType || 'light';
+            form.displayName.value = s.displayName || '';
             form.dataTopic.value = s.dataTopic || '';
             form.location.value = s.location || '';
             form.interval.value = s.interval || 5;
             form.controlMode.value = s.controlMode || 'auto';
             form.min.value = s.dataRange?.min || 0;
             form.max.value = s.dataRange?.max || 800;
-            const btn = document.querySelector('#addSensorModal .btn-primary');
+            if (s.messageTemplate) {
+                form.dataFormat.value = 'custom';
+            } else {
+                form.dataFormat.value = 'standard';
+            }
+
+            const btn = document.getElementById('btnAddSensorSubmit');
             btn.innerHTML = '<i class="bi bi-check-lg"></i> 保存';
             btn.onclick = updateSensor;
             btn.dataset.sensorKey = sensorKey;
@@ -231,8 +524,8 @@ function editSensor(sensorKey) {
 }
 
 function updateSensor() {
+    const sensorKey = document.getElementById('btnAddSensorSubmit').dataset.sensorKey;
     const form = document.getElementById('addSensorForm');
-    const sensorKey = document.querySelector('#addSensorModal .btn-primary').dataset.sensorKey;
     const data = {
         deviceName: form.deviceName.value.trim(),
         displayName: form.displayName.value.trim(),
@@ -257,24 +550,47 @@ function updateSensor() {
     .then(() => {
         const modal = bootstrap.Modal.getInstance(document.getElementById('addSensorModal'));
         if (modal) modal.hide();
-        form.reset();
-        form.deviceId.readOnly = false;
-        const btn = document.querySelector('#addSensorModal .btn-primary');
-        btn.innerHTML = '<i class="bi bi-plus-lg"></i> 添加';
-        btn.onclick = addSensor;
+        resetSensorForm();
         loadSensors();
     })
     .catch(err => alert('更新失败: ' + err.message));
 }
 
-// 重置模态框
-document.getElementById('addSensorModal').addEventListener('hidden.bs.modal', () => {
+function resetSensorForm() {
     const form = document.getElementById('addSensorForm');
     form.reset();
-    form.deviceId.readOnly = false;
-    const btn = document.querySelector('#addSensorModal .btn-primary');
-    btn.innerHTML = '<i class="bi bi-plus-lg"></i> 添加';
+    document.getElementById('deviceSearchInput').disabled = false;
+    document.getElementById('deviceSearchInput').value = '';
+    document.getElementById('deviceSearchInput').placeholder = '输入设备ID或名称搜索...';
+    document.getElementById('deviceIdHidden').value = '';
+    document.getElementById('deviceNameFilled').value = '';
+    document.getElementById('locationFilled').value = '';
+    document.getElementById('displayNameInput').value = '';
+    document.getElementById('dataTopicInput').value = '';
+    document.getElementById('intervalInput').value = '5';
+    document.getElementById('minLuxInput').value = '0';
+    document.getElementById('maxLuxInput').value = '800';
+    document.getElementById('manualDeviceInput').style.display = 'none';
+    isUnboundMode = false;
+    isManualDeviceInput = false;
+    selectedDevice = null;
+    document.getElementById('deviceBindArea').style.display = '';
+    document.getElementById('unboundHint').style.display = 'none';
+    document.getElementById('btnUnboundToggle').innerHTML = '设为未绑定';
+    form.dataFormat.value = 'standard';
+
+    const title = document.getElementById('addSensorModalTitle');
+    title.innerHTML = '<i class="bi bi-plus-circle"></i> 添加传感器';
+
+    const btn = document.getElementById('btnAddSensorSubmit');
+    btn.innerHTML = '<i class="bi bi-plus-lg"></i> 添加传感器';
     btn.onclick = addSensor;
+    delete btn.dataset.sensorKey;
+}
+
+// 模态框关闭时重置
+document.getElementById('addSensorModal').addEventListener('hidden.bs.modal', () => {
+    resetSensorForm();
 });
 
 // ============================ 传感器控制 ============================
