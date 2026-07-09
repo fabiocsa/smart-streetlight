@@ -56,7 +56,7 @@
                 <div id="noSensorsCard" class="text-center text-muted py-5 w-100">
                     <i class="bi bi-inbox" style="font-size: 3rem"></i>
                     <p class="mt-2 mb-0">暂无传感器</p>
-                    <p class="small">点击右上角"添加传感器"或"注册到 Broker"</p>
+                    <p class="small">点击右上角"添加传感器"创建模拟传感器</p>
                 </div>
             </div>
 
@@ -194,12 +194,6 @@
                 <form id="addSensorForm">
                     <input type="hidden" id="editSensorKey" value="">
                     <div class="mb-3">
-                        <label class="form-label">分组标签 <span class="text-muted">(可选)</span></label>
-                        <input name="groupTag" class="form-control form-control-sm"
-                               placeholder="如 路灯A-01，仅用于本地分组显示">
-                        <div class="form-text">纯文本标签，不上报至后端，仅用于模拟器内部卡片分组</div>
-                    </div>
-                    <div class="mb-3">
                         <label class="form-label">传感器类型</label>
                         <select name="sensorType" class="form-select form-select-sm">
                             <option value="light">☀️ 光照</option>
@@ -228,7 +222,7 @@
                         </label>
                         <input name="dataTopic" class="form-control form-control-sm"
                                id="dataTopicInput"
-                               placeholder="如 streetlight/SL-001/sensor/data">
+                               placeholder="如 streetlight/sensor/12345/data">
                     </div>
                     <div class="row g-2 mb-3">
                         <div class="col-6">
@@ -249,14 +243,14 @@
                     </div>
                     <div class="row g-2 mb-3">
                         <div class="col-6">
-                            <label class="form-label">光照最小 (Lux)</label>
+                            <label class="form-label">数据最小值</label>
                             <input name="min" class="form-control form-control-sm" type="number"
-                                   id="minLuxInput" value="0" min="0" max="2000">
+                                   id="minDataInput" value="0" min="0" max="99999">
                         </div>
                         <div class="col-6">
-                            <label class="form-label">光照最大 (Lux)</label>
+                            <label class="form-label">数据最大值</label>
                             <input name="max" class="form-control form-control-sm" type="number"
-                                   id="maxLuxInput" value="800" min="1" max="2000">
+                                   id="maxDataInput" value="800" min="1" max="99999">
                         </div>
                     </div>
                 </form>

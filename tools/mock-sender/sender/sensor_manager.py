@@ -38,24 +38,6 @@ def _sensor_label(cfg: Dict[str, Any]) -> str:
     return sensor_name
 
 
-# ---------------------------------------------------------------------------
-# HTTP 请求辅助（内联，不引入额外依赖）
-# ---------------------------------------------------------------------------
-
-def _http_get_json(url: str, timeout: float = 10) -> Optional[Any]:
-    """简单的 HTTP GET 返回 JSON，失败返回 None。"""
-    import urllib.request
-    import urllib.error
-    try:
-        req = urllib.request.Request(url, headers={"Accept": "application/json"})
-        with urllib.request.urlopen(req, timeout=timeout) as resp:
-            import json
-            return json.loads(resp.read().decode())
-    except Exception as e:
-        logger.warning(f"HTTP GET {url} 失败: {e}")
-        return None
-
-
 class SensorWorker:
     """单个传感器的工作线程。定时发布传感器数据到 MQTT。"""
 

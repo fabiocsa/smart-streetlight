@@ -23,7 +23,6 @@ public class ToolExecutor {
     private final SensorDataService sensorDataService;
     private final AlarmService alarmService;
     private final ControlLogRepository controlLogRepository;
-    private final SensorService sensorService;
     private final ObjectMapper objectMapper;
 
     private static final String TOOLS_PROMPT = """
@@ -114,7 +113,7 @@ public class ToolExecutor {
         m.put("location", d.getLocation());
         m.put("lastHeartbeat", d.getLastHeartbeat() != null ? d.getLastHeartbeat().toString() : null);
 
-        List<Sensor> sensors = sensorService.getSensorsByDeviceId(deviceId);
+        List<Sensor> sensors = deviceService.getDeviceSensors(d.getId());
         m.put("sensors", sensors.stream().map(s -> Map.of(
                 "displayName", s.getDisplayName() != null ? s.getDisplayName() : s.getDataTopic(),
                 "sensorType", s.getSensorType(),

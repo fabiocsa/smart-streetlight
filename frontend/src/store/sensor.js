@@ -64,7 +64,7 @@ export const useSensorStore = defineStore('sensor', () => {
     return res
   }
 
-  /** 删除传感器 */
+  /** 删除传感器（硬删除，不通知模拟器。模拟器仍在发数据时会自动重新识别） */
   async function remove(id) {
     await sensorApi.deleteSensor(id)
     allSensors.value = allSensors.value.filter(s => s.id !== id)

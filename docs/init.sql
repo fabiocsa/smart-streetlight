@@ -53,10 +53,12 @@ CREATE TABLE sensor (
     report_frequency INT          NOT NULL DEFAULT 5       COMMENT '上报频率(秒)',
     enabled          TINYINT(1)   NOT NULL DEFAULT 1       COMMENT '是否启用: 1启用 / 0禁用',
     config_json      VARCHAR(500) DEFAULT NULL             COMMENT '传感器配置JSON(如数据范围、精度等)',
+    simulator_sensor_id BIGINT    DEFAULT NULL             COMMENT '模拟器内部传感器ID，用于注册去重；后端手动创建时为NULL',
     created_at       DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
     updated_at       DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
 
-    PRIMARY KEY (id)
+    PRIMARY KEY (id),
+    UNIQUE KEY uk_simulator_sensor_id (simulator_sensor_id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='传感器定义表';
 
 -- ============================================================================

@@ -5,7 +5,6 @@ import com.streetlight.dto.SensorFrequencyRequest;
 import com.streetlight.dto.SensorRequest;
 import com.streetlight.dto.SensorUpdateRequest;
 import com.streetlight.entity.Sensor;
-import com.streetlight.mqtt.MqttPublishService;
 import com.streetlight.repository.SensorRepository;
 import com.streetlight.service.SensorService;
 import lombok.RequiredArgsConstructor;
@@ -14,7 +13,9 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
+import java.util.stream.Collectors;
 
 @Service
 @RequiredArgsConstructor
@@ -22,16 +23,32 @@ import java.util.Optional;
 public class SensorServiceImpl implements SensorService {
 
     private final SensorRepository sensorRepository;
-    private final MqttPublishService mqttPublishService;
 
     @Override
     public List<Sensor> getAllSensors() {
-        return sensorRepository.findAll();
+        List<Sensor> sensors = sensorRepository.findAll();
+        enrichWithBinding(sensors);
+        return sensors;
     }
 
     @Override
     public List<Sensor> getUnboundSensors() {
         return sensorRepository.findUnboundSensors();
+    }
+
+    /**
+     * 批量填充传感器的 boundDeviceId（一次 JPQL 查询，避免 N+1）。
+     */
+    private void enrichWithBinding(List<Sensor> sensors) {
+        if (sensors.isEmpty()) return;
+        Map<Long, String> bindingMap = sensorRepository.findAllSensorDeviceBindings().stream()
+                .collect(Collectors.toMap(
+                        row -> (Long) row[0],
+                        row -> (String) row[1],
+                        (a, b) -> a));  // 一个传感器只绑定一个设备
+        for (Sensor s : sensors) {
+            s.setBoundDeviceId(bindingMap.get(s.getId()));
+        }
     }
 
     @Override
@@ -54,9 +71,7 @@ public class SensorServiceImpl implements SensorService {
         Sensor saved = sensorRepository.save(sensor);
         log.info("传感器创建成功 - sensorId: {}, type: {}", saved.getId(), request.getSensorType());
 
-        // 通知模拟器添加传感器（无 deviceId，传感器独立运行）
-        mqttPublishService.publishSensorConfig("", "add_sensor", saved);
-
+        // 仅写入数据库，不通知模拟器（前后端与模拟器隔离）
         return saved;
     }
 
@@ -88,10 +103,7 @@ public class SensorServiceImpl implements SensorService {
         Sensor saved = sensorRepository.save(sensor);
         log.info("传感器配置更新 - sensorId: {}", id);
 
-        // 通知模拟器更新传感器配置
-        String action = saved.getEnabled() ? "set_frequency" : "stop_sensor";
-        mqttPublishService.publishSensorConfig("", action, saved);
-
+        // 仅写入数据库，不通知模拟器（前后端与模拟器隔离）
         return saved;
     }
 
@@ -101,11 +113,11 @@ public class SensorServiceImpl implements SensorService {
         Sensor sensor = sensorRepository.findById(id)
                 .orElseThrow(() -> new BusinessException("传感器不存在, id=" + id));
 
-        // 通知模拟器移除传感器
-        mqttPublishService.publishSensorConfig("", "remove_sensor", sensor);
-
-        sensorRepository.deleteById(id);
-        log.info("传感器删除成功 - sensorId: {}", id);
+        // 硬删除：从数据库移除记录。不通知模拟器（前后端与模拟器隔离）。
+        // 模拟器仍可继续发送数据，后端在 handleSensorData 中会自动重新注册。
+        sensorRepository.delete(sensor);
+        log.info("传感器已删除（模拟器仍在运行时会自动重新识别） - sensorId: {}, simulatorSensorId: {}",
+                id, sensor.getSimulatorSensorId());
     }
 
     @Override
@@ -118,20 +130,16 @@ public class SensorServiceImpl implements SensorService {
         Sensor saved = sensorRepository.save(sensor);
         log.info("传感器频率更新 - sensorId: {}, frequency: {}", id, request.getReportFrequency());
 
-        // 通知模拟器更新频率
-        mqttPublishService.publishSensorConfig("", "set_frequency", saved);
-
+        // 仅写入数据库，不通知模拟器（前后端与模拟器隔离）
         return saved;
     }
 
     @Override
     @Transactional
     public int syncToMock(Long sensorId) {
-        Sensor sensor = sensorRepository.findById(sensorId)
-                .orElseThrow(() -> new BusinessException("传感器不存在, id=" + sensorId));
-
-        mqttPublishService.publishSensorConfig("", "add_sensor", sensor);
-        log.info("传感器配置已同步到模拟器 - sensorId: {}", sensorId);
+        // 前后端与模拟器隔离，不再主动同步到模拟器。
+        // 模拟器自行通过 MQTT 注册传感器，后端自动发现。
+        log.info("syncToMock 已废弃 - sensorId: {}（前后端与模拟器隔离，无需同步）", sensorId);
         return 1;
     }
 }
