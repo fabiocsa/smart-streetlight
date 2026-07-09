@@ -190,6 +190,8 @@ class SensorWorker:
         data_range = self.config.get("dataRange", {"min": 0, "max": 800})
         data_topic = self.config.get("dataTopic", "")
         brightness = self.config.get("brightness")
+        my_sensor_type = self.sensor_type
+        my_sensor_id = self.config.get("sensorId")
         actual_topic = data_topic or f"streetlight/{self.device_id}/sensor/data"
         extra = {
             "location": self.config.get("location", ""),
@@ -221,6 +223,8 @@ class SensorWorker:
                         extra_fields=extra,
                         brightness=brightness,
                         sim_config=self._sim_config,
+                        sensor_type=my_sensor_type,
+                        sensor_id=my_sensor_id,
                     )
             else:
                 # 固定内容为空，使用算法生成
@@ -231,6 +235,8 @@ class SensorWorker:
                     extra_fields=extra,
                     brightness=brightness,
                     sim_config=self._sim_config,
+                    sensor_type=my_sensor_type,
+                    sensor_id=my_sensor_id,
                 )
         else:
             # ---- 算法模式: 使用 messageTemplate 或默认生成 ----
@@ -245,6 +251,8 @@ class SensorWorker:
                     extra_fields=extra,
                     brightness=brightness,
                     sim_config=self._sim_config,
+                    sensor_type=my_sensor_type,
+                    sensor_id=my_sensor_id,
                 )
                 try:
                     payload = _json.loads(msg_str)
@@ -256,6 +264,8 @@ class SensorWorker:
                         extra_fields=extra,
                         brightness=brightness,
                         sim_config=self._sim_config,
+                        sensor_type=my_sensor_type,
+                        sensor_id=my_sensor_id,
                     )
             else:
                 payload = generate_sensor_data(
@@ -265,6 +275,8 @@ class SensorWorker:
                     extra_fields=extra,
                     brightness=brightness,
                     sim_config=self._sim_config,
+                    sensor_type=my_sensor_type,
+                    sensor_id=my_sensor_id,
                 )
 
         ok = self._mqtt.publish_sensor_data(self.device_id, payload, data_topic)

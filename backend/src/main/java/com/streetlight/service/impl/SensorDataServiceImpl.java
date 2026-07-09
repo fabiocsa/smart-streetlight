@@ -8,6 +8,7 @@ import com.streetlight.repository.DeviceRepository;
 import com.streetlight.repository.SensorDataRepository;
 import com.streetlight.service.AlarmService;
 import com.streetlight.service.SensorDataService;
+import com.streetlight.websocket.WebSocketHandler;
 import jakarta.persistence.EntityManager;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.context.ApplicationContext;
@@ -30,37 +31,40 @@ public class SensorDataServiceImpl implements SensorDataService {
     private final AlarmService alarmService;
     private final MqttPublishService mqttPublishService;
     private final EntityManager entityManager;
+    private final WebSocketHandler webSocketHandler;
 
     public SensorDataServiceImpl(SensorDataRepository sensorDataRepository,
                                   DeviceRepository deviceRepository,
                                   ApplicationContext applicationContext,
                                   AlarmService alarmService,
                                   MqttPublishService mqttPublishService,
-                                  EntityManager entityManager) {
+                                  EntityManager entityManager,
+                                  WebSocketHandler webSocketHandler) {
         this.sensorDataRepository = sensorDataRepository;
         this.deviceRepository = deviceRepository;
         this.applicationContext = applicationContext;
         this.alarmService = alarmService;
         this.mqttPublishService = mqttPublishService;
         this.entityManager = entityManager;
+        this.webSocketHandler = webSocketHandler;
     }
 
-    /**
-     * 延迟获取 MqttClientManager，避免循环依赖：
-     * MqttClientManager → MqttMessageHandler → SensorDataServiceImpl → MqttClientManager
-     */
     private MqttClientManager getMqttClientManager() {
         return applicationContext.getBean(MqttClientManager.class);
     }
 
     @Override
     @Transactional
-    public SensorData saveAndAutoControl(String deviceId, Double lightIntensity, LocalDateTime reportedAt) {
-        SensorData data = SensorData.builder()
-                .deviceId(deviceId).lightIntensity(lightIntensity).reportedAt(reportedAt).build();
-        sensorDataRepository.save(data);
+    public SensorData saveAndAutoControl(String deviceId, Long sensorId, String sensorType,
+                                          Map<String, Object> data, LocalDateTime reportedAt) {
+        // 保存完整传感器数据
+        SensorData sd = SensorData.from(deviceId, sensorId, sensorType, data, reportedAt);
+        sensorDataRepository.save(sd);
 
-        // 自动注册设备（如果不存在则创建）
+        // 从 data map 中提取光照强度用于自动联动
+        Double lightIntensity = extractLightIntensity(data);
+
+        // 自动注册设备
         Device device = deviceRepository.findByDeviceId(deviceId).orElseGet(() -> {
             Device newDevice = Device.builder()
                     .deviceId(deviceId)
@@ -73,7 +77,6 @@ public class SensorDataServiceImpl implements SensorDataService {
                     .location("")
                     .build();
             Device saved = deviceRepository.save(newDevice);
-            // 订阅该设备的MQTT主题
             getMqttClientManager().subscribeDevice(deviceId);
             log.info("MQTT消息自动注册设备 - deviceId: {}", deviceId);
             return saved;
@@ -88,30 +91,54 @@ public class SensorDataServiceImpl implements SensorDataService {
         }
         deviceRepository.save(device);
 
-        // ★ 防御性重读：手动控制可能在另一个事务中刚把模式切为 "manual"。
-        //    flush() 确保本事务的 pending changes 写入 DB，
-        //    clear() 清除 JPA 一级缓存，强制下一个 findByDeviceId() 真正读库。
-        entityManager.flush();
-        entityManager.clear();
-        Device freshDevice = deviceRepository.findByDeviceId(deviceId).orElse(device);
+        // 推送传感器数据到 WebSocket
+        webSocketHandler.pushSensorData(deviceId, sensorType, data,
+                reportedAt != null ? reportedAt.toString() : LocalDateTime.now().toString());
+        log.debug("已推送传感器数据到WebSocket: deviceId={}, sensorType={}, fields={}",
+                deviceId, sensorType, data.keySet());
 
-        if ("auto".equals(freshDevice.getControlMode())) {
-            String cmd = null;
-            if ("off".equals(freshDevice.getLightStatus()) && lightIntensity < freshDevice.getThresholdOn()) {
-                cmd = "on";
-            } else if ("on".equals(freshDevice.getLightStatus()) && lightIntensity > freshDevice.getThresholdOff()) {
-                cmd = "off";
-            }
-            if (cmd != null) {
-                try {
-                    mqttPublishService.publishCommand(deviceId, cmd, "auto");
-                    log.info("自动联动: deviceId={}, light={}, cmd={}", deviceId, lightIntensity, cmd);
-                } catch (Exception e) {
-                    log.warn("自动联动MQTT发送失败: deviceId={}, cmd={}, {}", deviceId, cmd, e.getMessage());
+        // 光照联动控制（仅 light 类型传感器触发）
+        if (lightIntensity != null && "light".equals(sensorType)) {
+            entityManager.flush();
+            entityManager.clear();
+            Device freshDevice = deviceRepository.findByDeviceId(deviceId).orElse(device);
+
+            if ("auto".equals(freshDevice.getControlMode())) {
+                String cmd = null;
+                if ("off".equals(freshDevice.getLightStatus()) && lightIntensity < freshDevice.getThresholdOn()) {
+                    cmd = "on";
+                } else if ("on".equals(freshDevice.getLightStatus()) && lightIntensity > freshDevice.getThresholdOff()) {
+                    cmd = "off";
+                }
+                if (cmd != null) {
+                    try {
+                        mqttPublishService.publishCommand(deviceId, cmd, "auto");
+                        log.info("自动联动: deviceId={}, light={}, cmd={}", deviceId, lightIntensity, cmd);
+                    } catch (Exception e) {
+                        log.warn("自动联动MQTT发送失败: deviceId={}, cmd={}, {}", deviceId, cmd, e.getMessage());
+                    }
                 }
             }
         }
-        return data;
+
+        return sd;
+    }
+
+    /**
+     * 从 data map 中提取光照强度值。
+     * 优先取 illuminance，其次 lightIntensity。
+     */
+    private Double extractLightIntensity(Map<String, Object> data) {
+        if (data == null) return null;
+        Object illuminance = data.get("illuminance");
+        if (illuminance instanceof Number) {
+            return ((Number) illuminance).doubleValue();
+        }
+        Object light = data.get("lightIntensity");
+        if (light instanceof Number) {
+            return ((Number) light).doubleValue();
+        }
+        return null;
     }
 
     @Override
@@ -120,16 +147,29 @@ public class SensorDataServiceImpl implements SensorDataService {
     }
 
     @Override
+    public Optional<SensorData> getLatestByDeviceIdAndSensorType(String deviceId, String sensorType) {
+        return sensorDataRepository.findTopByDeviceIdAndSensorTypeOrderByReportedAtDesc(deviceId, sensorType);
+    }
+
+    @Override
     public List<SensorData> getHistory(String deviceId, LocalDateTime start, LocalDateTime end) {
         return sensorDataRepository.findByDeviceIdAndReportedAtBetweenOrderByReportedAtAsc(deviceId, start, end);
     }
 
     @Override
-    public Map<String, Object> getStats(String deviceId, LocalDateTime start, LocalDateTime end) {
+    public List<SensorData> getHistoryBySensorType(String deviceId, String sensorType,
+                                                    LocalDateTime start, LocalDateTime end) {
+        return sensorDataRepository.findBySensorTypeAndReportedAtBetweenOrderByReportedAtAsc(sensorType, start, end);
+    }
+
+    @Override
+    public Map<String, Object> getStats(String deviceId, String field,
+                                         LocalDateTime start, LocalDateTime end) {
         Map<String, Object> stats = new LinkedHashMap<>();
-        stats.put("avg", sensorDataRepository.avgLightIntensity(deviceId, start, end));
-        stats.put("max", sensorDataRepository.maxLightIntensity(deviceId, start, end));
-        stats.put("min", sensorDataRepository.minLightIntensity(deviceId, start, end));
+        stats.put("field", field);
+        stats.put("avg", sensorDataRepository.avgByField(deviceId, field, start, end));
+        stats.put("max", sensorDataRepository.maxByField(deviceId, field, start, end));
+        stats.put("min", sensorDataRepository.minByField(deviceId, field, start, end));
         stats.put("count", sensorDataRepository.countByDeviceIdAndTimeRange(deviceId, start, end));
         return stats;
     }

@@ -1,8 +1,20 @@
 <template>
   <div class="light-trend-page">
     <div class="page-header">
-      <h2>历史光照趋势</h2>
+      <h2>传感器历史趋势</h2>
       <div class="header-controls">
+        <el-select
+          v-model="selectedMetric"
+          style="width: 140px"
+          @change="loadData"
+        >
+          <el-option
+            v-for="m in metricOptions"
+            :key="m.value"
+            :label="m.label"
+            :value="m.value"
+          />
+        </el-select>
         <el-select
           v-model="selectedDevice"
           placeholder="全部设备"
@@ -47,7 +59,7 @@
         <el-card shadow="hover" :body-style="{ padding: '16px 20px' }">
           <div class="mini-stat">
             <span class="mini-stat-label">平均值</span>
-            <span class="mini-stat-value">{{ trendData.avg ?? '-' }} <small>Lux</small></span>
+            <span class="mini-stat-value">{{ trendData.avg ?? '-' }} <small>{{ unit }}</small></span>
           </div>
         </el-card>
       </el-col>
@@ -55,7 +67,7 @@
         <el-card shadow="hover" :body-style="{ padding: '16px 20px' }">
           <div class="mini-stat">
             <span class="mini-stat-label">最大值</span>
-            <span class="mini-stat-value" style="color: #F56C6C">{{ trendData.max ?? '-' }} <small>Lux</small></span>
+            <span class="mini-stat-value" style="color: #F56C6C">{{ trendData.max ?? '-' }} <small>{{ unit }}</small></span>
           </div>
         </el-card>
       </el-col>
@@ -63,7 +75,7 @@
         <el-card shadow="hover" :body-style="{ padding: '16px 20px' }">
           <div class="mini-stat">
             <span class="mini-stat-label">最小值（非零）</span>
-            <span class="mini-stat-value" style="color: #67C23A">{{ trendData.min ?? '-' }} <small>Lux</small></span>
+            <span class="mini-stat-value" style="color: #67C23A">{{ trendData.min ?? '-' }} <small>{{ unit }}</small></span>
           </div>
         </el-card>
       </el-col>
@@ -81,7 +93,7 @@
     <el-card shadow="never" style="margin-top: 16px">
       <template #header>
         <div class="chart-header">
-          <strong>光照趋势图</strong>
+          <strong>{{ metricLabel }}趋势图</strong>
           <span class="chart-subtitle">
             {{ granularityLabel }} · {{ selectedDevice ? '单设备' : '全部设备' }}
             <template v-if="trendData.lastDataTime">
@@ -112,10 +124,35 @@ const deviceStore = useDeviceStore()
 const devices = ref([])
 const selectedDevice = ref('')
 const selectedRange = ref('24h')
+const selectedMetric = ref('lightIntensity')
 const loading = ref(false)
 const trendData = ref({})
 const demoMode = ref(false)
 const totalPoints = ref(0)
+
+const metricOptions = [
+  { label: '光照强度 (Lux)', value: 'lightIntensity' },
+  { label: '温度 (°C)', value: 'temperature' },
+  { label: '湿度 (%)', value: 'humidity' },
+  { label: '功率 (W)', value: 'power' }
+]
+
+const metricUnitsMap = {
+  lightIntensity: 'Lux',
+  temperature: '°C',
+  humidity: '%',
+  power: 'W'
+}
+
+const metricLabels = {
+  lightIntensity: '光照强度',
+  temperature: '温度',
+  humidity: '湿度',
+  power: '功率'
+}
+
+const unit = computed(() => metricUnitsMap[selectedMetric.value] || '')
+const metricLabel = computed(() => metricLabels[selectedMetric.value] || selectedMetric.value)
 
 const granularityLabel = computed(() => {
   return selectedRange.value === '24h' ? '按小时聚合' : '按天聚合'
@@ -131,10 +168,10 @@ const chartOption = computed(() => {
       trigger: 'axis',
       formatter: (params) => {
         const p = params[0]
-        return `${p.name}<br/>光照强度: <b>${p.value} Lux</b>`
+        return `${p.name}<br/>${metricLabel.value}: <b>${p.value} ${unit.value}</b>`
       }
     },
-    grid: { left: 55, right: 30, top: 20, bottom: selectedRange.value === '24h' ? 50 : 40 },
+    grid: { left: 60, right: 30, top: 20, bottom: selectedRange.value === '24h' ? 50 : 40 },
     xAxis: {
       type: 'category',
       data: labels,
@@ -146,7 +183,7 @@ const chartOption = computed(() => {
     },
     yAxis: {
       type: 'value',
-      name: '光照 (Lux)',
+      name: unit.value,
       min: 0
     },
     dataZoom: selectedRange.value === '30d'
@@ -154,7 +191,7 @@ const chartOption = computed(() => {
       : [],
     series: [
       {
-        name: '光照强度',
+        name: metricLabel.value,
         type: 'line',
         data: values,
         smooth: true,
@@ -186,8 +223,9 @@ const chartOption = computed(() => {
 async function loadData() {
   loading.value = true
   try {
-    const data = await dashboardApi.getLightTrend(
+    const data = await dashboardApi.getSensorTrend(
       selectedDevice.value || undefined,
+      selectedMetric.value,
       selectedRange.value
     )
     trendData.value = data

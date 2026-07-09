@@ -149,7 +149,7 @@ public class ToolExecutor {
         LocalDateTime end = LocalDateTime.now();
         LocalDateTime start = end.minusHours(hours);
 
-        Map<String, Object> stats = sensorDataService.getStats(deviceId, start, end);
+        Map<String, Object> stats = sensorDataService.getStats(deviceId, "lightIntensity", start, end);
         List<SensorData> history = sensorDataService.getHistory(deviceId, start, end);
 
         // 只取最近10条和首尾各2条，避免数据过多

@@ -74,24 +74,58 @@ public class DashboardService {
 
     // ==================== 最新传感器数据 ====================
 
+    /**
+     * 获取各设备最新传感器数据（含完整 data_json）。
+     */
     public List<Map<String, Object>> getLatestSensorData() {
         List<SensorData> latestList = sensorDataRepository.findLatestPerDevice();
         return latestList.stream().map(sd -> {
             Map<String, Object> map = new LinkedHashMap<>();
             map.put("deviceId", sd.getDeviceId());
-            map.put("lightIntensity", sd.getLightIntensity());
+            map.put("sensorType", sd.getSensorType());
+            map.put("data", sd.getData());         // 完整多维数据
             map.put("reportedAt", sd.getReportedAt());
+            // 向后兼容：也提供单独字段
+            map.put("lightIntensity", sd.getLightIntensity());
             return map;
         }).collect(Collectors.toList());
     }
 
-    // ==================== 光照趋势 ====================
+    /**
+     * 按传感器类型获取各设备最新数据。
+     */
+    public List<Map<String, Object>> getLatestSensorDataByType(String sensorType) {
+        List<SensorData> latestList = sensorDataRepository.findLatestPerDeviceBySensorType(sensorType);
+        return latestList.stream().map(sd -> {
+            Map<String, Object> map = new LinkedHashMap<>();
+            map.put("deviceId", sd.getDeviceId());
+            map.put("sensorType", sd.getSensorType());
+            map.put("data", sd.getData());
+            map.put("reportedAt", sd.getReportedAt());
+            map.put("lightIntensity", sd.getLightIntensity());
+            return map;
+        }).collect(Collectors.toList());
+    }
+
+    // ==================== 光照趋势（兼容旧 API） ====================
 
     public Map<String, Object> getLightTrend(String deviceId) {
-        return getLightTrend(deviceId, "24h");
+        return getSensorTrend(deviceId, "lightIntensity", "24h");
     }
 
     public Map<String, Object> getLightTrend(String deviceId, String range) {
+        return getSensorTrend(deviceId, "lightIntensity", range);
+    }
+
+    // ==================== 通用传感器趋势 ====================
+
+    /**
+     * 获取传感器指标趋势。
+     * @param deviceId 设备 ID（null/empty = 全部设备）
+     * @param metric   指标名（data_json 中的 key，如 lightIntensity, temperature, humidity, power）
+     * @param range    时间范围: 24h / 7d / 30d
+     */
+    public Map<String, Object> getSensorTrend(String deviceId, String metric, String range) {
         String r = (range != null) ? range.toLowerCase() : "24h";
         boolean isHourly = "24h".equals(r);
         LocalDateTime since;
@@ -117,9 +151,17 @@ public class DashboardService {
         List<Double> values = new ArrayList<>();
 
         if (isHourly) {
-            List<Object[]> rows = hasDevice
-                    ? sensorDataRepository.hourlyAvgLightByDevice(deviceId, since)
-                    : sensorDataRepository.hourlyAvgLightSince(since);
+            // 小时聚合（使用光照专用方法作为默认，其他 metric 用通用方法）
+            List<Object[]> rows;
+            if ("lightIntensity".equals(metric)) {
+                rows = hasDevice
+                        ? sensorDataRepository.hourlyAvgLightByDevice(deviceId, since)
+                        : sensorDataRepository.hourlyAvgLightSince(since);
+            } else {
+                rows = hasDevice
+                        ? sensorDataRepository.hourlyAvgByDeviceAndSensorType(deviceId, "light", metric, since)
+                        : sensorDataRepository.hourlyAvgBySensorType("light", metric, since);
+            }
 
             Map<Integer, Double> hourMap = new LinkedHashMap<>();
             for (int h = 0; h < 24; h++) hourMap.put(h, 0.0);
@@ -132,9 +174,17 @@ public class DashboardService {
                 values.add(e.getValue());
             }
         } else {
-            List<Object[]> rows = hasDevice
-                    ? sensorDataRepository.dailyAvgLightByDevice(deviceId, since)
-                    : sensorDataRepository.dailyAvgLightSince(since);
+            // 天聚合
+            List<Object[]> rows;
+            if ("lightIntensity".equals(metric)) {
+                rows = hasDevice
+                        ? sensorDataRepository.dailyAvgLightByDevice(deviceId, since)
+                        : sensorDataRepository.dailyAvgLightSince(since);
+            } else {
+                rows = hasDevice
+                        ? sensorDataRepository.dailyAvgByDeviceAndSensorType(deviceId, "light", metric, since)
+                        : sensorDataRepository.dailyAvgBySensorType("light", metric, since);
+            }
 
             Map<LocalDate, Double> dayMap = new LinkedHashMap<>();
             for (int i = slots - 1; i >= 0; i--) {
@@ -168,6 +218,7 @@ public class DashboardService {
         Map<String, Object> result = new LinkedHashMap<>();
         result.put("labels", labels);
         result.put("values", values);
+        result.put("metric", metric);
         result.put("range", r);
         result.put("granularity", isHourly ? "hour" : "day");
         result.put("deviceId", hasDevice ? deviceId : "all");

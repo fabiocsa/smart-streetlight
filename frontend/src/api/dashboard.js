@@ -10,12 +10,24 @@ export function getDeviceStatusDistribution() {
   return request.get('/dashboard/device-status-distribution')
 }
 
-/** 最新传感器数据 */
+/** 最新传感器数据（各设备最新一条，含完整 data_json） */
 export function getLatestSensorData() {
   return request.get('/dashboard/latest-sensor-data')
 }
 
-/** 光照趋势聚合，可选设备ID + 时间范围(24h/7d/30d) */
+/** 按传感器类型获取最新数据 */
+export function getLatestSensorDataByType(sensorType) {
+  return request.get(`/dashboard/latest-sensor-data/${sensorType}`)
+}
+
+/** 通用传感器趋势：可选设备ID + 指标名(lightIntensity/temperature/humidity/power) + 时间范围(24h/7d/30d) */
+export function getSensorTrend(deviceId, metric = 'lightIntensity', range = '24h') {
+  const params = { metric, range }
+  if (deviceId) params.deviceId = deviceId
+  return request.get('/dashboard/sensor-trend', { params })
+}
+
+/** 光照趋势（旧接口，保留兼容） */
 export function getLightTrend(deviceId, range = '24h') {
   const params = { range }
   if (deviceId) params.deviceId = deviceId

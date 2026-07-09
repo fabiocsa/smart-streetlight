@@ -47,6 +47,7 @@ com\streetlight\common\Result.class
 com\streetlight\repository\ChatMessageRepository.class
 com\streetlight\controller\ControlController.class
 com\streetlight\dto\SensorUpdateRequest.class
+com\streetlight\entity\SensorData$1.class
 com\streetlight\controller\ChatController.class
 com\streetlight\service\SensorService.class
 com\streetlight\dto\BatchControlRequest.class

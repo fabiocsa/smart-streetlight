@@ -18,6 +18,8 @@ import org.springframework.context.annotation.Lazy;
 import org.springframework.stereotype.Component;
 
 import java.time.LocalDateTime;
+import java.util.LinkedHashMap;
+import java.util.Map;
 
 @Component
 @Slf4j
@@ -71,21 +73,47 @@ public class MqttMessageHandler implements MqttCallback {
         }
     }
 
+    /**
+     * 处理传感器数据上报。
+     * 完整解析 JSON payload 中的所有字段，存储到 data_json 列。
+     */
     private void handleSensorData(String topic, String payload) throws JsonProcessingException {
         String deviceId = mqttClientManager.extractDeviceIdFromTopic(topic);
         if (deviceId.isEmpty()) {
             log.warn("无法从topic中提取deviceId: {}", topic);
             return;
         }
+
         JsonNode root = objectMapper.readTree(payload);
-        double lightIntensity = root.has("illuminance") ? root.get("illuminance").asDouble()
-                : root.get("lightIntensity").asDouble();
+
+        // 将整个 payload 转为 Map（保留所有字段）
+        @SuppressWarnings("unchecked")
+        Map<String, Object> data = objectMapper.convertValue(root, LinkedHashMap.class);
+
+        // 提取传感器元信息
+        String sensorType = "light";
+        if (root.has("sensorType") && !root.get("sensorType").isNull()) {
+            sensorType = root.get("sensorType").asText();
+        }
+        Long sensorId = null;
+        if (root.has("sensorId") && !root.get("sensorId").isNull()) {
+            sensorId = root.get("sensorId").asLong();
+        }
+
+        // 解析时间戳
         LocalDateTime reportedAt = LocalDateTime.now();
         if (root.has("timestamp") && !root.get("timestamp").isNull()) {
-            reportedAt = LocalDateTime.parse(
-                    root.get("timestamp").asText().replace("Z", "").replace(" ", "T"));
+            try {
+                String ts = root.get("timestamp").asText().replace("Z", "").replace(" ", "T");
+                reportedAt = LocalDateTime.parse(ts);
+            } catch (Exception e) {
+                log.debug("时间戳解析失败，使用当前时间: {}", e.getMessage());
+            }
         }
-        sensorDataService.saveAndAutoControl(deviceId, lightIntensity, reportedAt);
+
+        sensorDataService.saveAndAutoControl(deviceId, sensorId, sensorType, data, reportedAt);
+        log.debug("传感器数据已存储: deviceId={}, sensorType={}, fields={}",
+                deviceId, sensorType, data.keySet());
     }
 
     private void handleControlResponse(String topic, String payload) throws JsonProcessingException {
@@ -93,13 +121,10 @@ public class MqttMessageHandler implements MqttCallback {
         JsonNode root = objectMapper.readTree(payload);
         String command = root.get("command").asText();
         String result = root.get("result").asText();
-        // 如果payload中也携带了deviceId，优先用payload中的
         if (root.has("deviceId") && !root.get("deviceId").isNull()) {
             deviceId = root.get("deviceId").asText();
         }
         controlService.updateControlResult(deviceId, command, result);
-
-        // ★ 修复: 推送控制结果到前端 WebSocket，避免前端依赖乐观更新+轮询
         webSocketHandler.pushControlResult(deviceId, command, result);
         log.info("已推送控制结果到WebSocket: deviceId={}, command={}, result={}", deviceId, command, result);
     }
