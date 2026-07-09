@@ -433,6 +433,61 @@ def generate_sensor_data_with_template(
 
 
 # ---------------------------------------------------------------------------
+# 示例消息生成（用于自动发送固定内容模式的模板提示）
+# ---------------------------------------------------------------------------
+
+SAMPLE_TEMPLATES = {
+    "light": {
+        "deviceId": "{{deviceId}}",
+        "lightIntensity": 125.5,
+        "illuminance": 125.5,
+        "temperature": 28.3,
+        "voltage": 226.0,
+        "power": 65.0,
+        "cloudCover": 0.3,
+        "status": "OFF",
+        "timestamp": "{{timestamp}}"
+    },
+    "temperature": {
+        "deviceId": "{{deviceId}}",
+        "temperature": 28.3,
+        "humidity": 65.0,
+        "voltage": 226.0,
+        "timestamp": "{{timestamp}}"
+    },
+    "humidity": {
+        "deviceId": "{{deviceId}}",
+        "humidity": 65.0,
+        "temperature": 28.3,
+        "timestamp": "{{timestamp}}"
+    },
+    "power": {
+        "deviceId": "{{deviceId}}",
+        "power": 65.0,
+        "voltage": 226.0,
+        "current": 0.29,
+        "energy": 1.25,
+        "timestamp": "{{timestamp}}"
+    },
+}
+
+
+def generate_sample_content(sensor_type: str, device_id: str = "SL-001") -> str:
+    """
+    根据传感器类型生成示例 JSON 消息体。
+
+    返回格式化的 JSON 字符串，其中 {{deviceId}} 和 {{timestamp}} 是占位变量，
+    会在每次发送时替换为实际值。
+    """
+    import json as _json
+    template = SAMPLE_TEMPLATES.get(sensor_type, SAMPLE_TEMPLATES["light"])
+    # 用传入的 deviceId 替换占位符（但在实际使用时，{{deviceId}} 会被替换）
+    sample = dict(template)
+    sample["deviceId"] = device_id  # 示例中使用实际值
+    return _json.dumps(sample, ensure_ascii=False, indent=2)
+
+
+# ---------------------------------------------------------------------------
 # 心跳 & 控制响应 (不变)
 # ---------------------------------------------------------------------------
 

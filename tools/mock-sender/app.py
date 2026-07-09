@@ -293,13 +293,45 @@ def api_update_message_template(sensor_key: str):
 
 @app.route("/api/sensors/<sensor_key>/message-template", methods=["GET"])
 def api_get_message_template(sensor_key: str):
-    """获取传感器的消息模板。"""
+    """获取传感器的消息模板（含自动发送配置）。"""
     s = sensor_mgr.get_sensor(sensor_key)
     if not s:
         return jsonify({"error": "传感器不存在"}), 404
     worker = sensor_mgr._workers.get(sensor_key)
-    template = worker.config.get("messageTemplate", "") if worker else ""
-    return jsonify({"template": template})
+    if not worker:
+        return jsonify({"error": "传感器未运行"}), 404
+    return jsonify({
+        "template": worker.config.get("messageTemplate", ""),
+        "autoSendMode": worker.config.get("autoSendMode", "algorithm"),
+        "autoSendContent": worker.config.get("autoSendContent", ""),
+    })
+
+
+@app.route("/api/sensors/<sensor_key>/auto-send-config", methods=["PUT"])
+def api_update_auto_send_config(sensor_key: str):
+    """更新自动发送配置（模式 + 固定内容）。"""
+    data = request.get_json(force=True)
+    updates = {}
+    if "autoSendMode" in data:
+        updates["autoSendMode"] = data["autoSendMode"]
+    if "autoSendContent" in data:
+        updates["autoSendContent"] = data["autoSendContent"]
+    if not updates:
+        return jsonify({"error": "无有效更新字段"}), 400
+    ok = sensor_mgr.update_sensor_config(sensor_key, updates)
+    if not ok:
+        return jsonify({"error": "传感器不存在"}), 404
+    logger.info(f"传感器 {sensor_key} 自动发送配置已更新: {updates}")
+    return jsonify({"message": "自动发送配置已更新", "updates": updates})
+
+
+@app.route("/api/sensors/generate-sample/<sensor_type>", methods=["GET"])
+def api_generate_sample(sensor_type: str):
+    """根据传感器类型生成示例消息体。"""
+    from sender.data_generator import generate_sample_content
+    device_id = request.args.get("deviceId", "SL-001")
+    sample = generate_sample_content(sensor_type, device_id)
+    return jsonify({"sample": sample})
 
 
 # ================================ API: MQTT 配置 ================================
