@@ -391,3 +391,198 @@ th.sortable:hover {
 .device-info-fields label {
     color: #6c757d;
 }
+
+/* ============================
+   传感器卡片网格
+   ============================ */
+.sensor-card-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+    gap: 16px;
+}
+
+.sensor-card {
+    background: #fff;
+    border-radius: 10px;
+    border: 1px solid #e0e0e0;
+    border-left: 4px solid #adb5bd;
+    box-shadow: 0 1px 4px rgba(0,0,0,0.06);
+    transition: box-shadow 0.2s, transform 0.15s;
+    overflow: hidden;
+}
+
+.sensor-card:hover {
+    box-shadow: 0 4px 16px rgba(0,0,0,0.1);
+    transform: translateY(-2px);
+}
+
+.sensor-card.running-algorithm {
+    border-left-color: #28a745;
+}
+
+.sensor-card.running-fixed {
+    border-left-color: #fd7e14;
+}
+
+.sensor-card.stopped {
+    opacity: 0.7;
+    border-left-color: #adb5bd;
+    background: #f8f9fa;
+}
+
+.sensor-card-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 12px 14px 8px;
+    position: relative;
+}
+
+.sensor-card-icon {
+    font-size: 1.3rem;
+    margin-right: 6px;
+}
+
+.sensor-card-name {
+    font-weight: 600;
+    font-size: 0.9rem;
+    flex: 1;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+/* 三点菜单 */
+.sensor-card-menu-btn {
+    background: none;
+    border: none;
+    color: #adb5bd;
+    cursor: pointer;
+    padding: 2px 6px;
+    border-radius: 4px;
+    font-size: 1.1rem;
+    line-height: 1;
+}
+
+.sensor-card-menu-btn:hover {
+    background: #f0f0f0;
+    color: #495057;
+}
+
+.sensor-card-dropdown {
+    position: absolute;
+    top: 36px;
+    right: 14px;
+    background: #fff;
+    border: 1px solid #dee2e6;
+    border-radius: 6px;
+    box-shadow: 0 4px 16px rgba(0,0,0,0.15);
+    z-index: 1050;
+    min-width: 150px;
+    display: none;
+}
+
+.sensor-card-dropdown.show {
+    display: block;
+}
+
+.sensor-card-dropdown a {
+    display: block;
+    padding: 8px 14px;
+    font-size: 0.82rem;
+    color: #212529;
+    text-decoration: none;
+    border-bottom: 1px solid #f0f0f0;
+    cursor: pointer;
+}
+
+.sensor-card-dropdown a:last-child {
+    border-bottom: none;
+}
+
+.sensor-card-dropdown a:hover {
+    background: #f0f4ff;
+}
+
+.sensor-card-dropdown a.text-danger:hover {
+    background: #fff0f0;
+}
+
+.sensor-card-body {
+    padding: 0 14px 10px;
+    font-size: 0.82rem;
+    color: #495057;
+}
+
+.sensor-card-body .card-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 3px 0;
+}
+
+.sensor-card-body .card-row .label {
+    color: #6c757d;
+    font-size: 0.76rem;
+}
+
+.sensor-card-body .card-row .value {
+    font-weight: 500;
+    text-align: right;
+    max-width: 60%;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.sensor-card-body .card-row .value.mono {
+    font-family: monospace;
+    font-size: 0.74rem;
+    color: #0d6efd;
+}
+
+.sensor-card-body .device-group-tag {
+    display: inline-block;
+    background: #e8f4fd;
+    color: #0d6efd;
+    font-size: 0.75rem;
+    padding: 1px 8px;
+    border-radius: 10px;
+    margin-top: 2px;
+}
+
+.sensor-card-footer {
+    display: flex;
+    gap: 4px;
+    padding: 8px 14px;
+    border-top: 1px solid #f0f0f0;
+    background: #fafafa;
+}
+
+.sensor-card-footer .btn {
+    font-size: 0.75rem;
+    padding: 3px 10px;
+}
+
+/* 状态点 */
+.card-status-dot {
+    display: inline-block;
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    margin-right: 4px;
+}
+
+.card-status-dot.running { background: #28a745; box-shadow: 0 0 5px rgba(40,167,69,0.5); }
+.card-status-dot.stopped { background: #adb5bd; }
+
+/* 模式 badge */
+.mode-badge {
+    font-size: 0.7rem;
+    padding: 1px 7px;
+    border-radius: 10px;
+    font-weight: 500;
+}
+
+.mode-badge.algorithm { background: #d4edda; color: #155724; }
+.mode-badge.fixed { background: #fff3cd; color: #856404; }

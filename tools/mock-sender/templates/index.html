@@ -23,9 +23,6 @@
             <span id="sensorCount" class="badge bg-info">
                 <i class="bi bi-cpu"></i> 传感器: 0
             </span>
-            <span id="unboundCount" class="badge bg-warning" style="display:none">
-                <i class="bi bi-unlink"></i> 未绑定: 0
-            </span>
             <span id="uptime" class="text-light small">运行: 00:00:00</span>
         </div>
     </div>
@@ -34,70 +31,40 @@
 <!-- ==================== 主内容区 ==================== -->
 <div class="container-fluid py-3">
     <div class="row">
-        <!-- 左侧：传感器列表 -->
+        <!-- 左侧：传感器卡片区 -->
         <div class="col-lg-8">
-            <div class="card mb-3">
-                <div class="card-header d-flex justify-content-between align-items-center">
-                    <span><i class="bi bi-list-ul"></i> 传感器管理</span>
-                    <div class="d-flex gap-2">
-                        <button class="btn btn-sm btn-outline-danger" onclick="stopAllSensors()" id="btnStopAll"
-                                title="停止所有传感器发送">
-                            <i class="bi bi-stop-fill"></i> 全部停止
-                        </button>
-                        <button class="btn btn-sm btn-outline-success" onclick="startAllSensors()" id="btnStartAll"
-                                title="启动所有已停止的传感器">
-                            <i class="bi bi-play-fill"></i> 全部启动
-                        </button>
-                        <button class="btn btn-sm btn-outline-info" onclick="registerDevice()" id="btnRegister">
-                            <i class="bi bi-broadcast"></i> 注册到 Broker
-                        </button>
-                        <button class="btn btn-sm btn-success" data-bs-toggle="modal" data-bs-target="#addSensorModal">
-                            <i class="bi bi-plus-lg"></i> 添加传感器
-                        </button>
-                    </div>
+            <!-- 工具栏 -->
+            <div class="d-flex justify-content-between align-items-center mb-3 flex-wrap gap-2">
+                <h5 class="mb-0"><i class="bi bi-grid-3x3-gap"></i> 传感器面板</h5>
+                <div class="d-flex gap-2">
+                    <button class="btn btn-sm btn-outline-danger" onclick="stopAllSensors()" id="btnStopAll"
+                            title="停止所有传感器发送">
+                        <i class="bi bi-stop-fill"></i> 全部停止
+                    </button>
+                    <button class="btn btn-sm btn-outline-success" onclick="startAllSensors()" id="btnStartAll"
+                            title="启动所有已停止的传感器">
+                        <i class="bi bi-play-fill"></i> 全部启动
+                    </button>
+                    <button class="btn btn-sm btn-outline-info" onclick="registerDevice()" id="btnRegister">
+                        <i class="bi bi-broadcast"></i> 注册到 Broker
+                    </button>
+                    <button class="btn btn-sm btn-success" data-bs-toggle="modal" data-bs-target="#addSensorModal">
+                        <i class="bi bi-plus-lg"></i> 添加传感器
+                    </button>
                 </div>
-                <div class="card-body p-0">
-                    <div class="table-responsive">
-                        <table class="table table-hover table-striped mb-0" id="sensorTable">
-                            <thead class="table-dark">
-                                <tr>
-                                    <th class="sortable" onclick="toggleSort('deviceName')">
-                                        设备名称 <span class="sort-arrow" id="sort-deviceName"></span>
-                                    </th>
-                                    <th class="sortable" onclick="toggleSort('displayName')">
-                                        传感器名称 <span class="sort-arrow" id="sort-displayName"></span>
-                                    </th>
-                                    <th class="sortable" onclick="toggleSort('sensorType')">
-                                        类型 <span class="sort-arrow" id="sort-sensorType"></span>
-                                    </th>
-                                    <th>设备ID</th>
-                                    <th style="display:none">Key</th>
-                                    <th>数据主题</th>
-                                    <th class="sortable" onclick="toggleSort('interval')">
-                                        频率 <span class="sort-arrow" id="sort-interval"></span>
-                                    </th>
-                                    <th class="sortable" onclick="toggleSort('publishCount')">
-                                        发布数 <span class="sort-arrow" id="sort-publishCount"></span>
-                                    </th>
-                                    <th>状态</th>
-                                    <th>模式</th>
-                                    <th>操作</th>
-                                </tr>
-                            </thead>
-                            <tbody id="sensorTableBody">
-                                <tr id="noSensorsRow">
-                                    <td colspan="11" class="text-center text-muted py-4">
-                                        <i class="bi bi-inbox"></i> 暂无传感器，点击右上角"添加传感器"或"注册到 Broker"
-                                    </td>
-                                </tr>
-                            </tbody>
-                        </table>
-                    </div>
+            </div>
+
+            <!-- 传感器卡片网格 -->
+            <div id="sensorCardGrid" class="sensor-card-grid">
+                <div id="noSensorsCard" class="text-center text-muted py-5 w-100">
+                    <i class="bi bi-inbox" style="font-size: 3rem"></i>
+                    <p class="mt-2 mb-0">暂无传感器</p>
+                    <p class="small">点击右上角"添加传感器"或"注册到 Broker"</p>
                 </div>
             </div>
 
             <!-- 配置指令面板 -->
-            <div class="card mb-3">
+            <div class="card mt-3">
                 <div class="card-header">
                     <i class="bi bi-terminal"></i> 配置指令 (MQTT: streetlight/mock-sender/config)
                 </div>
@@ -206,20 +173,15 @@
                     <span><i class="bi bi-clock-history"></i> 发送历史</span>
                     <div class="d-flex gap-1 align-items-center">
                         <span id="newHistoryBadge" class="badge bg-warning text-dark me-1"
-                              style="display:none;cursor:pointer" onclick="scrollToHistoryBottom()"
-                              title="点击跳转到最新"></span>
+                              style="display:none;cursor:pointer" onclick="scrollToHistoryBottom()"></span>
                         <button class="btn btn-sm btn-outline-secondary" onclick="scrollToHistoryBottom()"
-                                title="跳到最新">
-                            <i class="bi bi-arrow-down"></i>
-                        </button>
+                                title="跳到最新"><i class="bi bi-arrow-down"></i></button>
                         <select id="historyFilter" class="form-select form-select-sm" style="width:auto"
                                 onchange="onHistoryFilterChange()">
                             <option value="">全部传感器</option>
                         </select>
                         <button class="btn btn-sm btn-outline-danger" onclick="clearHistory()"
-                                title="清空历史">
-                            <i class="bi bi-trash"></i>
-                        </button>
+                                title="清空历史"><i class="bi bi-trash"></i></button>
                     </div>
                 </div>
                 <div class="card-body p-0">
@@ -235,11 +197,9 @@
             <div class="card mb-3">
                 <div class="card-header d-flex justify-content-between align-items-center">
                     <span><i class="bi bi-terminal"></i> 实时日志</span>
-                    <div>
-                        <button class="btn btn-sm btn-outline-danger" onclick="clearLogs()">
-                            <i class="bi bi-trash"></i>
-                        </button>
-                    </div>
+                    <button class="btn btn-sm btn-outline-danger" onclick="clearLogs()">
+                        <i class="bi bi-trash"></i>
+                    </button>
                 </div>
                 <div class="card-body p-0">
                     <pre id="logContainer" class="log-container mb-0 p-2">等待日志...</pre>
@@ -249,9 +209,9 @@
     </div>
 </div>
 
-<!-- ==================== 添加/编辑传感器模态框 ==================== -->
+<!-- ==================== 添加/编辑传感器模态框（简化版） ==================== -->
 <div class="modal fade" id="addSensorModal" tabindex="-1">
-    <div class="modal-dialog modal-lg">
+    <div class="modal-dialog">
         <div class="modal-content">
             <div class="modal-header">
                 <h5 class="modal-title" id="addSensorModalTitle">
@@ -261,125 +221,65 @@
             </div>
             <div class="modal-body">
                 <form id="addSensorForm">
-                    <!-- ===== 设备选择区 ===== -->
-                    <div class="form-section">
-                        <div class="form-section-title">
-                            <i class="bi bi-hdd-stack"></i> 绑定设备
-                            <button type="button" class="btn btn-sm btn-link text-decoration-none"
-                                    onclick="toggleUnboundMode()" id="btnUnboundToggle"
-                                    title="切换为无主传感器（不绑定设备）">
-                                设为未绑定
+                    <input type="hidden" id="editSensorKey" value="">
+                    <div class="mb-3">
+                        <label class="form-label">传感器类型</label>
+                        <select name="sensorType" class="form-select form-select-sm">
+                            <option value="light">☀️ 光照</option>
+                            <option value="temperature">🌡️ 温度</option>
+                            <option value="humidity">💧 湿度</option>
+                            <option value="power">⚡ 功率</option>
+                        </select>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">显示名称</label>
+                        <input name="displayName" class="form-control form-control-sm"
+                               placeholder="如 光照传感器A">
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">所属组名 <span class="text-muted">(可选)</span></label>
+                        <input name="deviceGroup" class="form-control form-control-sm"
+                               placeholder="如 路灯A-01，仅用于卡分组显示">
+                        <div class="form-text">纯文本标签，不上报至系统，仅用于模拟内部显示</div>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">数据主题
+                            <button type="button" class="btn btn-sm btn-link text-decoration-none small"
+                                    onclick="autoFillDataTopic()">
+                                <i class="bi bi-lightning"></i> 自动生成
                             </button>
-                        </div>
-                        <div id="deviceBindArea">
-                            <div class="mb-3">
-                                <label class="form-label">选择设备 <span class="text-danger">*</span></label>
-                                <div class="searchable-select" id="deviceSelectWrapper">
-                                    <div class="ss-input-wrap">
-                                        <input id="deviceSearchInput" class="form-control"
-                                               placeholder="输入设备ID或名称搜索..." autocomplete="off"
-                                               onfocus="openDeviceDropdown()"
-                                               oninput="filterDeviceOptions()"
-                                               onkeydown="handleDeviceKeydown(event)">
-                                        <i class="bi bi-chevron-down ss-arrow"></i>
-                                    </div>
-                                    <div class="ss-dropdown" id="deviceDropdown"></div>
-                                </div>
-                                <input type="hidden" name="deviceId" id="deviceIdHidden">
-                                <div class="form-text">搜索并选择已有设备，或 <a href="javascript:void(0)" onclick="toggleManualDeviceInput()" id="manualDeviceLink">手动输入新设备ID</a></div>
-                            </div>
-                            <div id="manualDeviceInput" style="display:none">
-                                <input name="deviceIdManual" class="form-control form-control-sm"
-                                       placeholder="手动输入设备 ID（如 SL-009）">
-                                <div class="form-text text-warning small">设备需已在数据库中，否则传感器数据无法关联</div>
-                            </div>
-                            <div class="row g-2 mb-3 device-info-fields">
-                                <div class="col-6">
-                                    <label class="form-label small">设备名称</label>
-                                    <input name="deviceName" class="form-control form-control-sm" readonly
-                                           id="deviceNameFilled" placeholder="选择设备后自动填充">
-                                </div>
-                                <div class="col-6">
-                                    <label class="form-label small">安装位置</label>
-                                    <input name="location" class="form-control form-control-sm" readonly
-                                           id="locationFilled" placeholder="选择设备后自动填充">
-                                </div>
+                        </label>
+                        <input name="dataTopic" class="form-control form-control-sm"
+                               id="dataTopicInput"
+                               placeholder="如 streetlight/SL-001/sensor/data">
+                    </div>
+                    <div class="row g-2 mb-3">
+                        <div class="col-6">
+                            <label class="form-label">上报频率</label>
+                            <div class="input-group input-group-sm">
+                                <input name="interval" class="form-control" type="number"
+                                       id="intervalInput" value="5" min="1" max="3600">
+                                <span class="input-group-text">秒</span>
                             </div>
                         </div>
-                        <div id="unboundHint" style="display:none" class="alert alert-warning py-2 mb-0 small">
-                            <i class="bi bi-info-circle"></i> 未绑定传感器将独立运行，数据主题使用 <code>streetlight/unbound/{id}/sensor/data</code>
+                        <div class="col-6">
+                            <label class="form-label">控制模式</label>
+                            <select name="controlMode" class="form-select form-select-sm">
+                                <option value="auto">🤖 自动</option>
+                                <option value="manual">✋ 手动</option>
+                            </select>
                         </div>
                     </div>
-
-                    <!-- ===== 传感器配置区 ===== -->
-                    <div class="form-section">
-                        <div class="form-section-title"><i class="bi bi-cpu"></i> 传感器配置</div>
-                        <div class="row g-2 mb-3">
-                            <div class="col-6">
-                                <label class="form-label">传感器类型</label>
-                                <select name="sensorType" class="form-select form-select-sm"
-                                        onchange="onSensorTypeChange(this.value)">
-                                    <option value="light" data-icon="☀️">☀️ 光照</option>
-                                    <option value="temperature" data-icon="🌡️">🌡️ 温度</option>
-                                    <option value="humidity" data-icon="💧">💧 湿度</option>
-                                    <option value="power" data-icon="⚡">⚡ 功率</option>
-                                </select>
-                            </div>
-                            <div class="col-6">
-                                <label class="form-label">显示名称</label>
-                                <input name="displayName" class="form-control form-control-sm"
-                                       id="displayNameInput" placeholder="自动生成或手动输入">
-                            </div>
+                    <div class="row g-2 mb-3">
+                        <div class="col-6">
+                            <label class="form-label">光照最小 (Lux)</label>
+                            <input name="min" class="form-control form-control-sm" type="number"
+                                   id="minLuxInput" value="0" min="0" max="2000">
                         </div>
-                        <div class="mb-3">
-                            <label class="form-label">
-                                数据主题
-                                <button type="button" class="btn btn-sm btn-link text-decoration-none small"
-                                        onclick="autoFillDataTopic()" title="根据设备和类型自动生成">
-                                    <i class="bi bi-lightning"></i> 自动生成
-                                </button>
-                            </label>
-                            <input name="dataTopic" class="form-control form-control-sm"
-                                   id="dataTopicInput"
-                                   placeholder="如 streetlight/SL-001/sensor/data">
-                        </div>
-                        <div class="row g-2 mb-3">
-                            <div class="col-4">
-                                <label class="form-label">上报频率</label>
-                                <div class="input-group input-group-sm">
-                                    <input name="interval" class="form-control" type="number"
-                                           id="intervalInput" value="5" min="1" max="3600">
-                                    <span class="input-group-text">秒</span>
-                                </div>
-                            </div>
-                            <div class="col-4">
-                                <label class="form-label">控制模式</label>
-                                <select name="controlMode" class="form-select form-select-sm">
-                                    <option value="auto">🤖 自动</option>
-                                    <option value="manual">✋ 手动</option>
-                                </select>
-                            </div>
-                            <div class="col-4">
-                                <label class="form-label">数据格式</label>
-                                <select name="dataFormat" class="form-select form-select-sm"
-                                        onchange="onDataFormatChange(this.value)">
-                                    <option value="standard">标准格式</option>
-                                    <option value="compact">精简格式</option>
-                                    <option value="custom">自定义模板</option>
-                                </select>
-                            </div>
-                        </div>
-                        <div class="row g-2 mb-3">
-                            <div class="col-6">
-                                <label class="form-label">光照范围: 最小 (Lux)</label>
-                                <input name="min" class="form-control form-control-sm" type="number"
-                                       id="minLuxInput" value="0" min="0" max="2000">
-                            </div>
-                            <div class="col-6">
-                                <label class="form-label">光照范围: 最大 (Lux)</label>
-                                <input name="max" class="form-control form-control-sm" type="number"
-                                       id="maxLuxInput" value="800" min="1" max="2000">
-                            </div>
+                        <div class="col-6">
+                            <label class="form-label">光照最大 (Lux)</label>
+                            <input name="max" class="form-control form-control-sm" type="number"
+                                   id="maxLuxInput" value="800" min="1" max="2000">
                         </div>
                     </div>
                 </form>
@@ -387,7 +287,7 @@
             <div class="modal-footer">
                 <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">取消</button>
                 <button type="button" class="btn btn-primary" id="btnAddSensorSubmit"
-                        onclick="addSensor()">
+                        onclick="submitSensorForm()">
                     <i class="bi bi-plus-lg"></i> 添加传感器
                 </button>
             </div>
@@ -395,45 +295,7 @@
     </div>
 </div>
 
-<!-- ==================== 重新绑定模态框 ==================== -->
-<div class="modal fade" id="rebindModal" tabindex="-1">
-    <div class="modal-dialog modal-sm">
-        <div class="modal-content">
-            <div class="modal-header">
-                <h5 class="modal-title"><i class="bi bi-link-45deg"></i> 重新绑定传感器</h5>
-                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
-            </div>
-            <div class="modal-body">
-                <div class="mb-3">
-                    <label class="form-label">传感器</label>
-                    <input id="rebindSensorLabel" class="form-control" readonly>
-                </div>
-                <div class="mb-3">
-                    <label class="form-label">目标设备 ID <span class="text-danger">*</span></label>
-                    <input id="rebindDeviceId" class="form-control" placeholder="如 SL-003" required>
-                    <div class="form-text">设备必须已存在于数据库中</div>
-                </div>
-            </div>
-                <div class="mb-3">
-                    <label class="form-label">目标设备 ID <span class="text-danger">*</span></label>
-                    <select id="rebindDeviceSelect" class="form-select form-select-sm" onchange="onDeviceSelectChange()">
-                        <option value="">-- 选择设备 --</option>
-                    </select>
-                    <input id="rebindDeviceId" class="form-control form-control-sm mt-1" placeholder="或手动输入设备ID" style="display:none">
-                    <div class="form-text">从列表选择或手动输入设备 ID</div>
-                </div>
-            </div>
-            <div class="modal-footer">
-                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">取消</button>
-                <button type="button" class="btn btn-primary" onclick="rebindSensor()">
-                    <i class="bi bi-link"></i> 确定绑定
-                </button>
-            </div>
-        </div>
-    </div>
-</div>
-
-<!-- ==================== 消息模板编辑模态框（含自动发送配置） ==================== -->
+<!-- ==================== 消息模板编辑模态框（完整保留） ==================== -->
 <div class="modal fade" id="msgTemplateModal" tabindex="-1">
     <div class="modal-dialog modal-xl">
         <div class="modal-content">
@@ -445,11 +307,10 @@
             </div>
             <div class="modal-body">
                 <div class="row g-3">
-                    <!-- ===== 左侧：发送模式 ===== -->
+                    <!-- 左侧：发送模式 -->
                     <div class="col-md-5">
                         <div class="form-section h-100">
                             <div class="form-section-title"><i class="bi bi-sliders"></i> 自动发送模式</div>
-
                             <div class="mb-3">
                                 <div class="btn-group w-100" role="group">
                                     <input type="radio" class="btn-check" name="autoSendModeRadio"
@@ -458,7 +319,6 @@
                                     <label class="btn btn-outline-primary btn-sm" for="modeAlgorithm">
                                         <i class="bi bi-cpu"></i> 算法动态生成
                                     </label>
-
                                     <input type="radio" class="btn-check" name="autoSendModeRadio"
                                            id="modeFixed" value="fixed" autocomplete="off"
                                            onchange="onAutoSendModeChange('fixed')">
@@ -467,74 +327,57 @@
                                     </label>
                                 </div>
                             </div>
-
                             <div id="algorithmModeDesc" class="mb-2">
                                 <div class="alert alert-info py-2 small mb-2">
                                     <i class="bi bi-info-circle"></i>
-                                    基于真实时钟的太阳位置模型动态生成光照、温度等数据，每次自动发送时数值按时间曲线变化。
-                                </div>
-                                <div class="small text-muted">
-                                    可使用下方的 <strong>消息模板</strong> 自定义输出字段结构。
-                                    模板使用 <code>{{变量}}</code> 语法引用算法生成的动态值。
+                                    基于真实时钟的太阳位置模型动态生成光照、温度等数据。
                                 </div>
                             </div>
-
                             <div id="fixedModeDesc" style="display:none" class="mb-2">
                                 <div class="alert alert-warning py-2 small mb-2">
                                     <i class="bi bi-exclamation-triangle"></i>
-                                    固定内容模式下，每次自动发送的数据<strong>完全相同</strong>
-                                    （仅 <code>{{timestamp}}</code> 和 <code>{{deviceId}}</code> 会被替换为实际值）。
+                                    固定内容模式下，每次自动发送的数据完全相同
+                                    （仅 <code>{{timestamp}}</code> 和 <code>{{deviceId}}</code> 会被替换）。
                                 </div>
                             </div>
-
-                            <!-- 消息模板（算法模式下使用） -->
                             <div id="templateSection">
                                 <label class="form-label small fw-bold">
                                     <i class="bi bi-braces"></i> 消息模板
-                                    <span class="text-muted fw-normal">（留空使用默认生成）</span>
                                 </label>
                                 <textarea id="msgTemplateInput" class="form-control form-control-sm" rows="6"
                                     style="font-family: 'Cascadia Code', 'Consolas', monospace; font-size: 0.8rem;"
                                     placeholder='{"deviceId":"{{deviceId}}","light":{{lightIntensity}},...}'></textarea>
                                 <div class="d-flex gap-1 mt-1">
-                                    <button class="btn btn-sm btn-outline-secondary" onclick="resetTemplate()"
-                                            title="清空模板，恢复默认生成">
+                                    <button class="btn btn-sm btn-outline-secondary" onclick="resetTemplate()">
                                         <i class="bi bi-arrow-counterclockwise"></i> 重置
                                     </button>
-                                    <button class="btn btn-sm btn-outline-secondary" onclick="formatTemplate()"
-                                            title="格式化 JSON">
+                                    <button class="btn btn-sm btn-outline-secondary" onclick="formatTemplate()">
                                         <i class="bi bi-braces"></i> 格式化
                                     </button>
                                 </div>
                             </div>
                         </div>
                     </div>
-
-                    <!-- ===== 右侧：固定内容编辑 ===== -->
+                    <!-- 右侧：固定内容编辑 -->
                     <div class="col-md-7">
                         <div class="form-section h-100">
                             <div class="form-section-title">
                                 <i class="bi bi-file-earmark-code"></i> 固定内容编辑
                                 <span id="fixedContentBadge" class="badge bg-secondary">仅固定模式生效</span>
                             </div>
-
                             <div class="mb-2">
                                 <textarea id="autoSendContentInput" class="form-control" rows="14"
                                     style="font-family: 'Cascadia Code', 'Consolas', monospace; font-size: 0.85rem;"
                                     placeholder="选择「固定内容」模式后在此编辑发送的消息体..."></textarea>
                             </div>
-
                             <div class="d-flex flex-wrap gap-1 mb-2">
-                                <button class="btn btn-sm btn-outline-success" onclick="generateSampleContent()"
-                                        title="根据传感器类型自动生成示例 JSON">
+                                <button class="btn btn-sm btn-outline-success" onclick="generateSampleContent()">
                                     <i class="bi bi-magic"></i> 生成示例
                                 </button>
-                                <button class="btn btn-sm btn-outline-secondary" onclick="formatAutoSendContent()"
-                                        title="格式化 JSON">
+                                <button class="btn btn-sm btn-outline-secondary" onclick="formatAutoSendContent()">
                                     <i class="bi bi-braces"></i> 格式化 JSON
                                 </button>
-                                <button class="btn btn-sm btn-outline-secondary" onclick="validateAutoSendContent()"
-                                        title="校验 JSON 格式">
+                                <button class="btn btn-sm btn-outline-secondary" onclick="validateAutoSendContent()">
                                     <i class="bi bi-check-circle"></i> 校验格式
                                 </button>
                                 <div class="dropdown d-inline">
@@ -542,7 +385,7 @@
                                             type="button" data-bs-toggle="dropdown">
                                         <i class="bi bi-clipboard"></i> 模板库
                                     </button>
-                                    <ul class="dropdown-menu dropdown-menu-end small" id="templateLibraryMenu">
+                                    <ul class="dropdown-menu dropdown-menu-end small">
                                         <li><h6 class="dropdown-header">选择预设模板</h6></li>
                                         <li><a class="dropdown-item" href="javascript:void(0)"
                                                onclick="loadPresetTemplate('light')">☀️ 光照传感器</a></li>
@@ -555,15 +398,13 @@
                                     </ul>
                                 </div>
                             </div>
-
                             <div id="autoSendValidation" class="small"></div>
-
                             <details class="mb-0">
                                 <summary class="small text-muted" style="cursor:pointer">可用变量参考</summary>
                                 <div class="small bg-light p-2 rounded mt-1" style="font-family:monospace; font-size:0.72rem;">
-                                    <strong>固定模式可用:</strong> {{timestamp}} {{deviceId}}<br>
-                                    <strong>算法模式可用:</strong> {{lightIntensity}} {{temperature}} {{voltage}} {{power}} {{cloudCover}} {{status}}<br>
-                                    <strong>通用:</strong> {{sensorType}} {{displayName}} {{location}} {{controlMode}} {{payload}}
+                                    <strong>固定模式:</strong> {{"{{timestamp}}"}} {{"{{deviceId}}"}}<br>
+                                    <strong>算法模式:</strong> {{"{{lightIntensity}}"}} {{"{{temperature}}"}} {{"{{voltage}}"}} {{"{{power}}"}} {{"{{cloudCover}}"}} {{"{{status}}"}}<br>
+                                    <strong>通用:</strong> {{"{{sensorType}}"}} {{"{{displayName}}"}} {{"{{location}}"}} {{"{{controlMode}}"}} {{"{{payload}}"}}
                                 </div>
                             </details>
                         </div>
