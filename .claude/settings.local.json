@@ -64,7 +64,8 @@
       "Bash(mvn spring-boot:run -DskipTests -q)",
       "Bash(taskkill /PID 4936 /F)",
       "Bash(cmd *)",
-      "Bash(echo \"EXIT: $?\")"
+      "Bash(echo \"EXIT: $?\")",
+      "Bash(python -m py_compile sender/data_generator.py)"
     ]
   }
 }
