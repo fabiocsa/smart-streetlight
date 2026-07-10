@@ -33,21 +33,34 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 # 后端（Java 17 + Spring Boot 3.2.5 + Maven）
 cd backend
 mvn spring-boot:run                   # 启动后端（端口 8080）
+mvn clean package -DskipTests         # 构建 JAR
+mvn test                              # 运行测试（当前无测试用例）
 
 # 前端（Vue 3 + Vite + Element Plus）
 cd frontend
 npm install                            # 安装依赖
-npm run dev                            # 启动开发服务器（端口 3000，/api 代理到 :8080）
+npm run dev                            # 启动开发服务器（端口 3000，/api 和 /ws 代理到 :8080）
 npm run build                          # 生产构建 → frontend/dist/
+npm run preview                        # 预览生产构建
 
 # Mock 数据发生器（Python）
 cd tools/mock-sender
 pip install -r requirements.txt
-python app.py                          # 启动 Web 管理界面 + MQTT 模拟器
+python app.py                          # 启动 Web 管理界面（端口 5000）+ MQTT 模拟器
 
 # 数据库（连接远程 MySQL，初始化脚本）
 mysql -h 8.130.102.89 -u remote_user -p streetlight < docs/init.sql
 ```
+
+### 环境要求
+
+- **JDK 17** + Maven 3.6+
+- **Node.js 18+** + npm 9+
+- **Python 3.8+**（仅 mock-sender）
+- **MySQL 8.0**（远程服务器 `8.130.102.89:3306`）
+- **EMQX MQTT Broker**（`8.130.102.89:1883`，已部署）
+
+开发和构建均依赖远程数据库和 MQTT Broker，本地无需安装 MySQL 或 EMQX。
 
 ## 后端分层
 
@@ -63,20 +76,86 @@ mysql -h 8.130.102.89 -u remote_user -p streetlight < docs/init.sql
 | Security | `security/` | JWT 鉴权 + `AuthInterceptor` |
 | Common | `common/` | `Result`（统一响应体）、`GlobalExceptionHandler`、`BusinessException` |
 
-## 前端路由
+### RBAC 权限模型
 
-| 路由 | 组件 | 说明 |
+系统有两个角色：`admin`（管理员）和 `municipal`（市政人员）。
+
+| 模块 | admin | municipal |
 |---|---|---|
-| `/login` | Login.vue | 登录页（公开） |
-| `/dashboard` | Dashboard.vue | 仪表盘总览 |
-| `/devices` | DeviceList.vue | 设备管理 CRUD |
-| `/devices/:id` | DeviceDetail.vue | 设备详情 + 传感器绑定 |
-| `/sensors` | SensorList.vue | 传感器管理 |
-| `/light-trend` | LightTrend.vue | 历史趋势（ECharts，多指标：光照/温度/湿度/功率） |
-| `/alarms` | AlarmList.vue | 告警管理（仅 admin） |
-| `/chat` | ChatView.vue | AI 智能问答（DeepSeek） |
+| 设备管理（查看） | ✅ | ✅ |
+| 设备管理（增删改） | ✅ | ❌ |
+| 传感器管理（查看） | ✅ | ✅ |
+| 传感器管理（增删改/绑定） | ✅ | ❌ |
+| 设备控制（开关灯/模式切换） | ✅ | ✅ |
+| 告警管理 & 告警规则 | ✅ | ❌ |
+| AI 智能问答 | ✅ | ✅ |
+| 历史趋势 | ✅ | ✅ |
 
-状态管理：`stores/authStore.js`（认证）、`store/device.js`、`store/sensor.js`（设备/传感器 Pinia stores）。
+权限在 `AuthInterceptor.preHandle()` 中按 URI 路径匹配校验。前端路由通过 `meta.roles` 字段控制菜单可见性，`router.beforeEach` 做二次校验。
+
+### 关键枚举
+
+| 枚举 | 位置 | 可选值 |
+|---|---|---|
+| `ControlMode` | `enums/` | `auto`（自动联动）, `manual`（手动控制） |
+| `LightStatus` | `enums/` | `on`（开灯）, `off`（关灯） |
+| `DeviceStatus` | `enums/` | `online`, `offline` |
+| `AlarmType` | `enums/` | `OFFLINE`, `ABNORMAL_DATA` 等 |
+| `AlarmSeverity` | `enums/` | `INFO`, `WARNING`, `CRITICAL` |
+| `AlarmStatus` | `enums/` | `PENDING`（待处理）, `RESOLVED`（已解除） |
+
+### 速查：关键 Service
+
+| Service | 职责 |
+|---|---|
+| `SensorDataServiceImpl.saveAndAutoControl()` | **核心方法**：保存传感器数据 → 更新心跳 → 判断光照阈值自动开关灯 → 推送 WebSocket |
+| `ControlServiceImpl` | 执行设备控制指令（开/关灯、模式切换），通过 MQTT 下发 |
+| `SensorRegistrationService` | 处理模拟器传感器自动注册/注销、从数据报文恢复传感器记录 |
+| `HeartbeatChecker.checkHeartbeats()` | `@Scheduled(fixedRate=5000)` 每 5 秒检查心跳超时，标记离线并生成告警 |
+| `ChatServiceImpl` | 调用 DeepSeek API，注入系统角色上下文（路灯数量/传感器数据等），支持多轮对话 |
+| `AlarmServiceImpl.autoResolveOfflineAlarm()` | 设备恢复上线时自动将 PENDING 告警标记为 RESOLVED |
+
+### 循环依赖处理
+
+`MqttMessageHandler` ↔ `MqttClientManager` 和 `MqttMessageHandler` → `DeviceService` → `SensorRepository` → … → `MqttPublishService` → `MqttClientManager` 形成间接循环。通过 `@Lazy` 注解打破：`MqttMessageHandler` 构造函数中注入 `DeviceService` 和 `MqttClientManager` 时使用 `@Lazy`，Spring 注入代理对象，首次调用时才解析实际 bean。
+
+## 前端架构
+
+### 路由与权限
+
+| 路由 | 组件 | 说明 | 权限 |
+|---|---|---|---|
+| `/login` | Login.vue | 登录页 | 公开 |
+| `/dashboard` | Dashboard.vue | 仪表盘总览 | admin, municipal |
+| `/devices` | DeviceList.vue | 设备管理 CRUD | admin, municipal |
+| `/devices/:id` | DeviceDetail.vue | 设备详情 + 传感器绑定 | admin, municipal |
+| `/sensors` | SensorList.vue | 传感器管理 | admin, municipal |
+| `/light-trend` | LightTrend.vue | 历史趋势（ECharts 多指标） | admin, municipal |
+| `/alarms` | AlarmList.vue | 告警管理 | **仅 admin** |
+| `/chat` | ChatView.vue | AI 智能问答 | admin, municipal |
+
+路由使用 `createWebHashHistory`（hash 模式），`router.beforeEach` 守卫检查 token 和角色权限。
+
+状态管理：`stores/authStore.js`（登录/登出/角色）、`stores/chatStore.js`（AI 对话历史）。
+
+### WebSocket 实时数据
+
+前端在 `Dashboard.vue` 等页面建立 WebSocket 连接到 `ws://localhost:8080/ws/monitor`（开发环境通过 Vite proxy）。收到 JSON 消息后根据 `type` 字段分发：
+
+| type | 触发动作 |
+|---|---|
+| `SENSOR_DATA` | 更新仪表盘实时数据面板（光照/温度/湿度/功率） |
+| `DEVICE_STATUS` | 更新设备在线/离线状态指示 |
+| `NEW_ALARM` | 弹出告警通知 + 刷新告警列表 |
+| `CONTROL_RESULT` | 显示控制指令执行结果通知 |
+
+## AI 智能问答（DeepSeek）
+
+后端通过 RestTemplate 调用 DeepSeek API（`api.deepseek.com`），配置在 `application.yml` 的 `deepseek` 段：
+- 默认模型 `deepseek-chat`，可通过环境变量覆盖
+- `system-prompt` 注入角色：你是一个智慧路灯管理系统的智能助手…
+- 支持多轮对话：`ChatMessage` 表存储历史消息，按 `ChatSession` 分组
+- 前端 `/chat` 页面实现流式打字机效果（非真实 SSE 流，前端模拟逐字显示）
 
 ## Mock 数据发生器
 
@@ -97,3 +176,46 @@ mysql -h 8.130.102.89 -u remote_user -p streetlight < docs/init.sql
 | `streetlight/{deviceId}/control/response` | 上行 | 设备控制响应 |
 | `streetlight/{deviceId}/control` | 下行 | 后端下发控制指令 |
 | `streetlight/{deviceId}/config/frequency` | 下行 | 调整上报频率 |
+
+## SensorData JSON 列设计
+
+`sensor_data` 表的 `data_json` 列存储 JSON 数据，支持异构多维传感器数据，无需 ALTER TABLE：
+
+```java
+// SensorData.from() 静态工厂 — 将 Map 序列化到 dataJson 列
+SensorData sd = SensorData.from(deviceId, sensorId, sensorType, data, reportedAt);
+// data 示例: {"illuminance": 320.5, "temperature": 28.3, "humidity": 65.0, "voltage": 220.1, "power": 45.0}
+```
+
+Repository 使用 MySQL `JSON_EXTRACT` 函数在 SQL 层直接查询 JSON 字段：
+
+```java
+@Query(value = "SELECT AVG(CAST(JSON_UNQUOTE(JSON_EXTRACT(data_json, CONCAT('$.', :field))) AS DOUBLE)) " +
+       "FROM sensor_data WHERE device_id = :deviceId AND ...")
+Double avgByField(@Param("deviceId") String deviceId, @Param("field") String field, ...);
+```
+
+添加新的传感器指标只需模拟器端在 JSON 中多传一个字段，无需修改表结构或实体类。
+
+## 配置要点
+
+### application.yml 关键配置
+
+```yaml
+streetlight.heartbeat.timeout: 30      # 心跳超时阈值（秒），超时后 HeartbeatChecker 标记离线
+mqtt.topic-prefix: streetlight          # MQTT 主题前缀，MqttClientManager 据此路由消息
+deepseek.enabled: true                  # 设为 false 可禁用 AI 问答（ChatController 返回 503）
+```
+
+MQTT Client ID 必须唯一（当前为 `backend-server-v2`），多实例部署时需改为动态生成。
+
+### 无测试覆盖
+
+当前项目没有单元测试或集成测试。`pom.xml` 引入了 `spring-boot-starter-test` 但 `src/test/` 目录为空。添加新功能时建议从零开始搭建测试基础设施。
+
+### 启动顺序
+
+1. 确保远程 MySQL 和 EMQX Broker 可访问
+2. 启动后端（Hibernate 自动建表/更新表结构）
+3. 启动前端
+4. （可选）启动 mock-sender 进行数据模拟
