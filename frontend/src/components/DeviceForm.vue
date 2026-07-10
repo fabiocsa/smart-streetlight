@@ -66,7 +66,8 @@ import { useDeviceStore } from '../store/device'
 
 const props = defineProps({
   visible: Boolean,
-  editData: Object
+  editData: Object,
+  initCoords: Object   // { latitude, longitude } — 地图添加设备时预填坐标
 })
 
 const emit = defineEmits(['update:visible', 'saved'])
@@ -107,8 +108,8 @@ watch(() => props.visible, (val) => {
     form.deviceId = ''
     form.name = ''
     form.location = ''
-    form.latitude = null
-    form.longitude = null
+    form.latitude = props.initCoords?.latitude ?? null
+    form.longitude = props.initCoords?.longitude ?? null
   }
 })
 

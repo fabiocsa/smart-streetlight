@@ -68,6 +68,18 @@
             </el-form-item>
           </el-col>
         </el-row>
+        <el-row :gutter="20">
+          <el-col :span="12">
+            <el-form-item label="纬度">
+              <el-input :model-value="form.latitude ?? '-'" disabled />
+            </el-form-item>
+          </el-col>
+          <el-col :span="12">
+            <el-form-item label="经度">
+              <el-input :model-value="form.longitude ?? '-'" disabled />
+            </el-form-item>
+          </el-col>
+        </el-row>
         <el-form-item v-if="authStore.isAdmin">
           <el-button type="primary" @click="handleUpdateDevice" :loading="saving">保存设备信息</el-button>
         </el-form-item>

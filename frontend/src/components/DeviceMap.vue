@@ -20,6 +20,15 @@
           :icon="Select"
         />
       </el-tooltip>
+      <el-divider direction="horizontal" style="margin: 4px 0; border-color: #e8e8e8" />
+      <el-tooltip content="添加设备 — 右键地图快速添加设备" placement="right">
+        <el-button
+          :type="currentTool === 'add-location' ? 'primary' : 'default'"
+          size="small"
+          @click="switchTool('add-location')"
+          :icon="Plus"
+        />
+      </el-tooltip>
     </div>
 
     <!-- 拖拽选框 -->
@@ -61,14 +70,21 @@
       class="context-menu"
       :style="{ left: contextMenu.x + 'px', top: contextMenu.y + 'px' }"
     >
-      <div class="context-menu-item" @click="contextAction('on')">💡 批量开灯</div>
-      <div class="context-menu-item" @click="contextAction('off')">🌙 批量关灯</div>
-      <div class="context-menu-item" @click="contextModeChange('auto')">⚙ 切换为自动模式</div>
-      <div class="context-menu-item" @click="contextModeChange('manual')">⚙ 切换为手动模式</div>
-      <div v-if="isAdmin" class="context-menu-item" @click="contextDelete">🗑 批量删除</div>
-      <div v-if="isAdmin" class="context-menu-item" @click="contextUnbind">🔓 批量解绑传感器</div>
-      <div class="context-menu-divider"></div>
-      <div class="context-menu-item" @click="clearSelection">✕ 取消选择</div>
+      <template v-if="currentTool === 'add-location'">
+        <div class="context-menu-item" @click="handleAddDeviceAtLocation">📍 在此位置添加设备</div>
+        <div class="context-menu-divider"></div>
+        <div class="context-menu-item" @click="cancelAddLocation">✕ 取消</div>
+      </template>
+      <template v-else>
+        <div class="context-menu-item" @click="contextAction('on')">💡 批量开灯</div>
+        <div class="context-menu-item" @click="contextAction('off')">🌙 批量关灯</div>
+        <div class="context-menu-item" @click="contextModeChange('auto')">⚙ 切换为自动模式</div>
+        <div class="context-menu-item" @click="contextModeChange('manual')">⚙ 切换为手动模式</div>
+        <div v-if="isAdmin" class="context-menu-item" @click="contextDelete">🗑 批量删除</div>
+        <div v-if="isAdmin" class="context-menu-item" @click="contextUnbind">🔓 批量解绑传感器</div>
+        <div class="context-menu-divider"></div>
+        <div class="context-menu-item" @click="clearSelection">✕ 取消选择</div>
+      </template>
     </div>
   </div>
 </template>
@@ -77,7 +93,7 @@
 import { ref, reactive, computed, watch, onMounted, onBeforeUnmount, nextTick } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { Rank, Select } from '@element-plus/icons-vue'
+import { Rank, Select, Plus } from '@element-plus/icons-vue'
 import AMapLoader from '@amap/amap-jsapi-loader'
 import { sendControl, sendBatchControl, setControlMode } from '../api/control'
 import { unbindSensor } from '../api/device'
@@ -88,7 +104,7 @@ const props = defineProps({
   height: { type: String, default: '600px' }
 })
 
-const emit = defineEmits(['refresh'])
+const emit = defineEmits(['refresh', 'add-device'])
 
 const router = useRouter()
 const authStore = useAuthStore()
@@ -104,7 +120,10 @@ let infoWindow = null
 const AMAP_KEY = '89cb94c3464ebb41c9b691f12bf082ff'
 
 // ======================== 工具栏状态 ========================
-const currentTool = ref('pan')   // 'pan' | 'select'
+const currentTool = ref('pan')   // 'pan' | 'select' | 'add-location'
+
+// ======================== 添加设备坐标 ========================
+const addLocationCoords = ref(null)
 
 // ======================== 框选状态 ========================
 const selectionBox = reactive({
@@ -136,11 +155,31 @@ function switchTool(tool) {
   if (tool === 'select') {
     map.setStatus({ dragEnable: false })
     mapContainer.value.style.cursor = 'crosshair'
+  } else if (tool === 'add-location') {
+    map.setStatus({ dragEnable: true })
+    mapContainer.value.style.cursor = 'copy'
   } else {
     map.setStatus({ dragEnable: true })
     mapContainer.value.style.cursor = ''
     clearSelection()
   }
+}
+
+// ======================== 添加设备 ========================
+function handleAddDeviceAtLocation() {
+  contextMenu.visible = false
+  if (!addLocationCoords.value) return
+  emit('add-device', {
+    latitude: addLocationCoords.value.lat,
+    longitude: addLocationCoords.value.lng
+  })
+  // 自动切回抓手模式
+  switchTool('pan')
+}
+
+function cancelAddLocation() {
+  contextMenu.visible = false
+  switchTool('pan')
 }
 
 // ======================== 标记 DOM 元素 ========================
@@ -271,6 +310,15 @@ async function initMap() {
 
     // 右键菜单
     map.on('rightclick', (e) => {
+      if (currentTool.value === 'add-location') {
+        // 添加设备模式：右键弹出「在此位置添加设备」
+        addLocationCoords.value = { lat: e.lnglat.lat, lng: e.lnglat.lng }
+        const pixel = map.lngLatToContainer(e.lnglat)
+        contextMenu.x = pixel.x
+        contextMenu.y = pixel.y
+        contextMenu.visible = true
+        return
+      }
       if (selectedDeviceIds.size === 0) {
         contextMenu.visible = false
         return

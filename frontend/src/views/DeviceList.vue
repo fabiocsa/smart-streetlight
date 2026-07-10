@@ -210,7 +210,7 @@
             ⚠ {{ filteredDevices.filter(d => d.latitude == null || d.longitude == null).length }} 个设备缺少坐标信息
           </span>
         </div>
-        <DeviceMap :devices="filteredDevices" height="600px" @refresh="refreshDevices" />
+        <DeviceMap :devices="filteredDevices" height="600px" @refresh="refreshDevices" @add-device="handleMapAddDevice" />
       </el-card>
     </template>
 
@@ -218,6 +218,7 @@
     <DeviceForm
       v-model:visible="dialogVisible"
       :edit-data="editingDevice"
+      :init-coords="mapAddCoords"
       @saved="handleSaved"
     />
   </div>
@@ -251,6 +252,7 @@ const pageSize = 10
 const selectedIds = ref([])
 const controllingId = ref('')   // 当前正在控制的设备ID
 const viewMode = ref('table')   // 'table' | 'map'
+const mapAddCoords = ref(null)  // 地图添加设备坐标
 
 // 防抖搜索
 const onSearchInput = debounce(filterDevices, 300)
@@ -290,6 +292,13 @@ function switchToMap() {
   tableRef.value?.clearSelection()
 }
 
+/** 地图「添加设备」事件：打开对话框并预填经纬度 */
+function handleMapAddDevice({ latitude, longitude }) {
+  mapAddCoords.value = { latitude, longitude }
+  editingDevice.value = null
+  dialogVisible.value = true
+}
+
 function clearFilters() {
   searchKeyword.value = ''
   filterStatus.value = ''
@@ -303,6 +312,7 @@ function handleSelectionChange(rows) {
 
 function openAddDialog() {
   editingDevice.value = null
+  mapAddCoords.value = null
   dialogVisible.value = true
 }
 
@@ -511,6 +521,7 @@ async function handleBatchUnbind() {
 
 async function handleSaved() {
   dialogVisible.value = false
+  mapAddCoords.value = null
   // store 已局部更新，无需全量刷新
 }
 
