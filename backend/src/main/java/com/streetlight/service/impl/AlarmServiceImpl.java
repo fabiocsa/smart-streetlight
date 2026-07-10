@@ -81,8 +81,16 @@ public class AlarmServiceImpl implements AlarmService {
 
     @Override
     public Page<AlarmLog> listAlarms(int page, int size, String status, String type,
-                                      String severity, String deviceId, String keyword) {
-        PageRequest pr = PageRequest.of(page, size, Sort.by(Sort.Direction.DESC, "createdAt"));
+                                      String severity, String deviceId, String keyword,
+                                      String sort, String order) {
+        Sort.Direction dir;
+        if (order != null && (order.equalsIgnoreCase("asc") || order.equalsIgnoreCase("ascending"))) {
+            dir = Sort.Direction.ASC;
+        } else {
+            dir = Sort.Direction.DESC;
+        }
+        String sortField = (sort != null && !sort.isEmpty()) ? sort : "createdAt";
+        PageRequest pr = PageRequest.of(page, size, Sort.by(dir, sortField));
 
         // 多条件组合查询 — 优先使用最具体的查询
         if (deviceId != null && !deviceId.isEmpty()) {
@@ -134,6 +142,16 @@ public class AlarmServiceImpl implements AlarmService {
         }
         alarmLogRepository.save(alarm);
         log.info("处理告警: id={}, resolvedBy={}", alarmId, resolvedBy);
+    }
+
+    @Override
+    @Transactional
+    public void updateResolvedBy(Long alarmId, String resolvedBy) {
+        AlarmLog alarm = alarmLogRepository.findById(alarmId)
+                .orElseThrow(() -> new RuntimeException("告警不存在, id=" + alarmId));
+        alarm.setResolvedBy(resolvedBy);
+        alarmLogRepository.save(alarm);
+        log.info("修改告警处理人: id={}, resolvedBy={}", alarmId, resolvedBy);
     }
 
     @Override

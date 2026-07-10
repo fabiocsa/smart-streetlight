@@ -20,7 +20,7 @@ public class AlarmController {
 
     private final AlarmService alarmService;
 
-    /** 分页查询告警列表，支持多条件筛选 */
+    /** 分页查询告警列表，支持多条件筛选和排序 */
     @GetMapping
     public Result<Map<String, Object>> getAlarms(
             @RequestParam(required = false) String status,
@@ -28,10 +28,12 @@ public class AlarmController {
             @RequestParam(required = false) String severity,
             @RequestParam(required = false) String deviceId,
             @RequestParam(required = false) String keyword,
+            @RequestParam(defaultValue = "createdAt") String sort,
+            @RequestParam(defaultValue = "desc") String order,
             @RequestParam(defaultValue = "0") int page,
             @RequestParam(defaultValue = "20") int size) {
         Page<AlarmLog> resultPage = alarmService.listAlarms(page, size, status, type,
-                severity, deviceId, keyword);
+                severity, deviceId, keyword, sort, order);
         Map<String, Object> result = new LinkedHashMap<>();
         result.put("content", resultPage.getContent());
         result.put("totalElements", resultPage.getTotalElements());
@@ -58,6 +60,15 @@ public class AlarmController {
         String resolvedBy = (String) body.getOrDefault("resolvedBy", "admin");
         String notes = (String) body.getOrDefault("notes", null);
         return Result.success(alarmService.batchResolve(ids, resolvedBy, notes));
+    }
+
+    /** 修改告警处理人 */
+    @PutMapping("/{id}/resolvedBy")
+    public Result<Void> updateResolvedBy(
+            @PathVariable Long id,
+            @RequestBody Map<String, String> body) {
+        alarmService.updateResolvedBy(id, body.get("resolvedBy"));
+        return Result.success();
     }
 
     /** 待处理告警数量 */

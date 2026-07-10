@@ -33,7 +33,7 @@ const routes = [
     path: '/sensors',
     name: 'SensorList',
     component: () => import('../views/SensorList.vue'),
-    meta: { title: '传感器查看', roles: ['admin', 'municipal', 'operator'] }
+    meta: { title: '传感器', roles: ['admin', 'municipal', 'operator'] }
   },
   {
     path: '/chat',

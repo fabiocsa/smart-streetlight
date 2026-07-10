@@ -1,24 +1,24 @@
 <template>
   <div>
     <div class="page-header">
-      <h2>传感器查看</h2>
+      <h2>{{ authStore.isAdmin || authStore.isOperator ? '传感器管理' : '传感器查看' }}</h2>
       <div class="header-actions">
         <el-button
-          v-if="selectedIds.length > 0 && authStore.isAdmin"
+          v-if="selectedIds.length > 0 && (authStore.isAdmin || authStore.isOperator)"
           type="success"
           @click="handleBatchEnable(true)"
         >
           批量启用 ({{ selectedIds.length }})
         </el-button>
         <el-button
-          v-if="selectedIds.length > 0 && authStore.isAdmin"
+          v-if="selectedIds.length > 0 && (authStore.isAdmin || authStore.isOperator)"
           type="warning"
           @click="handleBatchEnable(false)"
         >
           批量删除 ({{ selectedIds.length }})
         </el-button>
         <el-button
-          v-if="selectedIds.length > 0 && authStore.isAdmin"
+          v-if="selectedIds.length > 0 && (authStore.isAdmin || authStore.isOperator)"
           type="danger"
           @click="handleBatchDelete"
         >
@@ -92,7 +92,7 @@
         <el-table-column label="上报频率" width="120" sortable prop="reportFrequency">
           <template #default="{ row }">
             <el-input-number
-              v-if="authStore.isAdmin"
+              v-if="authStore.isAdmin || authStore.isOperator"
               :model-value="row.reportFrequency"
               :min="1"
               :max="3600"
@@ -101,13 +101,13 @@
               @change="(v) => handleFrequencyChange(row, v)"
             />
             <span v-else>{{ row.reportFrequency || '-' }}</span>
-            <span v-if="authStore.isAdmin" style="margin-left: 2px; font-size: 12px; color: #909399">秒</span>
+            <span v-if="authStore.isAdmin || authStore.isOperator" style="margin-left: 2px; font-size: 12px; color: #909399">秒</span>
           </template>
         </el-table-column>
         <el-table-column label="启用" width="80">
           <template #default="{ row }">
             <el-switch
-              v-if="authStore.isAdmin"
+              v-if="authStore.isAdmin || authStore.isOperator"
               :model-value="row.enabled"
               @change="(v) => handleToggleEnabled(row, v)"
             />
@@ -128,9 +128,9 @@
         </el-table-column>
         <el-table-column label="操作" width="160" fixed="right">
           <template #default="{ row }">
-            <el-button v-if="authStore.isAdmin" type="primary" link @click="openEditDialog(row)">编辑</el-button>
+            <el-button v-if="authStore.isAdmin || authStore.isOperator" type="primary" link @click="openEditDialog(row)">编辑</el-button>
             <el-popconfirm
-              v-if="authStore.isAdmin"
+              v-if="authStore.isAdmin || authStore.isOperator"
               title="确定删除该传感器吗？模拟器仍在运行时会自动重新识别。"
               confirm-button-text="确定"
               cancel-button-text="取消"

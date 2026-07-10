@@ -89,6 +89,12 @@ public class AuthInterceptor implements HandlerInterceptor {
                     sendError(response, 403, "权限不足，仅管理员和操作员可查看告警");
                     return false;
                 }
+            } else if (path.matches(".*/alarms/\\d+/resolvedBy$") && "PUT".equalsIgnoreCase(request.getMethod())) {
+                // 修改处理人 → admin + operator
+                if (!isAdmin && !isOperator) {
+                    sendError(response, 403, "权限不足，仅管理员和操作员可修改处理人");
+                    return false;
+                }
             } else {
                 // 告警处理（resolve / batch-resolve）→ 仅 admin
                 if (!isAdmin) {

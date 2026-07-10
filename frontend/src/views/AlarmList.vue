@@ -59,7 +59,6 @@
         stripe
         style="width: 100%"
         @selection-change="handleSelectionChange"
-        :default-sort="{ prop: 'createdAt', order: 'descending' }"
       >
         <el-table-column type="selection" width="45" />
         <el-table-column label="级别" width="80">
@@ -86,7 +85,28 @@
           </template>
         </el-table-column>
         <el-table-column prop="content" label="告警内容" min-width="200" show-overflow-tooltip />
-        <el-table-column prop="createdAt" label="触发时间" width="170" sortable="custom">
+        <el-table-column label="触发时间" width="210">
+          <template #header>
+            <div style="display: flex; align-items: center; gap: 6px">
+              <span>触发时间</span>
+              <el-button-group style="margin-left: 2px">
+                <el-button
+                  :type="sortOrder === 'ascending' ? 'primary' : 'default'"
+                  size="small"
+                  style="padding: 2px 6px; font-size: 10px; min-height: 20px"
+                  @click="sortAsc"
+                  title="最早优先"
+                >▲</el-button>
+                <el-button
+                  :type="sortOrder === 'descending' ? 'primary' : 'default'"
+                  size="small"
+                  style="padding: 2px 6px; font-size: 10px; min-height: 20px"
+                  @click="sortDesc"
+                  title="最新优先"
+                >▼</el-button>
+              </el-button-group>
+            </div>
+          </template>
           <template #default="{ row }">
             {{ formatTime(row.createdAt) }}
           </template>
@@ -96,9 +116,22 @@
             {{ formatTime(row.resolvedAt) }}
           </template>
         </el-table-column>
-        <el-table-column prop="resolvedBy" label="处理人" width="100">
+        <el-table-column prop="resolvedBy" label="处理人" width="140">
           <template #default="{ row }">
-            {{ row.resolvedBy || '-' }}
+            <span v-if="!row._editingResolvedBy" style="display: flex; align-items: center; gap: 4px">
+              {{ row.resolvedBy || '-' }}
+              <el-button
+                v-if="authStore.isAdmin || authStore.isOperator"
+                link
+                size="small"
+                @click="startEditResolvedBy(row)"
+              ><el-icon><Edit /></el-icon></el-button>
+            </span>
+            <span v-else style="display: flex; gap: 4px">
+              <el-input v-model="row._resolvedByDraft" size="small" style="width: 80px" @keyup.enter="saveResolvedBy(row)" />
+              <el-button link type="primary" size="small" @click="saveResolvedBy(row)">✓</el-button>
+              <el-button link size="small" @click="row._editingResolvedBy = false">✕</el-button>
+            </span>
           </template>
         </el-table-column>
         <el-table-column label="操作" width="180" fixed="right">
@@ -125,7 +158,7 @@
         :total="totalElements"
         :page-size="pageSize"
         v-model:current-page="currentPage"
-        @current-change="loadAlarms"
+        @current-change="(page) => { currentPage = page; loadAlarms(false) }"
       />
     </el-card>
 
@@ -156,7 +189,8 @@
 import { ref, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { getAlarms, resolveAlarm, batchResolve, getPendingCount } from '../api/alarm'
+import { Edit } from '@element-plus/icons-vue'
+import { getAlarms, resolveAlarm, batchResolve, getPendingCount, updateResolvedBy } from '../api/alarm'
 import { formatTime, debounce, resetPage } from '../utils/common'
 import { useAuthStore } from '../stores/authStore'
 
@@ -171,6 +205,10 @@ const currentPage = ref(1)
 const pageSize = 15
 const pendingCount = ref(0)
 const selectedIds = ref([])
+
+// 排序
+const sortProp = ref('createdAt')
+const sortOrder = ref('descending')
 
 // 筛选
 const filterStatus = ref('')
@@ -203,15 +241,30 @@ function handleSelectionChange(rows) {
   selectedIds.value = rows.filter(r => r.status === 'PENDING').map(r => r.id)
 }
 
-async function loadAlarms() {
+function sortAsc() {
+  sortOrder.value = 'ascending'
+  currentPage.value = 1
+  loadAlarms(false)
+}
+
+function sortDesc() {
+  sortOrder.value = 'descending'
+  currentPage.value = 1
+  loadAlarms(false)
+}
+
+async function loadAlarms(resetPageNum = true) {
   loading.value = true
-  resetPage(currentPage)
+  if (resetPageNum) resetPage(currentPage)
   try {
     const params = { page: currentPage.value - 1, size: pageSize }
     if (filterStatus.value) params.status = filterStatus.value
     if (filterSeverity.value) params.severity = filterSeverity.value
     if (filterType.value) params.type = filterType.value
     if (filterDeviceId.value) params.deviceId = filterDeviceId.value
+    // 服务端排序
+    params.sort = sortProp.value
+    params.order = sortOrder.value
 
     const res = await getAlarms(params)
     const data = res?.data || res
@@ -287,6 +340,23 @@ async function handleBatchResolve() {
 function goDevice(deviceId) {
   // 通过 deviceId 跳转到设备详情（需要先查 id）
   router.push(`/devices/${deviceId}`)
+}
+
+// --- 行内编辑处理人 ---
+function startEditResolvedBy(row) {
+  row._resolvedByDraft = row.resolvedBy || ''
+  row._editingResolvedBy = true
+}
+
+async function saveResolvedBy(row) {
+  try {
+    await updateResolvedBy(row.id, { resolvedBy: row._resolvedByDraft || 'admin' })
+    row.resolvedBy = row._resolvedByDraft || 'admin'
+    row._editingResolvedBy = false
+    ElMessage.success('处理人已更新')
+  } catch {
+    // 错误已拦截
+  }
 }
 
 onMounted(() => {

@@ -13,11 +13,13 @@ public interface AlarmService {
     void autoResolveOfflineAlarm(String deviceId);
 
     Page<AlarmLog> listAlarms(int page, int size, String status, String type, String severity,
-                              String deviceId, String keyword);
+                              String deviceId, String keyword, String sort, String order);
 
     void resolveAlarm(Long alarmId, String resolvedBy);
 
     void resolveAlarm(Long alarmId, String resolvedBy, String notes);
+
+    void updateResolvedBy(Long alarmId, String resolvedBy);
 
     Map<String, Object> batchResolve(List<Long> alarmIds, String resolvedBy, String notes);
 

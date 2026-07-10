@@ -27,7 +27,7 @@
         </el-menu-item>
         <el-menu-item index="/sensors">
           <el-icon><Connection /></el-icon>
-          <span>传感器查看</span>
+          <span>{{ authStore.isAdmin || authStore.isOperator ? '传感器管理' : '传感器查看' }}</span>
         </el-menu-item>
         <el-menu-item index="/light-trend">
           <el-icon><TrendCharts /></el-icon>

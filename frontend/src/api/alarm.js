@@ -15,6 +15,11 @@ export function batchResolve(data) {
   return request.put('/alarms/batch-resolve', data)
 }
 
+/** 修改告警处理人 */
+export function updateResolvedBy(id, data) {
+  return request.put(`/alarms/${id}/resolvedBy`, data)
+}
+
 /** 待处理告警数量 */
 export function getPendingCount() {
   return request.get('/alarms/pending-count')
