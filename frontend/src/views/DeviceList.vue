@@ -13,7 +13,7 @@
           </el-button>
           <el-button
             :type="viewMode === 'map' ? 'primary' : 'default'"
-            @click="viewMode = 'map'"
+            @click="switchToMap"
             size="default"
           >
             <el-icon><MapLocation /></el-icon> 地图模式
@@ -32,6 +32,29 @@
           @click="handleBatchControl('off')"
         >
           <el-icon><Moon /></el-icon> 批量关灯 ({{ selectedIds.length }})
+        </el-button>
+        <el-dropdown
+          v-if="selectedIds.length > 0"
+          trigger="click"
+          @command="handleBatchModeChange"
+          style="margin-left: 8px"
+        >
+          <el-button type="primary">
+            <el-icon><Setting /></el-icon> 批量切换模式
+          </el-button>
+          <template #dropdown>
+            <el-dropdown-menu>
+              <el-dropdown-item command="auto">切换为自动模式</el-dropdown-item>
+              <el-dropdown-item command="manual">切换为手动模式</el-dropdown-item>
+            </el-dropdown-menu>
+          </template>
+        </el-dropdown>
+        <el-button
+          v-if="selectedIds.length > 0 && authStore.isAdmin"
+          type="info"
+          @click="handleBatchUnbind"
+        >
+          <el-icon><Unlock /></el-icon> 批量解绑传感器 ({{ selectedIds.length }})
         </el-button>
         <el-button
           v-if="selectedIds.length > 0 && authStore.isAdmin"
@@ -187,7 +210,7 @@
             ⚠ {{ filteredDevices.filter(d => d.latitude == null || d.longitude == null).length }} 个设备缺少坐标信息
           </span>
         </div>
-        <DeviceMap :devices="filteredDevices" height="600px" />
+        <DeviceMap :devices="filteredDevices" height="600px" @refresh="refreshDevices" />
       </el-card>
     </template>
 
@@ -204,12 +227,13 @@
 import { ref, computed, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { Sunny, Moon, Refresh, Grid, MapLocation } from '@element-plus/icons-vue'
+import { Sunny, Moon, Refresh, Grid, MapLocation, Setting, Unlock } from '@element-plus/icons-vue'
 import { useAuthStore } from '../stores/authStore'
 import { useDeviceStore } from '../store/device'
 import DeviceForm from '../components/DeviceForm.vue'
 import DeviceMap from '../components/DeviceMap.vue'
-import { sendControl, sendBatchControl } from '../api/control'
+import { sendControl, sendBatchControl, setControlMode } from '../api/control'
+import { unbindSensor } from '../api/device'
 import { formatTime, debounce, resetPage } from '../utils/common'
 
 const router = useRouter()
@@ -257,6 +281,13 @@ const paginatedDevices = computed(() => {
 
 function filterDevices() {
   resetPage(currentPage)
+}
+
+/** 切换地图模式时清空表格选中状态 */
+function switchToMap() {
+  viewMode.value = 'map'
+  selectedIds.value = []
+  tableRef.value?.clearSelection()
 }
 
 function clearFilters() {
@@ -346,28 +377,136 @@ async function handleQuickControl(row) {
 /** 批量控制（开关灯） */
 async function handleBatchControl(command) {
   const actionText = command === 'on' ? '开灯' : '关灯'
+
+  // 过滤出在线设备
+  const selectedDevices = deviceStore.devices.filter(d => selectedIds.value.includes(d.id))
+  const onlineDevices = selectedDevices.filter(d => d.status === 'online')
+  const offlineCount = selectedDevices.length - onlineDevices.length
+
+  if (onlineDevices.length === 0) {
+    ElMessage.warning('选中的设备均处于离线状态，无法控制')
+    return
+  }
+
   try {
     await ElMessageBox.confirm(
-      `确定要对选中的 ${selectedIds.value.length} 个设备执行批量${actionText}吗？`,
+      `确定对选中的 ${onlineDevices.length} 个在线设备执行批量${actionText}吗？` +
+        (offlineCount > 0 ? `（${offlineCount} 个离线设备已跳过）` : ''),
       `批量${actionText}确认`,
       { confirmButtonText: actionText, cancelButtonText: '取消', type: 'warning' }
     )
   } catch { return }
 
-  // 获取选中的设备ID列表
-  const selectedDevices = deviceStore.devices.filter(d => selectedIds.value.includes(d.id))
-  const deviceIds = selectedDevices.map(d => d.deviceId)
+  const deviceIds = onlineDevices.map(d => d.deviceId)
 
   try {
-    const res = await sendBatchControl({ deviceIds, command })
-    const result = res?.data || res
-    ElMessage.success(`批量${actionText}: 成功 ${result?.successCount ?? deviceIds.length} 个，已切换为手动模式`)
-    // 局部更新设备状态
-    selectedDevices.forEach(d => { d.lightStatus = command; d.controlMode = 'manual' })
+    await sendBatchControl({ deviceIds, command })
+    ElMessage.success(
+      `批量${actionText}请求已发送` +
+        (offlineCount > 0 ? `（已跳过 ${offlineCount} 个离线设备）` : '')
+    )
+    // 局部更新在线设备的状态
+    onlineDevices.forEach(d => { d.lightStatus = command; d.controlMode = 'manual' })
     selectedIds.value = []
   } catch {
     // 错误已拦截
   }
+}
+
+/** 批量切换控制模式 */
+async function handleBatchModeChange(mode) {
+  const modeText = mode === 'auto' ? '自动' : '手动'
+  const selectedDevices = deviceStore.devices.filter(d => selectedIds.value.includes(d.id))
+  const onlineDevices = selectedDevices.filter(d => d.status === 'online')
+  const offlineCount = selectedDevices.length - onlineDevices.length
+
+  if (onlineDevices.length === 0) {
+    ElMessage.warning('选中的设备均处于离线状态，无法切换模式')
+    return
+  }
+
+  try {
+    await ElMessageBox.confirm(
+      `确定将选中的 ${onlineDevices.length} 个在线设备切换为「${modeText}模式」吗？` +
+        (offlineCount > 0 ? `（${offlineCount} 个离线设备已跳过）` : ''),
+      '批量切换模式确认',
+      { confirmButtonText: '确定', cancelButtonText: '取消', type: 'info' }
+    )
+  } catch { return }
+
+  let successCount = 0
+  for (const d of onlineDevices) {
+    try {
+      await setControlMode(d.id, { controlMode: mode })
+      d.controlMode = mode
+      successCount++
+    } catch { /* 单个失败跳过 */ }
+  }
+
+  if (successCount > 0) {
+    ElMessage.success(`已切换 ${successCount} 个设备为${modeText}模式`)
+  }
+  selectedIds.value = []
+}
+
+/** 批量解绑传感器 */
+async function handleBatchUnbind() {
+  const selectedDevices = deviceStore.devices.filter(d => selectedIds.value.includes(d.id))
+  const onlineDevices = selectedDevices.filter(d => d.status === 'online')
+  const offlineCount = selectedDevices.length - onlineDevices.length
+
+  if (onlineDevices.length === 0) {
+    ElMessage.warning('选中的设备均处于离线状态')
+    return
+  }
+
+  // 统计有传感器的设备
+  const devicesWithSensors = onlineDevices.filter(d => d.sensors?.length > 0)
+  const totalSensors = devicesWithSensors.reduce((sum, d) => sum + d.sensors.length, 0)
+
+  if (devicesWithSensors.length === 0) {
+    ElMessage.info('选中的在线设备都没有绑定传感器')
+    return
+  }
+
+  try {
+    await ElMessageBox.confirm(
+      `确定解绑 ${devicesWithSensors.length} 个设备的 ${totalSensors} 个传感器吗？` +
+        (offlineCount > 0 ? `（${offlineCount} 个离线设备已跳过）` : '') +
+        '<br><small style="color: #909399;">传感器不会被删除，仅解除与设备的绑定关系</small>',
+      '批量解绑确认',
+      {
+        confirmButtonText: '确定解绑',
+        cancelButtonText: '取消',
+        type: 'warning',
+        dangerouslyUseHTMLString: true
+      }
+    )
+  } catch { return }
+
+  let successCount = 0
+  let failCount = 0
+  for (const d of devicesWithSensors) {
+    for (const sensor of d.sensors) {
+      try {
+        await unbindSensor(d.id, sensor.id)
+        successCount++
+      } catch {
+        failCount++
+      }
+    }
+    // 本地清空传感器的绑定
+    d.sensors = []
+  }
+
+  if (successCount > 0) {
+    ElMessage.success(`已解绑 ${successCount} 个传感器` + (failCount > 0 ? `，${failCount} 个失败` : ''))
+  } else {
+    ElMessage.error('解绑失败')
+  }
+  selectedIds.value = []
+  // 刷新设备数据，确保表格和地图同步
+  await deviceStore.fetchAll()
 }
 
 async function handleSaved() {
