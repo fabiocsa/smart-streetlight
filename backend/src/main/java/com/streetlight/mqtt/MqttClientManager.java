@@ -84,37 +84,36 @@ public class MqttClientManager {
 
     // ======================== 主题订阅 ========================
 
-    /** 订阅全局传感器主题（使用 EMQX 共享订阅防止多实例重复消费）。
-     *  $share/backend/topic 格式 — EMQX 将每条消息仅投递给组内一个订阅者。
-     *  消息到达时 topic 为原始 topic（不含 $share 前缀），不影响 isXxxTopic() 匹配。 */
+    /**
+     * 订阅全局主题（所有实例完全相同的订阅策略）。
+     *
+     * ┌─ 数据主题：$share/backend/ 共享订阅 ─ EMQX 轮询分发，每条消息仅一个实例处理
+     * │    sensor/+/data, sensor/+/status, sensor/register, sensor/unregister
+     * │
+     * └─ 控制响应：普通订阅（无 $share）── 所有实例都收到，因为控制指令可能来自任一实例
+     *      sensor/+/cmd/response
+     */
     public void subscribeGlobalTopics() {
         if (!mqttClient.isConnected()) {
-            log.warn("MQTT 未连接，跳过全局传感器主题订阅");
+            log.warn("MQTT 未连接，跳过全局主题订阅");
             return;
         }
         try {
-            // ★ 共享订阅前缀：多实例部署时每条消息只被一个实例处理
             String share = "$share/backend/";
 
-            String sensorRegisterTopic = share + topicPrefix + "/sensor/register";
-            String sensorUnregisterTopic = share + topicPrefix + "/sensor/unregister";
-            String sensorDataTopic = share + topicPrefix + "/sensor/+/data";
-            String sensorStatusTopic = share + topicPrefix + "/sensor/+/status";
-            String sensorCmdResponseTopic = share + topicPrefix + "/sensor/+/cmd/response";
-
             MqttSubscription[] subscriptions = {
-                    new MqttSubscription(sensorRegisterTopic, 1),
-                    new MqttSubscription(sensorUnregisterTopic, 1),
-                    new MqttSubscription(sensorDataTopic, 1),
-                    new MqttSubscription(sensorStatusTopic, 1),
-                    new MqttSubscription(sensorCmdResponseTopic, 1),
+                // ★ 共享订阅：数据采集 + 注册/注销 — 多实例时 EMQX 分发到组内一个实例
+                new MqttSubscription(share + topicPrefix + "/sensor/register", 1),
+                new MqttSubscription(share + topicPrefix + "/sensor/unregister", 1),
+                new MqttSubscription(share + topicPrefix + "/sensor/+/data", 1),
+                new MqttSubscription(share + topicPrefix + "/sensor/+/status", 1),
+                // ★ 普通订阅：控制响应 — 所有实例都收到（谁发指令不确定，响应要回原实例）
+                new MqttSubscription(topicPrefix + "/sensor/+/cmd/response", 1),
             };
             mqttClient.subscribe(subscriptions);
-            log.info("已订阅全局传感器主题（共享订阅模式，防多实例重复）: [{}, {}, {}, {}, {}]",
-                    sensorRegisterTopic, sensorUnregisterTopic,
-                    sensorDataTopic, sensorStatusTopic, sensorCmdResponseTopic);
+            log.info("已订阅全局主题（数据:共享订阅, 控制响应:普通订阅）");
         } catch (MqttException e) {
-            log.error("订阅全局传感器主题失败: {}", e.getMessage(), e);
+            log.error("订阅全局主题失败: {}", e.getMessage(), e);
         }
     }
 

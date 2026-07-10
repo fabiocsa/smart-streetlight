@@ -175,8 +175,7 @@ public class MqttMessageHandler implements MqttCallback {
     @Override
     public void connectComplete(boolean reconnect, String serverURI) {
         log.info("MQTT连接完成: reconnect={}, server={}", reconnect, serverURI);
-        mqttClientManager.subscribeGlobalTopics();
-        log.info("MQTT{}后已重新订阅全局主题", reconnect ? "重连" : "连接");
+        mqttClientManager.subscribeGlobalTopics();  // subscribeGlobalTopics 内部检查 ingestionEnabled
     }
     @Override
     public void authPacketArrived(int reasonCode, MqttProperties properties) {}
