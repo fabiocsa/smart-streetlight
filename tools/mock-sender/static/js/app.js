@@ -73,7 +73,6 @@ function buildCard(s) {
     const isRunning = s.running;
     const autoMode = s.autoSendMode || 'algorithm';
     const groupTag = s.groupTag || '';
-    const boundDeviceId = s.boundDeviceId || '';
     const safeKey = escAttr(s.sensorKey);
 
     let cardStateClass = 'stopped';
@@ -112,7 +111,6 @@ function buildCard(s) {
         </div>
         <div class="sensor-card-body">
             ${groupTag ? `<div class="mb-2"><span class="device-group-tag"><i class="bi bi-folder"></i> ${escHtml(groupTag)}</span></div>` : ''}
-            ${boundDeviceId ? `<div class="card-row"><span class="label">绑定设备</span><span class="value"><span class="badge bg-success">${escHtml(boundDeviceId)}</span></span></div>` : `<div class="card-row"><span class="label">绑定设备</span><span class="value"><span class="badge bg-secondary">未绑定</span></span></div>`}
             <div class="card-row"><span class="label">类型</span><span class="value">${typeIcon} ${typeLabel}</span></div>
             <div class="card-row"><span class="label">主题</span><span class="value mono">${escHtml(s.dataTopic || '-')}</span></div>
             <div class="card-row"><span class="label">频率</span><span class="value">每 ${s.interval || 5} 秒</span></div>
@@ -284,6 +282,7 @@ function editSensor(sensorKey) {
     const form = document.getElementById('addSensorForm');
     if (!form) return;
     form.querySelector('[name="sensorType"]').value = s.sensorType || 'light';
+    // v4: deviceId no longer needed
     form.querySelector('[name="displayName"]').value = s.displayName || '';
     form.querySelector('[name="groupTag"]').value = s.groupTag || '';
     form.querySelector('[name="dataTopic"]').value = s.dataTopic || '';
@@ -388,7 +387,7 @@ function saveMqttConfig() {
 
 function sendMockConfig() {
     const action = document.getElementById('cmdAction')?.value || '';
-    const deviceId = document.getElementById('cmdDeviceId')?.value?.trim() || '';
+    // v4: deviceId removed from config commands
     let params = {};
     try {
         const raw = document.getElementById('cmdParams')?.value?.trim();
@@ -401,7 +400,7 @@ function sendMockConfig() {
     fetch('/api/mock-config/send', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ action, deviceId, params }),
+        body: JSON.stringify({ action, params }),
     }).then(r => r.json()).then(resp => {
         if (el) el.innerHTML = `<span class="${resp.success ? 'text-success' : 'text-warning'}">${resp.message}</span>`;
     }).catch(err => { if (el) el.innerHTML = `<span class="text-danger">${err.message}</span>`; });
@@ -492,7 +491,7 @@ function generateSampleContent() {
     const key = document.getElementById('msgTemplateModal').dataset.sensorKey;
     const s = sensorList.find(x => x.sensorKey === key);
     const type = s ? s.sensorType : 'light';
-    fetch(`/api/sensors/generate-sample/${type}?deviceId=${encodeURIComponent(s?.deviceId || 'SL-001')}`)
+    fetch(`/api/sensors/generate-sample/${type}`)
         .then(r => r.json())
         .then(data => { document.getElementById('autoSendContentInput').value = data.sample; })
         .catch(() => {});
@@ -517,10 +516,7 @@ function loadPresetTemplate(type) {
     fetch(`/api/sensors/generate-sample/${type}`)
         .then(r => r.json())
         .then(data => {
-            const obj = JSON.parse(data.sample);
-            obj.deviceId = '{{deviceId}}';
-            obj.timestamp = '{{timestamp}}';
-            document.getElementById('autoSendContentInput').value = JSON.stringify(obj, null, 2);
+            document.getElementById('autoSendContentInput').value = data.sample;
         }).catch(() => {});
 }
 
@@ -558,7 +554,7 @@ function renderHistory(filterKey) {
         <div class="history-item">
             <div class="history-header" data-bs-toggle="collapse" data-bs-target="#${histId}">
                 <span class="history-time">${escHtml(h.time)}</span>
-                <span class="history-label">${escHtml(h.displayName || h.deviceId)}</span>
+                <span class="history-label">${escHtml(h.displayName || h.sensorKey || '')}</span>
                 <span class="history-chevron ms-auto"><i class="bi bi-chevron-down"></i></span>
             </div>
             <div class="collapse${showClass}" id="${histId}"><div class="history-topic small text-muted">${escHtml(h.topic)}</div>

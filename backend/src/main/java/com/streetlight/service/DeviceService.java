@@ -3,8 +3,6 @@ package com.streetlight.service;
 import com.streetlight.common.BusinessException;
 import com.streetlight.entity.Device;
 import com.streetlight.entity.Sensor;
-import com.streetlight.mqtt.MqttClientManager;
-import com.streetlight.mqtt.MqttPublishService;
 import com.streetlight.repository.DeviceRepository;
 import com.streetlight.repository.SensorRepository;
 import lombok.RequiredArgsConstructor;
@@ -24,8 +22,6 @@ public class DeviceService {
 
     private final DeviceRepository deviceRepository;
     private final SensorRepository sensorRepository;
-    private final MqttClientManager mqttClientManager;
-    private final MqttPublishService mqttPublishService;
 
     public List<Device> getAllDevices() {
         return deviceRepository.findAll();
@@ -52,8 +48,6 @@ public class DeviceService {
         device.setLightStatus("off");
         device.setControlMode("auto");
         Device saved = deviceRepository.save(device);
-        // 订阅该设备的 MQTT 控制主题
-        mqttClientManager.subscribeDevice(device.getDeviceId());
         log.info("设备添加成功 - deviceId: {}", device.getDeviceId());
         return saved;
     }
@@ -70,9 +64,6 @@ public class DeviceService {
     @Transactional
     public void deleteDevice(Long id) {
         deviceRepository.findById(id).ifPresent(device -> {
-            // 先取消订阅 MQTT 主题
-            mqttClientManager.unsubscribeDevice(device.getDeviceId());
-            // 再删除数据库记录（级联删除 device_sensor 关联）
             deviceRepository.deleteById(id);
             log.info("设备删除成功 - deviceId: {}", device.getDeviceId());
         });
@@ -120,12 +111,8 @@ public class DeviceService {
         device.getSensors().add(sensor);
         deviceRepository.save(device);
 
-        // 通过 MQTT 通知模拟器（用 simulatorSensorId，模拟器只认识自己的内部 ID）
-        Long simSensorId = sensor.getSimulatorSensorId() != null ? sensor.getSimulatorSensorId() : sensorId;
-        mqttPublishService.publishBindingConfig("bind_to_device", device.getDeviceId(), simSensorId);
-
-        log.info("设备绑定传感器 - deviceId: {}, sensorId: {}, simulatorSensorId: {}",
-                device.getDeviceId(), sensorId, simSensorId);
+        log.info("设备绑定传感器 - deviceId: {}, sensorId: {}",
+                device.getDeviceId(), sensorId);
     }
 
     /**
@@ -141,12 +128,8 @@ public class DeviceService {
         device.getSensors().removeIf(s -> s.getId().equals(sensorId));
         deviceRepository.save(device);
 
-        // 通过 MQTT 通知模拟器（用 simulatorSensorId，模拟器只认识自己的内部 ID）
-        Long simSensorId = sensor.getSimulatorSensorId() != null ? sensor.getSimulatorSensorId() : sensorId;
-        mqttPublishService.publishBindingConfig("unbind_from_device", device.getDeviceId(), simSensorId);
-
-        log.info("设备解绑传感器 - deviceId: {}, sensorId: {}, simulatorSensorId: {}",
-                device.getDeviceId(), sensorId, simSensorId);
+        log.info("设备解绑传感器 - deviceId: {}, sensorId: {}",
+                device.getDeviceId(), sensorId);
     }
 
     /**

@@ -1,14 +1,14 @@
 """
-传感器管理器 (v3)
+传感器管理器 (v4 — 去设备化)
 ===========
 管理所有模拟传感器的生命周期：添加、删除、启动、停止。
 每个传感器在独立线程中按配置频率发布数据。
 
-v3 变更:
-  - 传感器完全独立，不持有后端设备 ID
-  - 内部键格式: sensor_{sensorId}
-  - MQTT 注册/数据使用传感器自身 sensorId，不携带 deviceId
-  - 设备绑定通过 MQTT 配置指令 (bind_to_device / unbind_from_device) 实现
+v4 变更:
+  - 完全删除 deviceId 概念（传感器只认自己的 sensorId）
+  - 控制指令通过 sensor cmd topic 接收: streetlight/sensor/{sensorId}/cmd
+  - 控制响应通过 sensor cmd response topic 发送
+  - 启动时订阅自己的 cmd 主题，不再订阅设备控制主题
 """
 
 import logging
@@ -20,7 +20,6 @@ from typing import Any, Callable, Dict, List, Optional
 
 from sender.config_manager import ConfigManager, _make_sensor_key
 from sender.data_generator import (
-    generate_control_response,
     generate_heartbeat,
     generate_sensor_data,
 )
@@ -30,7 +29,6 @@ logger = logging.getLogger("mock-sender.sensor")
 
 
 def _sensor_label(cfg: Dict[str, Any]) -> str:
-    """生成传感器可读标签: 传感器名"""
     sensor_name = cfg.get("displayName") or cfg.get("sensorType") or "传感器"
     tag = cfg.get("groupTag", "")
     if tag:
@@ -39,7 +37,10 @@ def _sensor_label(cfg: Dict[str, Any]) -> str:
 
 
 class SensorWorker:
-    """单个传感器的工作线程。定时发布传感器数据到 MQTT。"""
+    """单个传感器的工作线程。定时发布传感器数据到 MQTT。
+
+    v4: 传感器不持有 deviceId，控制指令通过自有的 cmd 主题接收。
+    """
 
     def __init__(
         self,
@@ -65,10 +66,6 @@ class SensorWorker:
 
         self._light_status = config.get("lightStatus", "off")
         self._control_mode = config.get("controlMode", "auto")
-
-        # 设备绑定追踪（由 bind_to_device / unbind_from_device 控制）
-        self._bound_device_id: str = ""
-        self._subscribed_device: str = ""
 
         self.publish_count = 0
         self.heartbeat_count = 0
@@ -109,25 +106,60 @@ class SensorWorker:
         return self.config.get("sensorType", "light")
 
     # ------------------------------------------------------------------
-    # 设备绑定控制
+    # v4: 传感器 cmd 主题订阅
     # ------------------------------------------------------------------
 
-    def bind_to_device(self, device_id: str) -> None:
-        """绑定到设备：订阅设备控制主题。"""
-        if self._bound_device_id == device_id and self._subscribed_device == device_id:
-            return
-        self._bound_device_id = device_id
-        self._mqtt.subscribe_device(device_id)
-        self._subscribed_device = device_id
-        logger.info(f"传感器 [{self._label}] 已绑定到设备 {device_id}")
+    def _subscribe_cmd(self) -> None:
+        """订阅传感器自身的控制指令主题: streetlight/sensor/{sensorId}/cmd"""
+        self._mqtt.subscribe_sensor_cmd(self.sensor_id)
+        logger.info(f"传感器 [{self._label}] 已订阅 cmd 主题 (sensorId={self.sensor_id})")
 
-    def unbind_from_device(self) -> None:
-        """从设备解绑：取消控制订阅。"""
-        if self._subscribed_device:
-            self._mqtt.unsubscribe_device(self._subscribed_device)
-            logger.info(f"传感器 [{self._label}] 已从设备 {self._subscribed_device} 解绑")
-            self._subscribed_device = ""
-            self._bound_device_id = ""
+    # ------------------------------------------------------------------
+    # v4: 处理控制指令
+    # ------------------------------------------------------------------
+
+    def on_cmd(self, payload: Dict[str, Any]) -> None:
+        """处理收到的控制指令（来自 streetlight/sensor/{sensorId}/cmd）。"""
+        command = payload.get("command", "")
+        source = payload.get("source", "manual")
+        brightness = payload.get("brightness")
+
+        if command == "on":
+            self._light_status = "on"
+            self.config["lightStatus"] = "on"
+            if brightness is not None:
+                self.config["brightness"] = brightness
+        elif command == "off":
+            self._light_status = "off"
+            self.config["lightStatus"] = "off"
+            self.config.pop("brightness", None)
+        else:
+            logger.warning(f"[{self._label}] 未知控制指令: {command}")
+            return
+
+        # manual 来源 → 手动模式；auto 来源 → 自动模式（恢复自动上报）
+        if source == "manual":
+            self._control_mode = "manual"
+            self.config["controlMode"] = "manual"
+        elif source == "auto":
+            self._control_mode = "auto"
+            self.config["controlMode"] = "auto"
+
+        logger.info(
+            f"[{self._label}] 收到控制指令: {command} (source={source}, brightness={brightness})"
+        )
+
+        # 发送响应
+        response = {
+            "command": command,
+            "result": "success",
+            "source": source,
+            "sensorId": self.sensor_id,
+            "timestamp": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+        }
+        if brightness is not None:
+            response["brightness"] = brightness
+        self._mqtt.publish_cmd_response(self.sensor_id, response)
 
     # ------------------------------------------------------------------
     # 控制
@@ -138,19 +170,25 @@ class SensorWorker:
             return False
         self._running = True
         self._start_time = time.time()
+        # v4: 从 config 恢复运行状态（防止 stop+start 后仍保留上次手动模式的状态）
+        self._control_mode = self.config.get("controlMode", "auto")
+        self._light_status = self.config.get("lightStatus", "off")
+        self._subscribe_cmd()
         self._thread = threading.Thread(
             target=self._run_loop,
             name=f"sensor-{self.sensor_key}",
             daemon=True,
         )
         self._thread.start()
-        logger.info(f"传感器 {self._label} 已启动 (interval={self.interval}s)")
+        logger.info(f"传感器 {self._label} 已启动 (interval={self.interval}s, mode={self._control_mode})")
         return True
 
     def stop(self) -> None:
         self._running = False
         if self._thread and self._thread.is_alive():
             self._thread.join(timeout=3)
+        # v4: 停止时取消 cmd 订阅
+        self._mqtt.unsubscribe_sensor_cmd(self.sensor_id)
         logger.info(f"传感器 {self._label} 已停止")
         if self._on_stopped:
             self._on_stopped(self.sensor_key)
@@ -181,16 +219,15 @@ class SensorWorker:
     # ------------------------------------------------------------------
 
     def _do_publish(self) -> bool:
-        """执行一次传感器数据发布，使用传感器自身 sensorId。"""
+        """执行一次传感器数据发布（v4: 不再携带 deviceId）。"""
         now = time.time()
         import json as _json
 
         data_range = self.config.get("dataRange", {"min": 0, "max": 800})
-        data_topic = self.config.get("dataTopic", "")
         brightness = self.config.get("brightness")
         my_sensor_type = self.sensor_type
         my_sensor_id = self.sensor_id
-        actual_topic = data_topic or f"streetlight/sensor/{my_sensor_id}/data"
+        actual_topic = f"streetlight/sensor/{my_sensor_id}/data"
 
         extra = {
             "controlMode": self._control_mode,
@@ -201,6 +238,17 @@ class SensorWorker:
         if group_tag:
             extra["groupTag"] = group_tag
 
+        # v4: 生成数据时不再传 device_id
+        base_payload = generate_sensor_data(
+            light_status=self._light_status,
+            data_range=data_range,
+            extra_fields=extra,
+            brightness=brightness,
+            sim_config=self._sim_config,
+            sensor_type=my_sensor_type,
+            sensor_id=my_sensor_id,
+        )
+
         send_mode = self.config.get("autoSendMode", "algorithm")
 
         if send_mode == "fixed":
@@ -209,39 +257,24 @@ class SensorWorker:
                 from datetime import datetime as dt, timezone
                 ts = dt.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
                 content = fixed_content.replace("{{timestamp}}", ts)
-                content = content.replace("{{deviceId}}", self._bound_device_id)
                 try:
-                    payload = _json.loads(content)
-                except (_json.JSONDecodeError, TypeError):
-                    logger.warning(f"[{self._label}] 固定内容格式错误，回退到算法模式")
-                    payload = generate_sensor_data(
-                        device_id=self._bound_device_id,
-                        light_status=self._light_status,
-                        data_range=data_range,
-                        extra_fields=extra,
-                        brightness=brightness,
-                        sim_config=self._sim_config,
-                        sensor_type=my_sensor_type,
-                        sensor_id=my_sensor_id,
-                    )
-            else:
-                payload = generate_sensor_data(
-                    device_id=self._bound_device_id,
-                    light_status=self._light_status,
-                    data_range=data_range,
-                    extra_fields=extra,
-                    brightness=brightness,
-                    sim_config=self._sim_config,
-                    sensor_type=my_sensor_type,
-                    sensor_id=my_sensor_id,
-                )
-        else:
+                    overrides = _json.loads(content)
+                    base_payload.update(overrides)
+                    if "illuminance" in overrides and "lightIntensity" not in overrides:
+                        base_payload["lightIntensity"] = overrides["illuminance"]
+                    elif "lightIntensity" in overrides and "illuminance" not in overrides:
+                        base_payload["illuminance"] = overrides["lightIntensity"]
+                    logger.info(f"[{self._label}] 固定模式发送: illuminance={base_payload.get('illuminance')}, "
+                                f"sensorType={base_payload.get('sensorType')}")
+                except (_json.JSONDecodeError, TypeError) as e:
+                    logger.warning(f"[{self._label}] 固定内容 JSON 格式错误: {e}")
+
+        elif send_mode == "template":
             message_template = self.config.get("messageTemplate", "")
             if message_template and message_template.strip():
                 from sender.data_generator import generate_sensor_data_with_template
                 msg_str = generate_sensor_data_with_template(
                     template=message_template,
-                    device_id=self._bound_device_id,
                     light_status=self._light_status,
                     data_range=data_range,
                     extra_fields=extra,
@@ -251,39 +284,24 @@ class SensorWorker:
                     sensor_id=my_sensor_id,
                 )
                 try:
-                    payload = _json.loads(msg_str)
-                except (_json.JSONDecodeError, TypeError):
-                    payload = generate_sensor_data(
-                        device_id=self._bound_device_id,
-                        light_status=self._light_status,
-                        data_range=data_range,
-                        extra_fields=extra,
-                        brightness=brightness,
-                        sim_config=self._sim_config,
-                        sensor_type=my_sensor_type,
-                        sensor_id=my_sensor_id,
-                    )
-            else:
-                payload = generate_sensor_data(
-                    device_id=self._bound_device_id,
-                    light_status=self._light_status,
-                    data_range=data_range,
-                    extra_fields=extra,
-                    brightness=brightness,
-                    sim_config=self._sim_config,
-                    sensor_type=my_sensor_type,
-                    sensor_id=my_sensor_id,
-                )
+                    overrides = _json.loads(msg_str)
+                    base_payload.update(overrides)
+                except (_json.JSONDecodeError, TypeError) as e:
+                    logger.warning(f"[{self._label}] 模板渲染格式错误: {e}")
 
-        ok = self._mqtt.publish_sensor_data(my_sensor_id, payload, data_topic)
+        ok = self._mqtt.publish_sensor_data(my_sensor_id, base_payload)
         if ok:
             self.publish_count += 1
             self.last_publish_time = now
+            logger.debug(f"[{self._label}] 数据已发送: illuminance={base_payload.get('illuminance')}, "
+                         f"status={base_payload.get('status')}")
             if self._on_publish:
                 self._on_publish(
                     self.sensor_key, my_sensor_id,
-                    self.display_name, actual_topic, payload,
+                    self.display_name, actual_topic, base_payload,
                 )
+        else:
+            logger.warning(f"[{self._label}] 数据发送失败（MQTT可能未连接）")
         return ok
 
     def _run_loop(self) -> None:
@@ -297,22 +315,28 @@ class SensorWorker:
                 time.sleep(0.5)
                 continue
 
-            self._do_publish()
+            try:
+                self._do_publish()
+            except Exception as e:
+                logger.error(f"[{self._label}] 数据发布异常: {e}", exc_info=True)
 
-            # 传感器心跳（总是发送，使用自身 sensorId）
-            if now - last_heartbeat_time >= heartbeat_interval:
-                hb_payload = generate_heartbeat(self._bound_device_id or f"sensor_{self.sensor_id}")
-                hb_payload["sensorKey"] = self.sensor_key
-                hb_payload["sensorId"] = self.sensor_id
-                if self._mqtt.publish_heartbeat(self.sensor_id, hb_payload):
-                    self.heartbeat_count += 1
-                last_heartbeat_time = now
+            # 传感器心跳（v4: 使用 sensor_id，不携带 deviceId）
+            try:
+                if now - last_heartbeat_time >= heartbeat_interval:
+                    hb_payload = generate_heartbeat(self.sensor_id)
+                    hb_payload["sensorKey"] = self.sensor_key
+                    hb_payload["sensorId"] = self.sensor_id
+                    if self._mqtt.publish_heartbeat(self.sensor_id, hb_payload):
+                        self.heartbeat_count += 1
+                    last_heartbeat_time = now
+            except Exception as e:
+                logger.error(f"[{self._label}] 心跳发送异常: {e}")
 
             time.sleep(self.interval)
 
 
 class SensorManager:
-    """传感器管理器，管理所有 SensorWorker。"""
+    """传感器管理器 (v4)。"""
 
     def __init__(self, config_mgr: ConfigManager, mqtt_mgr: MqttClientManager):
         self._config_mgr = config_mgr
@@ -328,7 +352,6 @@ class SensorManager:
     # ------------------------------------------------------------------
 
     def list_sensors(self) -> List[Dict[str, Any]]:
-        """返回所有传感器的摘要信息。"""
         result = []
         with self._lock:
             for sensor_key, worker in self._workers.items():
@@ -340,7 +363,6 @@ class SensorManager:
                     "sensorType": worker.sensor_type,
                     "groupTag": cfg.get("groupTag", ""),
                     "dataTopic": cfg.get("dataTopic", ""),
-                    "boundDeviceId": worker._bound_device_id or "",
                     "running": worker.is_running,
                     "interval": worker.interval,
                     "lightStatus": worker.light_status,
@@ -367,7 +389,6 @@ class SensorManager:
                 "sensorType": worker.sensor_type,
                 "groupTag": cfg.get("groupTag", ""),
                 "dataTopic": cfg.get("dataTopic", ""),
-                "boundDeviceId": worker._bound_device_id or "",
                 "running": worker.is_running,
                 "interval": worker.interval,
                 "lightStatus": worker.light_status,
@@ -387,24 +408,18 @@ class SensorManager:
     # ------------------------------------------------------------------
 
     def add_sensor(self, sensor_cfg: Dict[str, Any]) -> Optional[str]:
-        """添加独立传感器并自动启动（v3: 不绑定设备）。"""
         with self._lock:
             sensor_id = sensor_cfg.get("sensorId", int(time.time() * 1000) % 100000)
             key = _make_sensor_key(sensor_id)
-
             if key in self._workers:
                 logger.warning(f"传感器 {key} 已存在，跳过")
                 return None
-
-            # 保存到配置
             saved_key = self._config_mgr.add_sensor(sensor_cfg)
             if not saved_key:
                 return None
-
             cfg = self._config_mgr.get_sensor(saved_key)
             if not cfg:
                 return None
-
             worker = SensorWorker(saved_key, cfg, self._mqtt_mgr,
                                   sim_config=self._config_mgr.get_simulation_config(),
                                   on_publish=self._record_publish)
@@ -413,65 +428,44 @@ class SensorManager:
         worker.start()
         logger.info(f"已添加传感器: {_sensor_label(cfg)} (key={saved_key})")
 
-        # MQTT 全局注册（v3: 不携带 deviceId）
+        # MQTT 注册（v4: 不携带 deviceId）
         sensor_info = {
             "sensorId": sensor_id,
             "sensorType": cfg.get("sensorType", "light"),
             "displayName": cfg.get("displayName", ""),
-            "dataTopic": cfg.get("dataTopic", ""),
+            "dataTopic": f"streetlight/sensor/{sensor_id}/data",
             "reportFrequency": cfg.get("interval", 5),
             "configJson": cfg.get("configJson", ""),
             "enabled": True,
             "timestamp": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
         }
         self._mqtt_mgr.publish_sensor_register(sensor_info)
-
         return saved_key
 
     def remove_sensor(self, sensor_key: str) -> bool:
-        """停止并移除传感器，通过 MQTT 发布注销。"""
         with self._lock:
             worker = self._workers.pop(sensor_key, None)
             if not worker:
                 return False
-
-        worker.unbind_from_device()
         worker.stop()
         self._config_mgr.remove_sensor(sensor_key)
         logger.info(f"已移除传感器: {_sensor_label(worker.config)} (key={sensor_key})")
-
-        # MQTT 注销
         self._mqtt_mgr.publish_sensor_unregister(worker.sensor_id)
-
         return True
 
     # ------------------------------------------------------------------
-    # 设备绑定 / 解绑（由后端 MQTT 配置指令触发）
+    # v4: 传感器 cmd 指令处理
     # ------------------------------------------------------------------
 
-    def bind_to_device(self, sensor_id: int, device_id: str) -> bool:
-        """将传感器绑定到指定设备：订阅设备控制主题。"""
+    def on_sensor_cmd(self, sensor_id: int, payload: Dict[str, Any]) -> None:
+        """分发控制指令到对应 sensorId 的 worker。"""
         key = _make_sensor_key(sensor_id)
         with self._lock:
             worker = self._workers.get(key)
-            if not worker:
-                logger.warning(f"传感器 {key} 不存在，无法绑定到设备 {device_id}")
-                return False
-            worker.bind_to_device(device_id)
-        logger.info(f"传感器 {key} 已绑定到设备 {device_id}")
-        return True
-
-    def unbind_from_device(self, sensor_id: int) -> bool:
-        """将传感器从设备解绑：取消控制订阅。"""
-        key = _make_sensor_key(sensor_id)
-        with self._lock:
-            worker = self._workers.get(key)
-            if not worker:
-                logger.warning(f"传感器 {key} 不存在，无法解绑")
-                return False
-            worker.unbind_from_device()
-        logger.info(f"传感器 {key} 已解绑")
-        return True
+        if worker:
+            worker.on_cmd(payload)
+        else:
+            logger.warning(f"收到未知传感器 {sensor_id} 的控制指令，忽略")
 
     # ------------------------------------------------------------------
     # 启停
@@ -507,64 +501,10 @@ class SensorManager:
             return True
 
     # ------------------------------------------------------------------
-    # 控制指令处理
-    # ------------------------------------------------------------------
-
-    def handle_control_command(self, device_id: str, payload: Dict[str, Any]) -> None:
-        """处理下发的开关灯控制指令（作用于绑定到此设备的所有传感器）。"""
-        if not device_id:
-            logger.debug("忽略空 deviceId 的控制指令")
-            return
-
-        command = payload.get("command", "")
-        source = payload.get("source", "manual")
-        brightness = payload.get("brightness")
-
-        affected = []
-        with self._lock:
-            for sensor_key, worker in self._workers.items():
-                if worker._bound_device_id == device_id:
-                    if command == "on":
-                        worker.set_light_status("on")
-                        if brightness is not None:
-                            worker.config["brightness"] = brightness
-                    elif command == "off":
-                        worker.set_light_status("off")
-                        worker.config.pop("brightness", None)
-                    else:
-                        logger.warning(f"未知控制指令: {command}")
-                        return
-
-                    new_mode = "manual" if source == "manual" else "auto"
-                    old_mode = worker.control_mode
-                    if old_mode != new_mode:
-                        worker.set_control_mode(new_mode)
-                        worker.config["controlMode"] = new_mode
-                        logger.info(f"传感器 [{_sensor_label(worker.config)}] 模式切换: "
-                                    f"{old_mode} → {new_mode} (来源: {source})")
-
-                    affected.append(sensor_key)
-
-        if not affected:
-            logger.warning(f"控制指令: 设备 {device_id} 无绑定传感器")
-            return
-
-        brightness_info = f", 亮度={brightness}%" if brightness is not None else ""
-        logger.info(f"设备 {device_id} 灯光 -> {command}{brightness_info} "
-                    f"(来源: {source}, 影响 {len(affected)} 个传感器)")
-
-        response = generate_control_response(device_id, command, "success")
-        response["source"] = source
-        if brightness is not None:
-            response["brightness"] = brightness
-        self._mqtt_mgr.publish_control_response(device_id, response)
-
-    # ------------------------------------------------------------------
     # 批量加载
     # ------------------------------------------------------------------
 
     def load_from_config(self) -> int:
-        """从本地配置文件中加载所有 enabled 的传感器。"""
         sensors = self._config_mgr.get_all_sensors()
         count = 0
         for sensor_key, cfg in sensors.items():
@@ -587,7 +527,6 @@ class SensorManager:
     def _record_publish(self, sensor_key: str, sensor_id: int,
                         display_name: str, topic: str,
                         payload: Dict[str, Any]) -> None:
-        """记录一次成功发送到历史队列。"""
         try:
             with self._history_lock:
                 self._history.append({
@@ -652,19 +591,15 @@ class SensorManager:
         logger.info("已停止所有传感器")
 
     def shutdown(self) -> None:
-        """关闭所有传感器工作线程但不删除配置（用于进程退出时的安全清理）。"""
         with self._lock:
             keys = list(self._workers.keys())
         for key in keys:
             worker = self._workers.pop(key, None)
             if worker:
-                worker.unbind_from_device()
                 worker.stop()
         logger.info(f"已关闭 {len(keys)} 个传感器工作线程（配置已保留）")
 
     def re_register_all(self) -> int:
-        """重新注册所有运行中的传感器到 MQTT（用于连接/重连时恢复注册）。
-        确保后端无论何时启动都能发现模拟器中已存在的传感器。"""
         count = 0
         with self._lock:
             workers = list(self._workers.items())
@@ -674,7 +609,7 @@ class SensorManager:
                 "sensorId": worker.sensor_id,
                 "sensorType": worker.sensor_type,
                 "displayName": worker.display_name,
-                "dataTopic": cfg.get("dataTopic", ""),
+                "dataTopic": f"streetlight/sensor/{worker.sensor_id}/data",
                 "reportFrequency": worker.interval,
                 "configJson": cfg.get("configJson", ""),
                 "enabled": True,

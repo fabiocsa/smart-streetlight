@@ -1,9 +1,11 @@
 package com.streetlight.service.impl;
 
+import com.streetlight.entity.ControlLog;
 import com.streetlight.entity.Device;
 import com.streetlight.entity.Sensor;
 import com.streetlight.entity.SensorData;
 import com.streetlight.mqtt.MqttPublishService;
+import com.streetlight.repository.ControlLogRepository;
 import com.streetlight.repository.DeviceRepository;
 import com.streetlight.repository.SensorDataRepository;
 import com.streetlight.repository.SensorRepository;
@@ -29,6 +31,7 @@ public class SensorDataServiceImpl implements SensorDataService {
     private final SensorDataRepository sensorDataRepository;
     private final DeviceRepository deviceRepository;
     private final SensorRepository sensorRepository;
+    private final ControlLogRepository controlLogRepository;
     private final AlarmService alarmService;
     private final MqttPublishService mqttPublishService;
     private final EntityManager entityManager;
@@ -38,6 +41,7 @@ public class SensorDataServiceImpl implements SensorDataService {
     public SensorDataServiceImpl(SensorDataRepository sensorDataRepository,
                                   DeviceRepository deviceRepository,
                                   SensorRepository sensorRepository,
+                                  ControlLogRepository controlLogRepository,
                                   AlarmService alarmService,
                                   MqttPublishService mqttPublishService,
                                   EntityManager entityManager,
@@ -46,6 +50,7 @@ public class SensorDataServiceImpl implements SensorDataService {
         this.sensorDataRepository = sensorDataRepository;
         this.deviceRepository = deviceRepository;
         this.sensorRepository = sensorRepository;
+        this.controlLogRepository = controlLogRepository;
         this.alarmService = alarmService;
         this.mqttPublishService = mqttPublishService;
         this.entityManager = entityManager;
@@ -57,15 +62,14 @@ public class SensorDataServiceImpl implements SensorDataService {
     @Transactional
     public SensorData saveAndAutoControl(String deviceId, Long sensorId, String sensorType,
                                           Map<String, Object> data, LocalDateTime reportedAt) {
-        // 保存完整传感器数据（含未绑定传感器的数据，deviceId 可能为 sensor_{id}）
+        // ===== 第1步：保存传感器数据（无论是否绑定设备，数据都要入库） =====
         SensorData sd = SensorData.from(deviceId, sensorId, sensorType, data, reportedAt);
         sensorDataRepository.save(sd);
-        log.info("传感器数据已保存: deviceId={}, sensorId={}, type={}, fields={}",
-                deviceId, sensorId, sensorType, data.keySet());
+        log.info("[自动联动诊断] deviceId={}, sensorId={}, sensorType={}, 是否未绑定={}, data字段={}",
+                deviceId, sensorId, sensorType, deviceId.startsWith("sensor_"), data.keySet());
 
-        // 设备不存在或传感器未绑定时：自动注册/恢复传感器（容错恢复）
+        // ===== 第2步：传感器未绑定时，自动注册并跳过联动 =====
         if (deviceId.startsWith("sensor_")) {
-            // 委托给 SensorRegistrationService（独立事务），失败不影响数据保存
             try {
                 String displayName = data.containsKey("displayName") && data.get("displayName") != null
                         ? data.get("displayName").toString() : null;
@@ -76,20 +80,21 @@ public class SensorDataServiceImpl implements SensorDataService {
                 log.warn("传感器自动注册失败（不影响数据保存）: sensorId={}, error={}",
                         sensorId, e.getMessage());
             }
-            log.debug("传感器未绑定设备，跳过联动: deviceId={}, sensorId={}", deviceId, sensorId);
+            log.info("传感器未绑定设备，跳过自动联动。请在前端将传感器绑定到设备以启用自动开关灯。" +
+                     " deviceId={}, sensorId={}, sensorType={}", deviceId, sensorId, sensorType);
             return sd;
         }
 
+        // ===== 第3步：非锁定查找设备（用于心跳更新） =====
         Optional<Device> deviceOpt = deviceRepository.findByDeviceId(deviceId);
         if (deviceOpt.isEmpty()) {
-            log.debug("设备 {} 不存在（可能已被删除），跳过联动", deviceId);
+            log.info("设备 {} 不存在（可能已被删除），跳过自动联动", deviceId);
             return sd;
         }
         Device device = deviceOpt.get();
 
-        // 从 data map 中提取光照强度用于自动联动
+        // ===== 第4步：更新心跳 & 设备恢复在线 =====
         Double lightIntensity = extractLightIntensity(data);
-
         boolean wasOffline = "offline".equals(device.getStatus());
         device.setLastHeartbeat(LocalDateTime.now());
         if (wasOffline) {
@@ -99,33 +104,88 @@ public class SensorDataServiceImpl implements SensorDataService {
         }
         deviceRepository.save(device);
 
-        // 推送传感器数据到 WebSocket
+        // ===== 第5步：推送 WebSocket 实时数据 =====
         webSocketHandler.pushSensorData(deviceId, sensorType, data,
                 reportedAt != null ? reportedAt.toString() : LocalDateTime.now().toString());
-        log.debug("已推送传感器数据到WebSocket: deviceId={}, sensorType={}, fields={}",
-                deviceId, sensorType, data.keySet());
 
-        // 光照联动控制（仅 light 类型传感器触发）
-        if (lightIntensity != null && "light".equals(sensorType)) {
-            entityManager.flush();
-            entityManager.clear();
-            Device freshDevice = deviceRepository.findByDeviceId(deviceId).orElse(device);
+        // ===== 第6步：判断是否需要进入自动联动决策 =====
+        if (lightIntensity == null) {
+            log.info("传感器数据中无光照字段(illuminance/lightIntensity)，跳过自动联动。" +
+                     " deviceId={}, sensorType={}, fields={}", deviceId, sensorType, data.keySet());
+            return sd;
+        }
+        if (!"light".equals(sensorType)) {
+            log.info("传感器类型非 light(sensorType={})，跳过自动联动。 deviceId={}", sensorType, deviceId);
+            return sd;
+        }
 
-            if ("auto".equals(freshDevice.getControlMode())) {
-                String cmd = null;
-                if ("off".equals(freshDevice.getLightStatus()) && lightIntensity < freshDevice.getThresholdOn()) {
-                    cmd = "on";
-                } else if ("on".equals(freshDevice.getLightStatus()) && lightIntensity > freshDevice.getThresholdOff()) {
-                    cmd = "off";
-                }
-                if (cmd != null) {
+        // ===== 第7步：悲观锁读取设备最新状态，防止并发重复触发 =====
+        // flush + clear 将心跳更新刷入 DB 并清空一级缓存，
+        // 确保后续 findByDeviceIdForUpdate 命中 DB 行锁而非 JPA 缓存。
+        entityManager.flush();
+        entityManager.clear();
+
+        Device lockedDevice = deviceRepository.findByDeviceIdForUpdate(deviceId).orElse(null);
+        if (lockedDevice == null) {
+            log.warn("设备 {} 在锁定读取时不存在，跳过自动联动", deviceId);
+            return sd;
+        }
+
+        // ===== 第8步：检查控制模式（持有行锁） =====
+        if (!"auto".equals(lockedDevice.getControlMode())) {
+            log.info("设备 {} 控制模式为 {}（持锁读取），跳过自动联动。光照={}",
+                    deviceId, lockedDevice.getControlMode(), lightIntensity);
+            return sd;
+        }
+
+        // ===== 第9步：迟滞双阈值联动决策（持有行锁） =====
+        String cmd = null;
+        if ("off".equals(lockedDevice.getLightStatus()) && lightIntensity < lockedDevice.getThresholdOn()) {
+            cmd = "on";
+            log.info("触发自动开灯: deviceId={}, 光照={} < 开灯阈值={}",
+                    deviceId, lightIntensity, lockedDevice.getThresholdOn());
+        } else if ("on".equals(lockedDevice.getLightStatus()) && lightIntensity > lockedDevice.getThresholdOff()) {
+            cmd = "off";
+            log.info("触发自动关灯: deviceId={}, 光照={} > 关灯阈值={}",
+                    deviceId, lightIntensity, lockedDevice.getThresholdOff());
+        } else {
+            log.info("光照在阈值区间内，不触发联动: deviceId={}, 光照={}, " +
+                     "开灯阈值={}, 关灯阈值={}, 当前灯状态={}",
+                     deviceId, lightIntensity, lockedDevice.getThresholdOn(),
+                     lockedDevice.getThresholdOff(), lockedDevice.getLightStatus());
+        }
+
+        if (cmd != null) {
+            // 查找设备绑定的 light 传感器，通过传感器 cmd 主题下发指令
+            List<Sensor> lightSensors = sensorRepository
+                    .findBoundSensorsByDeviceIdAndType(deviceId, "light");
+            if (lightSensors.isEmpty()) {
+                log.warn("设备 {} 未绑定 light 传感器，无法下发控制指令", deviceId);
+            } else {
+                // ★ 先写控制日志（result=null），等传感器 cmd response 回填
+                ControlLog clog = ControlLog.builder()
+                        .deviceId(deviceId).command(cmd).source("auto").build();
+                controlLogRepository.save(clog);
+
+                boolean allSent = true;
+                for (Sensor s : lightSensors) {
+                    Long targetSensorId = s.getSimulatorSensorId() != null
+                            ? s.getSimulatorSensorId() : s.getId();
                     try {
-                        mqttPublishService.publishCommand(deviceId, cmd, "auto");
-                        log.info("自动联动: deviceId={}, light={}, cmd={}", deviceId, lightIntensity, cmd);
+                        mqttPublishService.publishCommand(targetSensorId, deviceId, cmd, "auto");
                     } catch (Exception e) {
-                        log.warn("自动联动MQTT发送失败: deviceId={}, cmd={}, {}", deviceId, cmd, e.getMessage());
+                        allSent = false;
+                        log.warn("自动联动MQTT发送失败: sensorId={}, deviceId={}, cmd={}, {}",
+                                targetSensorId, deviceId, cmd, e.getMessage());
                     }
                 }
+                if (allSent) {
+                    lockedDevice.setLightStatus(cmd);
+                    deviceRepository.save(lockedDevice);
+                    log.info("自动联动指令已发送并更新DB: deviceId={}, cmd={}, sensors={}, controlLogId={}",
+                            deviceId, cmd, lightSensors.size(), clog.getId());
+                }
+                // 部分失败时不更新 lightStatus，下次数据到来会重试
             }
         }
 
@@ -167,7 +227,8 @@ public class SensorDataServiceImpl implements SensorDataService {
     @Override
     public List<SensorData> getHistoryBySensorType(String deviceId, String sensorType,
                                                     LocalDateTime start, LocalDateTime end) {
-        return sensorDataRepository.findBySensorTypeAndReportedAtBetweenOrderByReportedAtAsc(sensorType, start, end);
+        return sensorDataRepository.findByDeviceIdAndSensorTypeAndReportedAtBetweenOrderByReportedAtAsc(
+                deviceId, sensorType, start, end);
     }
 
     @Override

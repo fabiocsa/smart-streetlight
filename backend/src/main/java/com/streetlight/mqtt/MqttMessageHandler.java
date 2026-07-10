@@ -66,8 +66,8 @@ public class MqttMessageHandler implements MqttCallback {
         try {
             if (mqttClientManager.isSensorDataTopic(topic)) {
                 handleSensorData(topic, payload);
-            } else if (mqttClientManager.isControlResponseTopic(topic)) {
-                handleControlResponse(topic, payload);
+            } else if (mqttClientManager.isCmdResponseTopic(topic)) {
+                handleCmdResponse(topic, payload);
             } else if (mqttClientManager.isStatusTopic(topic)) {
                 handleHeartbeat(topic, payload);
             } else if (mqttClientManager.isSensorRegisterTopic(topic)) {
@@ -82,7 +82,7 @@ public class MqttMessageHandler implements MqttCallback {
         }
     }
 
-    /** 处理传感器数据上报（v2: topic = streetlight/sensor/{sensorId}/data） */
+    /** 处理传感器数据上报（v3: 不再从 payload 取 deviceId，始终走 DB 绑定表解析） */
     private void handleSensorData(String topic, String payload) throws JsonProcessingException {
         String sensorIdStr = mqttClientManager.extractSensorIdFromTopic(topic);
         if (sensorIdStr.isEmpty()) {
@@ -98,7 +98,7 @@ public class MqttMessageHandler implements MqttCallback {
         String sensorType = root.has("sensorType") && !root.get("sensorType").isNull()
                 ? root.get("sensorType").asText() : "light";
 
-        // 通过 device_sensor 关联表反查设备
+        // v3: 始终通过 device_sensor 关联表解析 deviceId，payload 不再携带 deviceId
         String deviceId = deviceService.resolveDeviceIdForSensor(sensorId);
 
         LocalDateTime reportedAt = LocalDateTime.now();
@@ -111,14 +111,20 @@ public class MqttMessageHandler implements MqttCallback {
         sensorDataService.saveAndAutoControl(deviceId, sensorId, sensorType, data, reportedAt);
     }
 
-    private void handleControlResponse(String topic, String payload) throws JsonProcessingException {
-        String deviceId = mqttClientManager.extractDeviceIdFromTopic(topic);
-        JsonNode root = objectMapper.readTree(payload);
-        String command = root.get("command").asText();
-        String result = root.get("result").asText();
-        if (root.has("deviceId") && !root.get("deviceId").isNull()) {
-            deviceId = root.get("deviceId").asText();
+    /** 处理传感器指令响应（v3: topic = streetlight/sensor/{sensorId}/cmd/response） */
+    private void handleCmdResponse(String topic, String payload) throws JsonProcessingException {
+        String sensorIdStr = mqttClientManager.extractSensorIdFromTopic(topic);
+        if (sensorIdStr.isEmpty()) {
+            log.warn("无法从 cmd response topic 中提取 sensorId: {}", topic);
+            return;
         }
+        Long sensorId = Long.parseLong(sensorIdStr);
+        String deviceId = deviceService.resolveDeviceIdForSensor(sensorId);
+
+        JsonNode root = objectMapper.readTree(payload);
+        String command = root.has("command") ? root.get("command").asText() : "";
+        String result = root.has("result") ? root.get("result").asText() : "fail";
+
         controlService.updateControlResult(deviceId, command, result);
         webSocketHandler.pushControlResult(deviceId, command, result);
     }
@@ -169,13 +175,8 @@ public class MqttMessageHandler implements MqttCallback {
     @Override
     public void connectComplete(boolean reconnect, String serverURI) {
         log.info("MQTT连接完成: reconnect={}, server={}", reconnect, serverURI);
-        // 无论初始连接还是重连，都执行订阅。
-        // 初始连接时 connectToBroker() 返回后 isConnected() 可能为 false
-        // （CONNACK 尚未到达），导致 subscribeGlobalTopics() 被跳过。
-        // 此时由 connectComplete 回调补订阅是唯一可靠时机。
         mqttClientManager.subscribeGlobalTopics();
-        mqttClientManager.subscribeAllDevices();
-        log.info("MQTT{}后已重新订阅所有主题", reconnect ? "重连" : "连接");
+        log.info("MQTT{}后已重新订阅全局主题", reconnect ? "重连" : "连接");
     }
     @Override
     public void authPacketArrived(int reasonCode, MqttProperties properties) {}

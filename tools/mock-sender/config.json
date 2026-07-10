@@ -5,15 +5,14 @@
     "username": "jieshou",
     "password": "jieshou123",
     "topicPrefix": "streetlight",
-    "clientId": "mock-sender-v3"
+    "clientId": "mock-sender-v4"
   },
   "sensors": {
-    "sensor_31776": {
-      "sensorId": 31776,
+    "sensor_15704": {
+      "sensorId": 15704,
       "displayName": "A01光照",
       "sensorType": "light",
       "groupTag": "",
-      "dataTopic": "streetlight/sensor/30839/data",
       "enabled": true,
       "interval": 5,
       "dataRange": {
@@ -22,14 +21,17 @@
       },
       "lightStatus": "off",
       "controlMode": "auto",
-      "configJson": "{\"min\":0,\"max\":800}"
+      "dataTopic": "streetlight/sensor/15704/data",
+      "configJson": "{\"min\":0,\"max\":800}",
+      "autoSendMode": "algorithm",
+      "autoSendContent": "",
+      "messageTemplate": ""
     },
-    "sensor_41421": {
-      "sensorId": 41421,
+    "sensor_43748": {
+      "sensorId": 43748,
       "displayName": "A02光照",
       "sensorType": "light",
       "groupTag": "",
-      "dataTopic": "streetlight/sensor/40604/data",
       "enabled": true,
       "interval": 5,
       "dataRange": {
@@ -38,14 +40,14 @@
       },
       "lightStatus": "off",
       "controlMode": "auto",
+      "dataTopic": "streetlight/sensor/43748/data",
       "configJson": "{\"min\":0,\"max\":800}"
     },
-    "sensor_69115": {
-      "sensorId": 69115,
+    "sensor_51547": {
+      "sensorId": 51547,
       "displayName": "B01光照",
       "sensorType": "light",
       "groupTag": "",
-      "dataTopic": "streetlight/sensor/68230/data",
       "enabled": true,
       "interval": 5,
       "dataRange": {
@@ -54,6 +56,7 @@
       },
       "lightStatus": "off",
       "controlMode": "auto",
+      "dataTopic": "streetlight/sensor/51547/data",
       "configJson": "{\"min\":0,\"max\":800}"
     }
   },

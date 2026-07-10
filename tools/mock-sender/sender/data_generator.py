@@ -242,7 +242,6 @@ def _simulate_temperature(dt: datetime, lat: float) -> float:
 # ---------------------------------------------------------------------------
 
 def generate_sensor_data(
-    device_id: str,
     light_status: str,
     data_range: Optional[Dict[str, float]] = None,
     extra_fields: Optional[Dict[str, Any]] = None,
@@ -252,10 +251,9 @@ def generate_sensor_data(
     sensor_id: Optional[int] = None,
 ) -> Dict[str, Any]:
     """
-    生成一条完整的传感器数据 payload (真实时钟驱动)。
+    生成一条完整的传感器数据 payload (真实时钟驱动, v4: 不再携带 deviceId)。
 
     参数:
-        device_id:   设备唯一标识 (如 SL-001)
         light_status: 当前灯光状态 "on" / "off"
         data_range:   光照范围 {min, max}，默认 0~800
         extra_fields: 额外字段会合并到返回值中
@@ -265,9 +263,8 @@ def generate_sensor_data(
         sensor_id:    传感器定义 ID
 
     返回:
-        符合 MQTT sensor/data topic 的 dict
+        符合 MQTT sensor/data topic 的 dict (不含 deviceId)
     """
-    # -- 解析配置 --
     sim = sim_config or {}
     lat = sim.get("latitude", DEFAULT_LAT)
     lon = sim.get("longitude", DEFAULT_LON)
@@ -278,15 +275,12 @@ def generate_sensor_data(
     if data_range is None:
         data_range = {"min": 0, "max": 800}
 
-    # -- 当前当地时间 --
     now_utc = datetime.now(timezone.utc)
     now_local = now_utc + timedelta(hours=tz_offset)
     light_on = light_status.lower() == "on"
     max_lux = data_range.get("max", 800)
 
-    # -- 光照强度计算 --
     if light_on and brightness is not None:
-        # 手动亮度模式: 亮度贡献为主 + 自然光为辅
         natural = _calc_real_illuminance(
             now_local, lat, lon, max_lux, cloud_interval, cloud_max, tz_offset
         )
@@ -298,28 +292,16 @@ def generate_sensor_data(
             now_local, lat, lon, max_lux, cloud_interval, cloud_max, tz_offset
         )
 
-    # -- 温度 --
     temperature = _simulate_temperature(now_local, lat)
-
-    # -- 电压 --
     voltage = round(random.uniform(218.0, 234.0), 1)
-
-    # -- 功率 --
     if light_on:
-        # 额定功率 60-80W + 微小波动
         power = round(random.uniform(62.0, 78.0), 2)
     else:
-        # 待机功耗
         power = round(random.uniform(0.3, 1.8), 2)
-
-    # -- 云量 (用于展示) --
     cloud_opacity = _cloud_state["opacity"]
 
-    # -- 构建 payload --
-    # 无主传感器使用有效标识符（空 device_id 替换为 "unbound"）
-    effective_device_id = device_id if device_id else "unbound"
+    # v4: 不再包含 deviceId
     payload = {
-        "deviceId": effective_device_id,
         "sensorType": sensor_type,
         "illuminance": illuminance,
         "lightIntensity": illuminance,
@@ -333,10 +315,8 @@ def generate_sensor_data(
 
     if sensor_id is not None:
         payload["sensorId"] = sensor_id
-
     if brightness is not None:
         payload["brightness"] = brightness
-
     if extra_fields:
         payload.update(extra_fields)
 
@@ -386,10 +366,10 @@ def render_message_template(template: str, context: Dict[str, Any]) -> str:
     """
     使用上下文变量渲染消息模板。
 
-    支持的变量:
-      {{deviceId}} {{lightIntensity}} {{illuminance}} {{temperature}}
+    支持的变量 (v4: 不再支持 {{deviceId}}):
+      {{lightIntensity}} {{illuminance}} {{temperature}}
       {{voltage}} {{power}} {{cloudCover}} {{status}} {{timestamp}}
-      {{sensorType}} {{displayName}} {{location}} {{controlMode}}
+      {{sensorType}} {{displayName}} {{sensorId}} {{controlMode}}
 
     也支持 {{payload}} 来插入整个生成的 payload JSON。
     """
@@ -408,7 +388,6 @@ def render_message_template(template: str, context: Dict[str, Any]) -> str:
 
 def generate_sensor_data_with_template(
     template: str,
-    device_id: str,
     light_status: str,
     data_range: Optional[Dict[str, float]] = None,
     extra_fields: Optional[Dict[str, Any]] = None,
@@ -417,13 +396,8 @@ def generate_sensor_data_with_template(
     sensor_type: str = "light",
     sensor_id: Optional[int] = None,
 ) -> str:
-    """
-    根据自定义模板生成传感器数据消息字符串。
-    如果模板为空，返回默认 JSON payload（向后兼容）。
-    """
-    # 先生成标准 payload 作为上下文
+    """根据自定义模板生成传感器数据消息字符串（v4: 不携带 deviceId）。"""
     payload = generate_sensor_data(
-        device_id=device_id,
         light_status=light_status,
         data_range=data_range,
         extra_fields=extra_fields,
@@ -445,85 +419,48 @@ def generate_sensor_data_with_template(
 
 
 # ---------------------------------------------------------------------------
-# 示例消息生成（用于自动发送固定内容模式的模板提示）
+# 固定内容模式的示例覆盖字段（仅写想固定的字段即可，其余由算法自动生成）
 # ---------------------------------------------------------------------------
 
 SAMPLE_TEMPLATES = {
     "light": {
-        "deviceId": "{{deviceId}}",
-        "lightIntensity": 125.5,
-        "illuminance": 125.5,
-        "temperature": 28.3,
-        "voltage": 226.0,
-        "power": 65.0,
-        "cloudCover": 0.3,
-        "status": "OFF",
-        "timestamp": "{{timestamp}}"
+        "_comment": "只写要固定的字段，其余由算法自动生成",
+        "illuminance": 30,
     },
     "temperature": {
-        "deviceId": "{{deviceId}}",
-        "temperature": 28.3,
-        "humidity": 65.0,
-        "voltage": 226.0,
-        "timestamp": "{{timestamp}}"
+        "_comment": "只写要固定的字段，其余由算法自动生成",
+        "temperature": 35.5,
     },
     "humidity": {
-        "deviceId": "{{deviceId}}",
-        "humidity": 65.0,
-        "temperature": 28.3,
-        "timestamp": "{{timestamp}}"
+        "_comment": "只写要固定的字段，其余由算法自动生成",
+        "humidity": 80.0,
     },
     "power": {
-        "deviceId": "{{deviceId}}",
-        "power": 65.0,
-        "voltage": 226.0,
-        "current": 0.29,
-        "energy": 1.25,
-        "timestamp": "{{timestamp}}"
+        "_comment": "只写要固定的字段，其余由算法自动生成",
+        "power": 80.0,
+        "voltage": 230.0,
     },
 }
 
 
-def generate_sample_content(sensor_type: str, device_id: str = "SL-001") -> str:
-    """
-    根据传感器类型生成示例 JSON 消息体。
-
-    返回格式化的 JSON 字符串，其中 {{deviceId}} 和 {{timestamp}} 是占位变量，
-    会在每次发送时替换为实际值。
-    """
+def generate_sample_content(sensor_type: str) -> str:
+    """根据传感器类型生成固定内容的示例（仅覆盖关键字段, v4: 无需 deviceId）。"""
     import json as _json
     template = SAMPLE_TEMPLATES.get(sensor_type, SAMPLE_TEMPLATES["light"])
-    # 用传入的 deviceId 替换占位符（但在实际使用时，{{deviceId}} 会被替换）
     sample = dict(template)
-    sample["deviceId"] = device_id  # 示例中使用实际值
+    del sample["_comment"]
     return _json.dumps(sample, ensure_ascii=False, indent=2)
 
 
-# ---------------------------------------------------------------------------
-# 心跳 & 控制响应 (不变)
-# ---------------------------------------------------------------------------
-
-def generate_heartbeat(device_id: str, status: str = "online") -> Dict[str, Any]:
-    """生成心跳数据包。"""
+def generate_heartbeat(sensor_id: int, status: str = "online") -> Dict[str, Any]:
+    """生成心跳数据包（v4: 使用 sensor_id，不携带 deviceId）。"""
     return {
-        "deviceId": device_id,
+        "sensorId": sensor_id,
         "status": status,
         "temperature": _simulate_temperature(
             datetime.now(timezone.utc) + timedelta(hours=DEFAULT_TZ_OFFSET),
             DEFAULT_LAT,
         ),
-        "timestamp": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
-    }
-
-
-def generate_control_response(
-    device_id: str, command: str, result: str = "success"
-) -> Dict[str, Any]:
-    """生成控制指令响应数据包。"""
-    return {
-        "command": command,
-        "result": result,
-        "deviceId": device_id,
         "timestamp": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
     }
 

@@ -173,7 +173,6 @@ class ConfigManager:
                 "displayName": sensor_cfg.get("displayName", ""),
                 "sensorType": sensor_cfg.get("sensorType", "light"),
                 "groupTag": sensor_cfg.get("groupTag", sensor_cfg.get("deviceGroup", "")),
-                "dataTopic": sensor_cfg.get("dataTopic", f"streetlight/sensor/{sensor_id}/data"),
                 "enabled": True,
                 "interval": sensor_cfg.get("interval", sensor_cfg.get("reportFrequency", 5)),
                 "dataRange": {"min": 0, "max": 800},
@@ -181,6 +180,8 @@ class ConfigManager:
                 "controlMode": "auto",
             }
             default_sensor.update(sensor_cfg)
+            # ★ 强制 dataTopic 与 sensorId 一致，防止 topic 中的 ID 与注册 ID 不匹配导致后端重复识别
+            default_sensor["dataTopic"] = f"streetlight/sensor/{sensor_id}/data"
             sensors[key] = default_sensor
             self.save()
             return key

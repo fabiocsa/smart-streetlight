@@ -13,7 +13,11 @@ import java.util.LinkedHashMap;
 import java.util.Map;
 
 @Entity
-@Table(name = "sensor_data")
+@Table(name = "sensor_data", indexes = {
+    @Index(name = "idx_sd_device_reported", columnList = "device_id, reported_at"),
+    @Index(name = "idx_sd_type_reported",   columnList = "sensor_type, reported_at"),
+    @Index(name = "idx_sd_reported",        columnList = "reported_at")
+})
 @Data
 @NoArgsConstructor
 @AllArgsConstructor

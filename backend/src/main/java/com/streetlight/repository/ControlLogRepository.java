@@ -12,7 +12,11 @@ import java.util.List;
 @Repository
 public interface ControlLogRepository extends JpaRepository<ControlLog, Long> {
 
-    ControlLog findByDeviceIdAndCommandAndResultIsNull(String deviceId, String command);
+    /**
+     * 查询指定设备+指令的最新一条未收到响应的控制日志。
+     * 按创建时间倒序取第一条，避免多条 pending 时匹配到旧记录。
+     */
+    ControlLog findTopByDeviceIdAndCommandAndResultIsNullOrderByCreatedAtDesc(String deviceId, String command);
 
     /** 今天控制操作次数 */
     long countByCreatedAtBetween(LocalDateTime start, LocalDateTime end);

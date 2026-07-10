@@ -28,7 +28,15 @@
         <el-input v-model="form.displayName" placeholder="如 光照传感器A" />
       </el-form-item>
       <el-form-item label="数据主题" prop="dataTopic">
-        <el-input v-model="form.dataTopic" placeholder="如 streetlight/sensor/1/data" />
+        <div style="display: flex; gap: 6px; width: 100%">
+          <el-input v-model="form.dataTopic" placeholder="如 streetlight/sensor/1/data" style="flex: 1" />
+          <el-tooltip content="自动生成标准格式: streetlight/sensor/{ID}/data" placement="top">
+            <el-button @click="autoGenDataTopic" :disabled="!form.sensorType">
+              <el-icon><MagicStick /></el-icon>
+            </el-button>
+          </el-tooltip>
+        </div>
+        <div class="form-hint">模拟器自动注册时由此字段匹配，格式: streetlight/sensor/{simSensorId}/data</div>
       </el-form-item>
       <el-form-item label="上报频率（秒）" prop="reportFrequency">
         <el-input-number v-model="form.reportFrequency" :min="1" :max="3600" style="width: 100%" />
@@ -57,11 +65,11 @@
 <script setup>
 import { ref, reactive, watch } from 'vue'
 import { ElMessage } from 'element-plus'
+import { MagicStick } from '@element-plus/icons-vue'
 import { useSensorStore } from '../store/sensor'
 
 const props = defineProps({
   visible: Boolean,
-  deviceId: { type: String, default: '' },
   editData: Object
 })
 
@@ -125,6 +133,11 @@ watch(() => props.visible, (val) => {
     Object.assign(form, defaultForm())
   }
 })
+
+function autoGenDataTopic() {
+  const idSuffix = Math.floor(Math.random() * 90000) + 10000
+  form.dataTopic = `streetlight/sensor/${idSuffix}/data`
+}
 
 function resetForm() {
   formRef.value?.resetFields()

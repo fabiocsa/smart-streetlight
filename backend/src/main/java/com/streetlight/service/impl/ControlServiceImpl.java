@@ -3,9 +3,11 @@ package com.streetlight.service.impl;
 import com.streetlight.common.BusinessException;
 import com.streetlight.entity.ControlLog;
 import com.streetlight.entity.Device;
+import com.streetlight.entity.Sensor;
 import com.streetlight.mqtt.MqttPublishService;
 import com.streetlight.repository.ControlLogRepository;
 import com.streetlight.repository.DeviceRepository;
+import com.streetlight.repository.SensorRepository;
 import com.streetlight.service.ControlService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -27,6 +29,7 @@ public class ControlServiceImpl implements ControlService {
 
     private final ControlLogRepository controlLogRepository;
     private final DeviceRepository deviceRepository;
+    private final SensorRepository sensorRepository;
     private final MqttPublishService mqttPublishService;
 
     @Override
@@ -47,40 +50,47 @@ public class ControlServiceImpl implements ControlService {
                 .deviceId(deviceId).command(command).source(source).build();
         controlLogRepository.save(cl);
 
-        // ★ 必须先切换模式再发布 MQTT，消除竞态窗口：
-        //   若先发 MQTT，模拟器可能在线程切换瞬间上报传感器数据，
-        //   后端 saveAndAutoControl() 此时读到 controlMode 仍为 "auto" 会导致自动关灯。
-        if ("manual".equals(source)) {
-            deviceRepository.findByDeviceId(deviceId).ifPresent(d -> {
+        // 更新设备状态（在 MQTT 下发前，避免并发自动联动读到旧 lightStatus 重复触发）
+        deviceRepository.findByDeviceId(deviceId).ifPresent(d -> {
+            d.setLightStatus(command);
+            if (brightness != null) d.setBrightness(brightness);
+            if ("manual".equals(source)) {
                 d.setControlMode("manual");
-                d.setLightStatus(command);  // ★ 修复: 手动指令时立即更新 lightStatus，避免 GET 读到旧状态
-                d.setBrightness(brightness);
-                deviceRepository.save(d);
-                log.info("手动控制已切换设备为手动模式+灯光状态: deviceId={}, command={}", deviceId, command);
-            });
-        } else if (brightness != null) {
-            deviceRepository.findByDeviceId(deviceId).ifPresent(d -> {
-                d.setBrightness(brightness);
-                deviceRepository.save(d);
-            });
+            }
+            deviceRepository.save(d);
+            log.info("控制指令已更新设备状态: deviceId={}, command={}, source={}, lightStatus={}",
+                    deviceId, command, source, command);
+        });
+
+        // v3: 查找设备绑定的 light 传感器，通过传感器 cmd 主题下发指令
+        List<Sensor> lightSensors = sensorRepository
+                .findBoundSensorsByDeviceIdAndType(deviceId, "light");
+        if (lightSensors.isEmpty()) {
+            log.warn("设备 {} 未绑定 light 传感器，无法下发控制指令（仅更新了 DB）", deviceId);
+        } else {
+            for (Sensor s : lightSensors) {
+                Long targetSensorId = s.getSimulatorSensorId() != null
+                        ? s.getSimulatorSensorId() : s.getId();
+                mqttPublishService.publishCommand(targetSensorId, deviceId, command, source, brightness);
+            }
         }
 
-        // 通过 MQTT 下发指令（在模式切换之后）
-        mqttPublishService.publishCommand(deviceId, command, source, brightness);
-
-        log.info("下发控制指令: deviceId={}, command={}, source={}, brightness={}",
-                deviceId, command, source, brightness);
+        log.info("下发控制指令: deviceId={}, command={}, source={}, brightness={}, sensors={}",
+                deviceId, command, source, brightness, lightSensors.size());
     }
 
     @Override
     @Transactional
     public void updateControlResult(String deviceId, String command, String result) {
+        // 取该设备+指令中最新一条未收到响应的控制日志（避免多条 pending 时匹配到旧的）
         ControlLog cl = controlLogRepository
-                .findByDeviceIdAndCommandAndResultIsNull(deviceId, command);
+                .findTopByDeviceIdAndCommandAndResultIsNullOrderByCreatedAtDesc(deviceId, command);
         if (cl != null) {
             cl.setResult(result);
             controlLogRepository.save(cl);
             log.info("更新控制结果: deviceId={}, command={}, result={}", deviceId, command, result);
+        } else {
+            log.debug("未找到待更新的控制日志: deviceId={}, command={}", deviceId, command);
         }
         if ("success".equals(result)) {
             deviceRepository.findByDeviceId(deviceId).ifPresent(d -> {
@@ -123,9 +133,26 @@ public class ControlServiceImpl implements ControlService {
     public void setControlMode(Long id, String mode) {
         Device d = deviceRepository.findById(id)
                 .orElseThrow(() -> new BusinessException("设备不存在, id=" + id));
-        d.setControlMode(mode.toLowerCase());
+        String newMode = mode.toLowerCase();
+        d.setControlMode(newMode);
         deviceRepository.save(d);
-        log.info("切换控制模式: id={}, mode={}", id, mode);
+        log.info("切换控制模式: id={}, mode={}", id, newMode);
+
+        // ★ 通知传感器模式变更（否则传感器不知道模式切换，manual 模式下不会恢复自动上报）
+        List<Sensor> lightSensors = sensorRepository
+                .findBoundSensorsByDeviceIdAndType(d.getDeviceId(), "light");
+        if (!lightSensors.isEmpty()) {
+            // 用当前灯光状态作为 command，source=新模式，传感器收到后根据 source 切换内部模式
+            String currentCmd = d.getLightStatus(); // "on" or "off"
+            for (Sensor s : lightSensors) {
+                Long targetSensorId = s.getSimulatorSensorId() != null
+                        ? s.getSimulatorSensorId() : s.getId();
+                mqttPublishService.publishCommand(targetSensorId, d.getDeviceId(),
+                        currentCmd, newMode);
+            }
+            log.info("已通知 {} 个传感器模式变更: deviceId={}, mode={}",
+                    lightSensors.size(), d.getDeviceId(), newMode);
+        }
     }
 
     @Override

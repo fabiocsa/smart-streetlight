@@ -65,7 +65,11 @@
       "Bash(taskkill /PID 4936 /F)",
       "Bash(cmd *)",
       "Bash(echo \"EXIT: $?\")",
-      "Bash(python -m py_compile sender/data_generator.py)"
+      "Bash(python -m py_compile sender/data_generator.py)",
+      "Bash(iconv -f GBK -t UTF-8)",
+      "Bash(tasklist)",
+      "Bash(ls -la logs/)",
+      "Bash(ls -la *.log)"
     ]
   }
 }

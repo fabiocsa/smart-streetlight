@@ -1,5 +1,5 @@
 -- ============================================================================
--- 智慧路灯系统 - 数据库初始化脚本 (v2 — JSON 传感器数据)
+-- 智慧路灯系统 - 数据库初始化脚本 (v4 — 传感器独立，去设备化)
 -- Smart Streetlight System - Database Initialization Script
 -- 技术栈: MySQL 8.x
 -- 字符集: utf8mb4 (支持emoji和特殊字符)
@@ -28,6 +28,7 @@ CREATE TABLE device (
     threshold_off   DOUBLE          NOT NULL DEFAULT 100.0   COMMENT '关灯光照阈值(Lux)，高于此值关灯',
     light_status    VARCHAR(10)     NOT NULL DEFAULT 'off'   COMMENT '当前灯光状态: on / off',
     control_mode    VARCHAR(10)     NOT NULL DEFAULT 'auto'  COMMENT '控制模式: auto(自动) / manual(手动)',
+    brightness      INT             DEFAULT NULL             COMMENT '手动亮度百分比 0-100',
     location        VARCHAR(200)    DEFAULT NULL             COMMENT '安装位置(如: 校门口、图书馆前)',
     last_heartbeat  DATETIME        DEFAULT NULL             COMMENT '最后心跳时间',
     created_at      DATETIME        NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
@@ -36,11 +37,12 @@ CREATE TABLE device (
     PRIMARY KEY (id),
     UNIQUE KEY uk_device_id (device_id),
     INDEX idx_status (status),
-    INDEX idx_control_mode (control_mode)
+    INDEX idx_control_mode (control_mode),
+    INDEX idx_status_heartbeat (status, last_heartbeat)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='设备表';
 
 -- ============================================================================
--- 3. 传感器定义表 (sensor)
+-- 3. 传感器定义表 (sensor) — v4: 不持有 device_id
 --    存储传感器的定义信息。传感器独立存在，不持有设备 ID。
 --    设备与传感器的绑定关系通过 device_sensor 关联表管理。
 -- ============================================================================
@@ -58,11 +60,12 @@ CREATE TABLE sensor (
     updated_at       DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
 
     PRIMARY KEY (id),
-    UNIQUE KEY uk_simulator_sensor_id (simulator_sensor_id)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='传感器定义表';
+    UNIQUE KEY uk_simulator_sensor_id (simulator_sensor_id),
+    INDEX idx_sensor_enabled (enabled)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='传感器定义表 (v4: 不持有device_id)';
 
 -- ============================================================================
--- 3.1 设备-传感器关联表 (device_sensor)
+-- 3.1 设备-传感器关联表 (device_sensor) — v4: 控制指令通过此表解析目标传感器
 --     设备绑定传感器（N:M），传感器不持有设备 ID
 -- ============================================================================
 DROP TABLE IF EXISTS device_sensor;
@@ -72,22 +75,24 @@ CREATE TABLE device_sensor (
     bound_at    DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '绑定时间',
     PRIMARY KEY (device_id, sensor_id),
     INDEX idx_ds_sensor (sensor_id),
+    INDEX idx_ds_device (device_id),
     CONSTRAINT fk_ds_device FOREIGN KEY (device_id) REFERENCES device(id) ON DELETE CASCADE,
     CONSTRAINT fk_ds_sensor FOREIGN KEY (sensor_id) REFERENCES sensor(id) ON DELETE CASCADE
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='设备-传感器绑定关系表';
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='设备-传感器绑定关系表 (v4: 控制指令通过此表查目标传感器)';
 
 -- ============================================================================
--- 4. 传感器数据表 (sensor_data) — JSON 存储，支持异构多维数据
+-- 4. 传感器数据表 (sensor_data) — v4: data_json 不含 deviceId
 --    每个传感器上报的完整 JSON payload 直接存入 data_json 列。
+--    device_id 由后端通过 device_sensor 关联表解析后填充。
 --    无需 ALTER TABLE 即可支持新增传感器类型。
 -- ============================================================================
 DROP TABLE IF EXISTS sensor_data;
 CREATE TABLE sensor_data (
     id              BIGINT       NOT NULL AUTO_INCREMENT  COMMENT '主键',
-    device_id       VARCHAR(50)  NOT NULL                 COMMENT '设备标识(FK → device.device_id)',
-    sensor_id       BIGINT       DEFAULT NULL             COMMENT '传感器定义ID(FK → sensor.id)，可空',
+    device_id       VARCHAR(50)  NOT NULL                 COMMENT '设备标识(后端通过device_sensor解析填充)',
+    sensor_id       BIGINT       DEFAULT NULL             COMMENT '传感器定义ID(FK → sensor.simulator_sensor_id)',
     sensor_type     VARCHAR(30)  NOT NULL DEFAULT 'light' COMMENT '传感器类型(冗余, 便于筛选和聚合)',
-    data_json       JSON         NOT NULL                 COMMENT '传感器全量数据(任意字段, 如 lightIntensity/temperature/humidity/power/voltage)',
+    data_json       JSON         NOT NULL                 COMMENT '传感器全量数据(v4: 不含deviceId)',
     reported_at     DATETIME     NOT NULL                 COMMENT '设备上报时间',
     created_at      DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '记录写入时间',
 
@@ -96,7 +101,7 @@ CREATE TABLE sensor_data (
     INDEX idx_sensor_reported (sensor_id, reported_at),
     INDEX idx_type_reported  (sensor_type, reported_at),
     INDEX idx_reported_at    (reported_at)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='传感器数据表(JSON存储,支持异构数据)';
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='传感器数据表(v4: JSON不含deviceId)';
 
 -- ============================================================================
 -- 5. 告警日志表 (alarm_log)
@@ -112,7 +117,9 @@ CREATE TABLE alarm_log (
     status          VARCHAR(20)  NOT NULL DEFAULT 'pending' COMMENT '处理状态: pending(待处理) / resolved(已处理)',
     created_at      DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '告警触发时间',
     resolved_at     DATETIME     DEFAULT NULL             COMMENT '处理时间',
-    resolved_by     VARCHAR(50)  DEFAULT NULL             COMMENT '处理人',
+    resolved_by     VARCHAR(50)  DEFAULT NULL             COMMENT '处理人（system=自动解除）',
+    notes           VARCHAR(500) DEFAULT NULL             COMMENT '处理备注',
+    rule_id         BIGINT       DEFAULT NULL             COMMENT '关联的告警规则ID',
 
     PRIMARY KEY (id),
     INDEX idx_device_id (device_id),
@@ -139,7 +146,8 @@ CREATE TABLE control_log (
     INDEX idx_device_id (device_id),
     INDEX idx_source (source),
     INDEX idx_created_at (created_at),
-    INDEX idx_device_created (device_id, created_at)
+    INDEX idx_device_created (device_id, created_at),
+    INDEX idx_cl_device_cmd_result (device_id, command, result, created_at)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='控制日志表';
 
 -- ============================================================================
@@ -171,21 +179,21 @@ INSERT INTO device_sensor (device_id, sensor_id) VALUES
     (2, 4),
     (4, 5);  -- SL-004 绑定光照传感器
 
--- 插入传感器数据示例（JSON 格式，含多维度数据）
+-- 插入传感器数据示例（v4: JSON 不含 deviceId）
 INSERT INTO sensor_data (device_id, sensor_id, sensor_type, data_json, reported_at) VALUES
-    -- SL-001 光照数据（前24条，每5分钟一条）
-    ('SL-001', 1, 'light', '{"lightIntensity": 120.5, "illuminance": 120.5, "temperature": 25.3, "voltage": 226.0, "power": 0.5, "cloudCover": 0.3, "status": "OFF"}', DATE_SUB(NOW(), INTERVAL 120 MINUTE)),
-    ('SL-001', 1, 'light', '{"lightIntensity": 95.0,  "illuminance": 95.0,  "temperature": 25.8, "voltage": 225.5, "power": 0.4, "cloudCover": 0.3, "status": "OFF"}', DATE_SUB(NOW(), INTERVAL 115 MINUTE)),
-    ('SL-001', 1, 'light', '{"lightIntensity": 80.2,  "illuminance": 80.2,  "temperature": 26.1, "voltage": 227.2, "power": 0.5, "cloudCover": 0.2, "status": "OFF"}', DATE_SUB(NOW(), INTERVAL 110 MINUTE)),
-    ('SL-001', 1, 'light', '{"lightIntensity": 60.5,  "illuminance": 60.5,  "temperature": 27.0, "voltage": 226.8, "power": 0.4, "cloudCover": 0.1, "status": "OFF"}', DATE_SUB(NOW(), INTERVAL 105 MINUTE)),
-    ('SL-001', 1, 'light', '{"lightIntensity": 45.0,  "illuminance": 45.0,  "temperature": 27.5, "voltage": 225.0, "power": 65.0, "cloudCover": 0.1, "status": "ON"}',  DATE_SUB(NOW(), INTERVAL 100 MINUTE)),
-    ('SL-001', 1, 'light', '{"lightIntensity": 35.2,  "illuminance": 35.2,  "temperature": 27.8, "voltage": 223.5, "power": 68.2, "cloudCover": 0.2, "status": "ON"}',  DATE_SUB(NOW(), INTERVAL 95 MINUTE)),
-    ('SL-001', 1, 'light', '{"lightIntensity": 28.5,  "illuminance": 28.5,  "temperature": 28.1, "voltage": 224.0, "power": 70.1, "cloudCover": 0.3, "status": "ON"}',  DATE_SUB(NOW(), INTERVAL 90 MINUTE)),
-    ('SL-001', 1, 'light', '{"lightIntensity": 25.0,  "illuminance": 25.0,  "temperature": 28.3, "voltage": 222.8, "power": 72.5, "cloudCover": 0.4, "status": "ON"}',  DATE_SUB(NOW(), INTERVAL 85 MINUTE)),
+    -- SL-001 光照数据
+    ('SL-001', 1, 'light', '{"illuminance": 120.5, "lightIntensity": 120.5, "temperature": 25.3, "voltage": 226.0, "power": 0.5, "cloudCover": 0.3, "status": "OFF"}', DATE_SUB(NOW(), INTERVAL 120 MINUTE)),
+    ('SL-001', 1, 'light', '{"illuminance": 95.0,  "lightIntensity": 95.0,  "temperature": 25.8, "voltage": 225.5, "power": 0.4, "cloudCover": 0.3, "status": "OFF"}', DATE_SUB(NOW(), INTERVAL 115 MINUTE)),
+    ('SL-001', 1, 'light', '{"illuminance": 80.2,  "lightIntensity": 80.2,  "temperature": 26.1, "voltage": 227.2, "power": 0.5, "cloudCover": 0.2, "status": "OFF"}', DATE_SUB(NOW(), INTERVAL 110 MINUTE)),
+    ('SL-001', 1, 'light', '{"illuminance": 60.5,  "lightIntensity": 60.5,  "temperature": 27.0, "voltage": 226.8, "power": 0.4, "cloudCover": 0.1, "status": "OFF"}', DATE_SUB(NOW(), INTERVAL 105 MINUTE)),
+    ('SL-001', 1, 'light', '{"illuminance": 45.0,  "lightIntensity": 45.0,  "temperature": 27.5, "voltage": 225.0, "power": 65.0, "cloudCover": 0.1, "status": "ON"}',  DATE_SUB(NOW(), INTERVAL 100 MINUTE)),
+    ('SL-001', 1, 'light', '{"illuminance": 35.2,  "lightIntensity": 35.2,  "temperature": 27.8, "voltage": 223.5, "power": 68.2, "cloudCover": 0.2, "status": "ON"}',  DATE_SUB(NOW(), INTERVAL 95 MINUTE)),
+    ('SL-001', 1, 'light', '{"illuminance": 28.5,  "lightIntensity": 28.5,  "temperature": 28.1, "voltage": 224.0, "power": 70.1, "cloudCover": 0.3, "status": "ON"}',  DATE_SUB(NOW(), INTERVAL 90 MINUTE)),
+    ('SL-001', 1, 'light', '{"illuminance": 25.0,  "lightIntensity": 25.0,  "temperature": 28.3, "voltage": 222.8, "power": 72.5, "cloudCover": 0.4, "status": "ON"}',  DATE_SUB(NOW(), INTERVAL 85 MINUTE)),
     -- SL-001 功率数据
     ('SL-001', 2, 'power', '{"power": 72.5, "voltage": 222.8, "current": 0.33, "energy": 1.15}', DATE_SUB(NOW(), INTERVAL 85 MINUTE)),
     -- SL-002 多类型数据
-    ('SL-002', 3, 'light',       '{"lightIntensity": 200.5, "illuminance": 200.5, "temperature": 29.0, "voltage": 228.0, "power": 0.3, "cloudCover": 0.5, "status": "OFF"}', DATE_SUB(NOW(), INTERVAL 30 MINUTE)),
+    ('SL-002', 3, 'light',       '{"illuminance": 200.5, "lightIntensity": 200.5, "temperature": 29.0, "voltage": 228.0, "power": 0.3, "cloudCover": 0.5, "status": "OFF"}', DATE_SUB(NOW(), INTERVAL 30 MINUTE)),
     ('SL-002', 4, 'temperature', '{"temperature": 29.0, "humidity": 62.0}', DATE_SUB(NOW(), INTERVAL 30 MINUTE));
 
 -- 插入告警示例数据
