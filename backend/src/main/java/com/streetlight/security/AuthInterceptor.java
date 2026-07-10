@@ -69,32 +69,95 @@ public class AuthInterceptor implements HandlerInterceptor {
         // ----- 角色权限校验 -----
         String role = payload.role;
 
-        // 告警管理 & 告警规则 — 仅 admin
-        if (path.startsWith("/api/alarms") || path.startsWith("/api/alarm-rules")) {
-            if (!"admin".equals(role)) {
-                sendError(response, 403, "权限不足，仅管理员可访问告警模块");
+        // 辅助方法：是否为管理员或操作员
+        boolean isAdmin = "admin".equals(role);
+        boolean isOperator = "operator".equals(role);
+
+        // --- 告警规则 — 仅 admin ---
+        if (path.startsWith("/api/alarm-rules")) {
+            if (!isAdmin) {
+                sendError(response, 403, "权限不足，仅管理员可管理告警规则");
                 return false;
             }
         }
 
-        // 传感器写操作 & 设备写操作 — 仅 admin
-        // (GET /sensors 允许 municipal 查看)
+        // --- 告警管理 ---
+        if (path.startsWith("/api/alarms")) {
+            // 查看告警列表 & 待处理数量 → admin + operator（市政人员不可见）
+            if ("GET".equalsIgnoreCase(request.getMethod())) {
+                if (!isAdmin && !isOperator) {
+                    sendError(response, 403, "权限不足，仅管理员和操作员可查看告警");
+                    return false;
+                }
+            } else {
+                // 告警处理（resolve / batch-resolve）→ 仅 admin
+                if (!isAdmin) {
+                    sendError(response, 403, "权限不足，仅管理员可处理告警");
+                    return false;
+                }
+            }
+        }
+
+        // --- 传感器绑定/解绑 ---
+        if (path.matches(".*/devices/[^/]+/bind-sensor")) {
+            if (!isAdmin) {
+                sendError(response, 403, "权限不足，仅管理员可绑定传感器");
+                return false;
+            }
+        }
+        if (path.matches(".*/devices/[^/]+/unbind-sensor/[^/]+")) {
+            if (!isAdmin && !isOperator) {
+                sendError(response, 403, "权限不足，仅管理员和操作员可解绑传感器");
+                return false;
+            }
+        }
+
+        // 传感器列表写操作 — 仅 admin（GET /sensors 允许 municipal 查看）
         if (path.matches(".*/devices/[^/]+/sensors") && !"GET".equalsIgnoreCase(request.getMethod())) {
-            if (!"admin".equals(role)) {
+            if (!isAdmin) {
                 sendError(response, 403, "权限不足，仅管理员可管理传感器");
                 return false;
             }
         }
 
-        // 设备增删改 — 仅 admin
-        if (path.matches(".*/devices/?$") || path.matches(".*/devices/\\d+$")) {
-            if (!"GET".equalsIgnoreCase(request.getMethod()) && !"admin".equals(role)) {
-                sendError(response, 403, "权限不足，仅管理员可管理设备");
-                return false;
+        // 设备增删改 — admin 可全部操作，operator 可新增/删除设备
+        if (path.matches(".*/devices/?$")) {
+            if (!"GET".equalsIgnoreCase(request.getMethod())) {
+                if ("POST".equalsIgnoreCase(request.getMethod())) {
+                    // 添加设备 → admin + operator
+                    if (!isAdmin && !isOperator) {
+                        sendError(response, 403, "权限不足，仅管理员和操作员可添加设备");
+                        return false;
+                    }
+                } else {
+                    // PUT/DELETE 设备列表 → 仅 admin
+                    if (!isAdmin) {
+                        sendError(response, 403, "权限不足，仅管理员可修改设备");
+                        return false;
+                    }
+                }
+            }
+        }
+        if (path.matches(".*/devices/\\d+$")) {
+            if (!"GET".equalsIgnoreCase(request.getMethod())) {
+                // PUT（修改设备信息）→ 仅 admin
+                if ("PUT".equalsIgnoreCase(request.getMethod())) {
+                    if (!isAdmin) {
+                        sendError(response, 403, "权限不足，仅管理员可修改设备");
+                        return false;
+                    }
+                }
+                // DELETE（删除设备）→ admin + operator
+                if ("DELETE".equalsIgnoreCase(request.getMethod())) {
+                    if (!isAdmin && !isOperator) {
+                        sendError(response, 403, "权限不足，仅管理员和操作员可删除设备");
+                        return false;
+                    }
+                }
             }
         }
 
-        // 设备控制 (POST /devices/{id}/control) — municipal 和 admin 均可
+        // 设备控制 (POST /devices/{id}/control) — municipal、operator、admin 均可
         // 默认放行
 
         return true;

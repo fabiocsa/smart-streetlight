@@ -41,6 +41,7 @@
             <el-form-item prop="role">
               <el-select v-model="registerForm.role" placeholder="选择角色" style="width: 100%">
                 <el-option label="市政人员（日常监控）" value="municipal" />
+                <el-option label="路灯管理员（设备+告警查看）" value="operator" />
                 <el-option label="管理员（全部权限）" value="admin" />
               </el-select>
             </el-form-item>
@@ -54,7 +55,7 @@
 
       <div class="role-hint">
         <el-text size="small" type="info">
-          市政人员：监控 + 控制 | 管理员：全部权限（含告警/设备管理）
+          市政人员：监控 + 控制 | 路灯管理员：设备管理 + 告警查看 | 管理员：全部权限
         </el-text>
       </div>
     </el-card>
