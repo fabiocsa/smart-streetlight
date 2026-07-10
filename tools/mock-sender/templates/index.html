@@ -62,24 +62,44 @@
 
             <!-- 配置指令面板 -->
             <div class="card mt-3">
-                <div class="card-header">
-                    <i class="bi bi-terminal"></i> 配置指令 (MQTT: streetlight/mock-sender/config)
+                <div class="card-header d-flex justify-content-between align-items-center">
+                    <span><i class="bi bi-terminal"></i> 配置指令</span>
+                    <button class="btn btn-sm btn-outline-secondary" type="button" data-bs-toggle="collapse" data-bs-target="#cmdHelp">
+                        <i class="bi bi-question-circle"></i> 帮助
+                    </button>
                 </div>
                 <div class="card-body">
+                    <div class="collapse mb-2" id="cmdHelp">
+                        <div class="alert alert-info py-2 small mb-0">
+                            <strong>可用指令：</strong><br>
+                            <code>set_frequency</code> — 设置所有传感器上报频率<br>
+                            <code>set_data_range</code> — 设置所有传感器数据范围<br>
+                            <code>set_light_status</code> — 设置指定传感器的灯光状态 (需 sensorId)<br>
+                            <code>add_sensor</code> — 添加传感器 (需 sensorType)<br>
+                            <code>remove_sensor</code> — 移除传感器 (需 sensorId)<br>
+                            <code>stop_sensor</code> / <code>start_sensor</code> — 启停传感器 (需 sensorId)
+                            <hr class="my-1">
+                            <strong>参数示例：</strong><br>
+                            设置频率: <code>{"interval": 3}</code><br>
+                            设置灯光: <code>{"sensorId": 15704, "status": "on"}</code><br>
+                            添加传感器: <code>{"sensorId": 12345, "sensorType": "light", "displayName": "新光照"}</code><br>
+                            移除/启停: <code>{"sensorId": 15704}</code>
+                        </div>
+                    </div>
                     <div class="row g-2">
                         <div class="col-md-3">
-                            <select id="cmdAction" class="form-select form-select-sm">
-                                <option value="set_frequency">设置频率</option>
-                                <option value="set_data_range">设置数据范围</option>
-                                <option value="set_light_status">设置灯光</option>
-                                <option value="add_sensor">添加传感器</option>
-                                <option value="remove_sensor">移除传感器</option>
-                                <option value="stop_sensor">停止传感器</option>
-                                <option value="start_sensor">启动传感器</option>
+                            <select id="cmdAction" class="form-select form-select-sm" onchange="onCmdActionChange()">
+                                <option value="set_frequency">🕐 设置频率</option>
+                                <option value="set_data_range">📊 设置数据范围</option>
+                                <option value="set_light_status">💡 设置灯光</option>
+                                <option value="add_sensor">➕ 添加传感器</option>
+                                <option value="remove_sensor">➖ 移除传感器</option>
+                                <option value="stop_sensor">⏹ 停止传感器</option>
+                                <option value="start_sensor">▶ 启动传感器</option>
                             </select>
                         </div>
                         <div class="col-md-7">
-                            <input id="cmdParams" class="form-control form-control-sm" placeholder='参数 JSON (如 {"interval":3, "sensorId": 15704})'>
+                            <input id="cmdParams" class="form-control form-control-sm" placeholder='参数 JSON — 点击右侧"帮助"查看示例'>
                         </div>
                         <div class="col-md-2">
                             <button class="btn btn-sm btn-outline-primary w-100" onclick="sendMockConfig()">
@@ -142,6 +162,10 @@
                     <div class="d-flex gap-1 align-items-center">
                         <span id="newHistoryBadge" class="badge bg-warning text-dark me-1"
                               style="display:none;cursor:pointer" onclick="scrollToHistoryBottom()"></span>
+                        <button id="historyPauseBtn" class="btn btn-sm btn-outline-warning"
+                                title="暂停自动滚动（方便查看旧记录）" onclick="toggleHistoryPause()">
+                            <i class="bi bi-play-fill"></i> 滚动中
+                        </button>
                         <button class="btn btn-sm btn-outline-secondary" onclick="scrollToHistoryBottom()"
                                 title="跳到最新"><i class="bi bi-arrow-down"></i></button>
                         <select id="historyFilter" class="form-select form-select-sm" style="width:auto"
@@ -153,7 +177,7 @@
                     </div>
                 </div>
                 <div class="card-body p-0">
-                    <div id="historyContainer" class="history-container">
+                    <div id="historyContainer" class="history-container" onscroll="onHistoryScroll()">
                         <div class="text-center text-muted py-3 small">
                             <i class="bi bi-hourglass-split"></i> 等待数据发送...
                         </div>
@@ -165,12 +189,18 @@
             <div class="card mb-3">
                 <div class="card-header d-flex justify-content-between align-items-center">
                     <span><i class="bi bi-terminal"></i> 实时日志</span>
-                    <button class="btn btn-sm btn-outline-danger" onclick="clearLogs()">
-                        <i class="bi bi-trash"></i>
-                    </button>
+                    <div class="d-flex gap-1">
+                        <button id="logPauseBtn" class="btn btn-sm btn-outline-warning"
+                                title="暂停/恢复日志滚动" onclick="toggleLogPause()">
+                            <i class="bi bi-play-fill"></i> 滚动中
+                        </button>
+                        <button class="btn btn-sm btn-outline-danger" onclick="clearLogs()" title="清空日志">
+                            <i class="bi bi-trash"></i>
+                        </button>
+                    </div>
                 </div>
                 <div class="card-body p-0">
-                    <pre id="logContainer" class="log-container mb-0 p-2">等待日志...</pre>
+                    <pre id="logContainer" class="log-container mb-0 p-2" onscroll="onLogScroll()">等待日志...</pre>
                 </div>
             </div>
         </div>

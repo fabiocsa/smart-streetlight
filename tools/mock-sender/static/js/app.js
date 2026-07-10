@@ -6,6 +6,8 @@
 // ============================ 全局状态 ============================
 let sensorList = [];
 let historyList = [];
+let historyPaused = false;  // 用户手动暂停自动滚动
+let historyUserScrolled = false;  // 用户主动滚动了历史区域
 let uptimeSeconds = 0;
 let uptimeInterval = null;
 let pollInterval = null;
@@ -385,9 +387,26 @@ function saveMqttConfig() {
 
 // ============================ 配置指令 ============================
 
+const CMD_HINTS = {
+    set_frequency:    '{"interval": 3}',
+    set_data_range:   '{"min": 0, "max": 600}',
+    set_light_status: '{"sensorId": 15704, "status": "on"}',
+    add_sensor:       '{"sensorId": 12345, "sensorType": "light", "displayName": "新传感器"}',
+    remove_sensor:    '{"sensorId": 15704}',
+    stop_sensor:      '{"sensorId": 15704}',
+    start_sensor:     '{"sensorId": 15704}',
+};
+
+function onCmdActionChange() {
+    const action = document.getElementById('cmdAction')?.value || '';
+    const input = document.getElementById('cmdParams');
+    if (input && CMD_HINTS[action]) {
+        input.value = CMD_HINTS[action];
+    }
+}
+
 function sendMockConfig() {
     const action = document.getElementById('cmdAction')?.value || '';
-    // v4: deviceId removed from config commands
     let params = {};
     try {
         const raw = document.getElementById('cmdParams')?.value?.trim();
@@ -403,6 +422,7 @@ function sendMockConfig() {
         body: JSON.stringify({ action, params }),
     }).then(r => r.json()).then(resp => {
         if (el) el.innerHTML = `<span class="${resp.success ? 'text-success' : 'text-warning'}">${resp.message}</span>`;
+        setTimeout(() => { if (el) el.innerHTML = ''; }, 3000);
     }).catch(err => { if (el) el.innerHTML = `<span class="text-danger">${err.message}</span>`; });
 }
 
@@ -526,7 +546,18 @@ function loadHistory() {
     fetch('/api/sensors/history')
         .then(r => r.json())
         .then(data => {
-            historyList = data || [];
+            const prevLen = historyList.length;
+            const newData = data || [];
+            historyList = newData;
+            // 检测新条目用于暂停时的徽章计数
+            if (historyPaused || historyUserScrolled) {
+                newHistoryCount += Math.max(0, newData.length - prevLen);
+                const badge = document.getElementById('newHistoryBadge');
+                if (badge && newHistoryCount > 0) {
+                    badge.textContent = '+' + newHistoryCount;
+                    badge.style.display = 'inline-block';
+                }
+            }
             renderHistory();
         }).catch(() => {});
 }
@@ -537,7 +568,7 @@ function renderHistory(filterKey) {
     let items = historyList;
     if (filterKey) items = items.filter(h => h.sensorKey === filterKey);
 
-    // ★ 保存当前已展开的条目 ID，重新渲染后恢复展开状态
+    // 保存已展开的条目
     const expandedIds = new Set();
     container.querySelectorAll('.collapse.show').forEach(el => {
         if (el.id) expandedIds.add(el.id);
@@ -560,6 +591,44 @@ function renderHistory(filterKey) {
             <div class="collapse${showClass}" id="${histId}"><div class="history-topic small text-muted">${escHtml(h.topic)}</div>
             <pre class="history-payload">${escHtml(JSON.stringify(h.payload, null, 2))}</pre></div>
         </div>`}).join('');
+
+    // 自动滚动到底部（除非用户暂停或主动上滚）
+    if (!historyPaused && !historyUserScrolled) {
+        container.scrollTop = container.scrollHeight;
+    }
+}
+
+function toggleHistoryPause() {
+    historyPaused = !historyPaused;
+    historyUserScrolled = false;
+    const btn = document.getElementById('historyPauseBtn');
+    if (btn) {
+        if (historyPaused) {
+            btn.innerHTML = '<i class="bi bi-pause-fill"></i> 已暂停';
+            btn.className = 'btn btn-sm btn-outline-danger';
+        } else {
+            btn.innerHTML = '<i class="bi bi-play-fill"></i> 滚动中';
+            btn.className = 'btn btn-sm btn-outline-warning';
+            scrollToHistoryBottom();
+        }
+    }
+}
+
+function onHistoryScroll() {
+    const container = document.getElementById('historyContainer');
+    if (!container) return;
+    // 用户滚离底部超过 50px 视为主动查看旧记录
+    const distToBottom = container.scrollHeight - container.scrollTop - container.clientHeight;
+    if (distToBottom > 50 && !historyPaused) {
+        historyUserScrolled = true;
+        const badge = document.getElementById('newHistoryBadge');
+        if (badge) badge.style.display = 'inline-block';
+    }
+    if (distToBottom < 10) {
+        historyUserScrolled = false;
+        const badge = document.getElementById('newHistoryBadge');
+        if (badge) badge.style.display = 'none';
+    }
 }
 
 function clearHistory() {
@@ -593,6 +662,9 @@ function updateHistoryFilter(sensors) {
 
 // ============================ 实时日志 ============================
 
+let logPaused = false;
+let logUserScrolled = false;
+
 function connectLogStream() {
     const evtSource = new EventSource('/api/logs/stream');
     evtSource.onmessage = (e) => {
@@ -602,13 +674,47 @@ function connectLogStream() {
             if (!container) return;
             const cls = 'log-' + (data.level || 'info').toLowerCase();
             container.innerHTML += `<span class="${cls}">[${data.time}] ${data.message}</span>\n`;
-            container.scrollTop = container.scrollHeight;
+            // 用户未暂停且未主动上滚时自动滚动
+            if (!logPaused && !logUserScrolled) {
+                container.scrollTop = container.scrollHeight;
+            }
+            // 限制日志长度
             if (container.innerHTML.length > 50000) {
                 container.innerHTML = container.innerHTML.slice(-30000);
             }
         } catch(ex) {}
     };
     evtSource.onerror = () => { /* reconnect handled by browser */ };
+}
+
+function toggleLogPause() {
+    logPaused = !logPaused;
+    logUserScrolled = false;
+    const btn = document.getElementById('logPauseBtn');
+    if (btn) {
+        if (logPaused) {
+            btn.innerHTML = '<i class="bi bi-pause-fill"></i> 已暂停';
+            btn.className = 'btn btn-sm btn-outline-danger';
+        } else {
+            btn.innerHTML = '<i class="bi bi-play-fill"></i> 滚动中';
+            btn.className = 'btn btn-sm btn-outline-warning';
+            // 恢复时滚到底部
+            const container = document.getElementById('logContainer');
+            if (container) container.scrollTop = container.scrollHeight;
+        }
+    }
+}
+
+function onLogScroll() {
+    const container = document.getElementById('logContainer');
+    if (!container) return;
+    const distToBottom = container.scrollHeight - container.scrollTop - container.clientHeight;
+    if (distToBottom > 30 && !logPaused) {
+        logUserScrolled = true;
+    }
+    if (distToBottom < 10) {
+        logUserScrolled = false;
+    }
 }
 
 function clearLogs() {
