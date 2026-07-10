@@ -311,10 +311,7 @@ class SensorWorker:
         while self._running:
             now = time.time()
 
-            if self._control_mode == 'manual':
-                time.sleep(0.5)
-                continue
-
+            # ★ 无论什么模式都持续上报数据（监控需要），模式只影响灯状态逻辑
             try:
                 self._do_publish()
             except Exception as e:
