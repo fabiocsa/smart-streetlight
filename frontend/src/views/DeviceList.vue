@@ -18,7 +18,7 @@
           <el-icon><Moon /></el-icon> 批量关灯 ({{ selectedIds.length }})
         </el-button>
         <el-button
-          v-if="selectedIds.length > 0 && authStore.isAdmin"
+          v-if="selectedIds.length > 0 && (authStore.isAdmin || authStore.isOperator)"
           type="danger"
           @click="handleBatchDelete"
         >
@@ -117,7 +117,7 @@
             <el-button type="primary" link @click="goDetail(row.id)">详情</el-button>
             <el-button v-if="authStore.isAdmin" type="primary" link @click="openEditDialog(row)">编辑</el-button>
             <el-popconfirm
-              v-if="authStore.isAdmin"
+              v-if="authStore.isAdmin || authStore.isOperator"
               title="确定删除该设备吗？"
               confirm-button-text="确定删除"
               cancel-button-text="取消"

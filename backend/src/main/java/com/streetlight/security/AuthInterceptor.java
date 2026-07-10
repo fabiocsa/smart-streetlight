@@ -83,12 +83,9 @@ public class AuthInterceptor implements HandlerInterceptor {
 
         // --- 告警管理 ---
         if (path.startsWith("/api/alarms")) {
-            // 查看告警列表 & 待处理数量 → admin + operator
+            // 查看告警列表 & 待处理数量 → 全部已认证用户（admin + operator + municipal）
             if ("GET".equalsIgnoreCase(request.getMethod())) {
-                if (!isAdmin && !isOperator) {
-                    sendError(response, 403, "权限不足，仅管理员和操作员可查看告警");
-                    return false;
-                }
+                // 放行所有角色
             } else {
                 // 告警处理（resolve / batch-resolve）→ 仅 admin
                 if (!isAdmin) {
@@ -120,7 +117,7 @@ public class AuthInterceptor implements HandlerInterceptor {
             }
         }
 
-        // 设备增删改 — admin 可全部操作，operator 仅可新增设备
+        // 设备增删改 — admin 可全部操作，operator 可新增/删除设备
         if (path.matches(".*/devices/?$")) {
             if (!"GET".equalsIgnoreCase(request.getMethod())) {
                 if ("POST".equalsIgnoreCase(request.getMethod())) {
@@ -139,9 +136,21 @@ public class AuthInterceptor implements HandlerInterceptor {
             }
         }
         if (path.matches(".*/devices/\\d+$")) {
-            if (!"GET".equalsIgnoreCase(request.getMethod()) && !isAdmin) {
-                sendError(response, 403, "权限不足，仅管理员可修改/删除设备");
-                return false;
+            if (!"GET".equalsIgnoreCase(request.getMethod())) {
+                // PUT（修改设备信息）→ 仅 admin
+                if ("PUT".equalsIgnoreCase(request.getMethod())) {
+                    if (!isAdmin) {
+                        sendError(response, 403, "权限不足，仅管理员可修改设备");
+                        return false;
+                    }
+                }
+                // DELETE（删除设备）→ admin + operator
+                if ("DELETE".equalsIgnoreCase(request.getMethod())) {
+                    if (!isAdmin && !isOperator) {
+                        sendError(response, 403, "权限不足，仅管理员和操作员可删除设备");
+                        return false;
+                    }
+                }
             }
         }
 

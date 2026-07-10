@@ -33,8 +33,8 @@
           <el-icon><TrendCharts /></el-icon>
           <span>光照趋势</span>
         </el-menu-item>
-        <!-- ★ 告警管理仅管理员或操作员可见 -->
-        <el-menu-item v-if="authStore.isAdmin || authStore.isOperator" index="/alarms">
+        <!-- ★ 告警管理对所有已认证用户可见（处理权限由后端控制） -->
+        <el-menu-item index="/alarms">
           <el-icon><Bell /></el-icon>
           <span>告警管理</span>
         </el-menu-item>

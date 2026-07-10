@@ -51,7 +51,7 @@ const routes = [
     path: '/alarms',
     name: 'AlarmList',
     component: () => import('../views/AlarmList.vue'),
-    meta: { title: '告警管理', roles: ['admin', 'operator'] }
+    meta: { title: '告警管理', roles: ['admin', 'operator', 'municipal'] }
   }
 ]
 
