@@ -57,6 +57,8 @@ public class DeviceService {
         return deviceRepository.findById(id).map(device -> {
             device.setName(updated.getName());
             device.setLocation(updated.getLocation());
+            device.setLatitude(updated.getLatitude());
+            device.setLongitude(updated.getLongitude());
             return deviceRepository.save(device);
         }).orElseThrow(() -> new RuntimeException("设备不存在, id=" + id));
     }

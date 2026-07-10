@@ -3,6 +3,22 @@
     <div class="page-header">
       <h2>设备管理</h2>
       <div class="header-actions">
+        <el-button-group style="margin-right: 12px">
+          <el-button
+            :type="viewMode === 'table' ? 'primary' : 'default'"
+            @click="viewMode = 'table'"
+            size="default"
+          >
+            <el-icon><Grid /></el-icon> 表格模式
+          </el-button>
+          <el-button
+            :type="viewMode === 'map' ? 'primary' : 'default'"
+            @click="viewMode = 'map'"
+            size="default"
+          >
+            <el-icon><MapLocation /></el-icon> 地图模式
+          </el-button>
+        </el-button-group>
         <el-button
           v-if="selectedIds.length > 0"
           type="success"
@@ -51,113 +67,129 @@
       </el-row>
     </el-card>
 
-    <!-- 设备表格 -->
-    <el-card shadow="never">
-      <el-table
-        ref="tableRef"
-        :data="paginatedDevices"
-        v-loading="deviceStore.loading"
-        stripe
-        style="width: 100%"
-        @selection-change="handleSelectionChange"
-      >
-        <el-table-column type="selection" width="45" />
-        <el-table-column prop="deviceId" label="设备ID" width="120" sortable />
-        <el-table-column prop="name" label="设备名称" min-width="140" sortable />
-        <el-table-column prop="location" label="安装位置" min-width="140" sortable />
-        <el-table-column label="状态" width="90">
-          <template #default="{ row }">
-            <el-tag :type="row.status === 'online' ? 'success' : 'danger'" size="small">
-              {{ row.status === 'online' ? '在线' : '离线' }}
-            </el-tag>
-          </template>
-        </el-table-column>
-        <el-table-column label="灯光" width="80">
-          <template #default="{ row }">
-            <el-tag :type="row.lightStatus === 'on' ? 'warning' : 'info'" size="small">
-              {{ row.lightStatus === 'on' ? '开启' : '关闭' }}
-            </el-tag>
-          </template>
-        </el-table-column>
-        <el-table-column label="控制模式" width="100" sortable prop="controlMode">
-          <template #default="{ row }">
-            {{ row.controlMode === 'auto' ? '自动' : '手动' }}
-          </template>
-        </el-table-column>
-        <el-table-column label="传感器数" width="90">
-          <template #default="{ row }">
-            <el-link type="primary" @click="goDetail(row.id)">
-              {{ row.sensorCount ?? '-' }}
-            </el-link>
-          </template>
-        </el-table-column>
-        <el-table-column label="最后心跳" width="170" sortable prop="lastHeartbeat">
-          <template #default="{ row }">
-            {{ formatTime(row.lastHeartbeat) }}
-          </template>
-        </el-table-column>
-        <el-table-column label="快捷控制" width="130">
-          <template #default="{ row }">
-            <el-button
-              v-if="row.status === 'online'"
-              :type="row.lightStatus === 'on' ? 'warning' : 'success'"
-              size="small"
-              :loading="controllingId === row.deviceId"
-              @click="handleQuickControl(row)"
-            >
-              {{ row.lightStatus === 'on' ? '关灯' : '开灯' }}
-            </el-button>
-            <el-tooltip v-else content="设备离线，无法控制" placement="top">
-              <el-button size="small" disabled type="info">不可控</el-button>
-            </el-tooltip>
-          </template>
-        </el-table-column>
-        <el-table-column label="操作" width="220" fixed="right">
-          <template #default="{ row }">
-            <el-button type="primary" link @click="goDetail(row.id)">详情</el-button>
-            <el-button v-if="authStore.isAdmin" type="primary" link @click="openEditDialog(row)">编辑</el-button>
-            <el-popconfirm
-              v-if="authStore.isAdmin"
-              title="确定删除该设备吗？"
-              confirm-button-text="确定删除"
-              cancel-button-text="取消"
-              @confirm="handleDelete(row.id)"
-            >
-              <template #reference>
-                <el-button type="danger" link>删除</el-button>
-              </template>
-            </el-popconfirm>
-          </template>
-        </el-table-column>
-        <template #empty>
-          <el-empty v-if="searchKeyword || filterStatus || filterControlMode"
-            description="没有匹配的设备">
-            <el-button type="primary" @click="clearFilters">清除筛选</el-button>
-          </el-empty>
-          <el-empty v-else description="暂无设备">
-            <template #description>
-              <p style="color: #909399; margin: 0">尚未添加任何设备</p>
-              <p style="color: #c0c4cc; font-size: 12px; margin: 4px 0 0 0">
-                点击「添加设备」通过 REST API 创建，传感器将通过 MQTT 自动挂载到已有设备下
-              </p>
+    <!-- 表格模式 -->
+    <template v-if="viewMode === 'table'">
+      <el-card shadow="never">
+        <el-table
+          ref="tableRef"
+          :data="paginatedDevices"
+          v-loading="deviceStore.loading"
+          stripe
+          style="width: 100%"
+          @selection-change="handleSelectionChange"
+        >
+          <el-table-column type="selection" width="45" />
+          <el-table-column prop="deviceId" label="设备ID" width="120" sortable />
+          <el-table-column prop="name" label="设备名称" min-width="140" sortable />
+          <el-table-column prop="location" label="安装位置" min-width="140" sortable />
+          <el-table-column label="状态" width="90">
+            <template #default="{ row }">
+              <el-tag :type="row.status === 'online' ? 'success' : 'danger'" size="small">
+                {{ row.status === 'online' ? '在线' : '离线' }}
+              </el-tag>
             </template>
-            <el-button type="primary" @click="refreshDevices">
-              <el-icon><Refresh /></el-icon> 刷新
-            </el-button>
-          </el-empty>
-        </template>
-      </el-table>
+          </el-table-column>
+          <el-table-column label="灯光" width="80">
+            <template #default="{ row }">
+              <el-tag :type="row.lightStatus === 'on' ? 'warning' : 'info'" size="small">
+                {{ row.lightStatus === 'on' ? '开启' : '关闭' }}
+              </el-tag>
+            </template>
+          </el-table-column>
+          <el-table-column label="控制模式" width="100" sortable prop="controlMode">
+            <template #default="{ row }">
+              {{ row.controlMode === 'auto' ? '自动' : '手动' }}
+            </template>
+          </el-table-column>
+          <el-table-column label="传感器数" width="90">
+            <template #default="{ row }">
+              <el-link type="primary" @click="goDetail(row.id)">
+                {{ row.sensorCount ?? '-' }}
+              </el-link>
+            </template>
+          </el-table-column>
+          <el-table-column label="最后心跳" width="170" sortable prop="lastHeartbeat">
+            <template #default="{ row }">
+              {{ formatTime(row.lastHeartbeat) }}
+            </template>
+          </el-table-column>
+          <el-table-column label="快捷控制" width="130">
+            <template #default="{ row }">
+              <el-button
+                v-if="row.status === 'online'"
+                :type="row.lightStatus === 'on' ? 'warning' : 'success'"
+                size="small"
+                :loading="controllingId === row.deviceId"
+                @click="handleQuickControl(row)"
+              >
+                {{ row.lightStatus === 'on' ? '关灯' : '开灯' }}
+              </el-button>
+              <el-tooltip v-else content="设备离线，无法控制" placement="top">
+                <el-button size="small" disabled type="info">不可控</el-button>
+              </el-tooltip>
+            </template>
+          </el-table-column>
+          <el-table-column label="操作" width="220" fixed="right">
+            <template #default="{ row }">
+              <el-button type="primary" link @click="goDetail(row.id)">详情</el-button>
+              <el-button v-if="authStore.isAdmin" type="primary" link @click="openEditDialog(row)">编辑</el-button>
+              <el-popconfirm
+                v-if="authStore.isAdmin"
+                title="确定删除该设备吗？"
+                confirm-button-text="确定删除"
+                cancel-button-text="取消"
+                @confirm="handleDelete(row.id)"
+              >
+                <template #reference>
+                  <el-button type="danger" link>删除</el-button>
+                </template>
+              </el-popconfirm>
+            </template>
+          </el-table-column>
+          <template #empty>
+            <el-empty v-if="searchKeyword || filterStatus || filterControlMode"
+              description="没有匹配的设备">
+              <el-button type="primary" @click="clearFilters">清除筛选</el-button>
+            </el-empty>
+            <el-empty v-else description="暂无设备">
+              <template #description>
+                <p style="color: #909399; margin: 0">尚未添加任何设备</p>
+                <p style="color: #c0c4cc; font-size: 12px; margin: 4px 0 0 0">
+                  点击「添加设备」通过 REST API 创建，传感器将通过 MQTT 自动挂载到已有设备下
+                </p>
+              </template>
+              <el-button type="primary" @click="refreshDevices">
+                <el-icon><Refresh /></el-icon> 刷新
+              </el-button>
+            </el-empty>
+          </template>
+        </el-table>
 
-      <el-pagination
-        v-if="filteredDevices.length > pageSize"
-        style="margin-top: 16px; justify-content: flex-end"
-        background
-        layout="total, prev, pager, next"
-        :total="filteredDevices.length"
-        :page-size="pageSize"
-        v-model:current-page="currentPage"
-      />
-    </el-card>
+        <el-pagination
+          v-if="filteredDevices.length > pageSize"
+          style="margin-top: 16px; justify-content: flex-end"
+          background
+          layout="total, prev, pager, next"
+          :total="filteredDevices.length"
+          :page-size="pageSize"
+          v-model:current-page="currentPage"
+        />
+      </el-card>
+    </template>
+
+    <!-- 地图模式 -->
+    <template v-else>
+      <el-card shadow="never">
+        <div style="margin-bottom: 12px; color: #909399; font-size: 13px;">
+          地图上显示 {{ filteredDevices.filter(d => d.latitude != null && d.longitude != null).length }} /
+          {{ filteredDevices.length }} 个设备
+          <span v-if="filteredDevices.filter(d => d.latitude == null || d.longitude == null).length > 0" style="color: #e6a23c; margin-left: 8px;">
+            ⚠ {{ filteredDevices.filter(d => d.latitude == null || d.longitude == null).length }} 个设备缺少坐标信息
+          </span>
+        </div>
+        <DeviceMap :devices="filteredDevices" height="600px" />
+      </el-card>
+    </template>
 
     <!-- 添加/编辑对话框 -->
     <DeviceForm
@@ -172,10 +204,11 @@
 import { ref, computed, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { Sunny, Moon, Refresh } from '@element-plus/icons-vue'
+import { Sunny, Moon, Refresh, Grid, MapLocation } from '@element-plus/icons-vue'
 import { useAuthStore } from '../stores/authStore'
 import { useDeviceStore } from '../store/device'
 import DeviceForm from '../components/DeviceForm.vue'
+import DeviceMap from '../components/DeviceMap.vue'
 import { sendControl, sendBatchControl } from '../api/control'
 import { formatTime, debounce, resetPage } from '../utils/common'
 
@@ -193,6 +226,7 @@ const currentPage = ref(1)
 const pageSize = 10
 const selectedIds = ref([])
 const controllingId = ref('')   // 当前正在控制的设备ID
+const viewMode = ref('table')   // 'table' | 'map'
 
 // 防抖搜索
 const onSearchInput = debounce(filterDevices, 300)
