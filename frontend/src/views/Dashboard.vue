@@ -2,35 +2,29 @@
   <div class="dashboard">
     <div class="page-header">
       <h2>仪表盘</h2>
-      <div class="header-actions">
-        <el-button type="primary" @click="refreshAll" :loading="loading">
-          <el-icon><Refresh /></el-icon> 刷新数据
-        </el-button>
-      </div>
+      <el-button type="primary" @click="refreshAll" :loading="loading">
+        <el-icon><Refresh /></el-icon> 刷新数据
+      </el-button>
     </div>
 
-    <!-- 统计卡片 -->
+    <!-- 统计卡片（可点击跳转） -->
     <el-row :gutter="16" class="stat-cards">
       <el-col :xs="12" :sm="8" :md="4" v-for="card in statCards" :key="card.label">
         <el-card
           shadow="hover"
           :body-style="{ padding: '20px' }"
-          :class="{ 'stat-card-clickable': !!card.to }"
+          :class="{ clickable: !!card.to }"
           @click="navigateTo(card.to)"
         >
-          <el-skeleton :loading="skeletonLoading" :rows="1" animated>
-            <template #default>
-              <div class="stat-card">
-                <div class="stat-icon" :style="{ background: card.color }">
-                  <el-icon :size="24"><component :is="card.icon" /></el-icon>
-                </div>
-                <div class="stat-info">
-                  <div class="stat-value">{{ card.value }}</div>
-                  <div class="stat-label">{{ card.label }}</div>
-                </div>
-              </div>
-            </template>
-          </el-skeleton>
+          <div class="stat-card">
+            <div class="stat-icon" :style="{ background: card.color }">
+              <el-icon :size="24"><component :is="card.icon" /></el-icon>
+            </div>
+            <div class="stat-info">
+              <div class="stat-value">{{ card.value }}</div>
+              <div class="stat-label">{{ card.label }}</div>
+            </div>
+          </div>
         </el-card>
       </el-col>
     </el-row>
@@ -41,11 +35,7 @@
       <el-col :span="8">
         <el-card shadow="never">
           <template #header><strong>设备状态分布</strong></template>
-          <el-skeleton :loading="skeletonLoading" animated>
-            <template #default>
-              <v-chart :option="deviceStatusOption" autoresize style="height: 280px" />
-            </template>
-          </el-skeleton>
+          <v-chart :option="deviceStatusOption" autoresize style="height: 280px" />
         </el-card>
       </el-col>
 
@@ -56,6 +46,7 @@
             <div class="chart-header">
               <strong>传感器趋势</strong>
               <div style="display: flex; gap: 8px; align-items: center; flex-wrap: wrap">
+                <!-- 时间范围切换 -->
                 <el-radio-group v-model="trendRange" size="small" @change="loadSensorTrend">
                   <el-radio-button value="24h">24小时</el-radio-button>
                   <el-radio-button value="7d">近7天</el-radio-button>
@@ -76,11 +67,7 @@
               </div>
             </div>
           </template>
-          <el-skeleton :loading="skeletonLoading" animated>
-            <template #default>
-              <v-chart :option="lightTrendOption" autoresize style="height: 280px" />
-            </template>
-          </el-skeleton>
+          <v-chart :option="lightTrendOption" autoresize style="height: 280px" />
         </el-card>
       </el-col>
     </el-row>
@@ -91,11 +78,7 @@
       <el-col :span="12">
         <el-card shadow="never">
           <template #header><strong>近7日告警趋势</strong></template>
-          <el-skeleton :loading="skeletonLoading" animated>
-            <template #default>
-              <v-chart :option="alarmTrendOption" autoresize style="height: 260px" />
-            </template>
-          </el-skeleton>
+          <v-chart :option="alarmTrendOption" autoresize style="height: 260px" />
         </el-card>
       </el-col>
 
@@ -103,11 +86,7 @@
       <el-col :span="12">
         <el-card shadow="never">
           <template #header><strong>本月告警级别分布</strong></template>
-          <el-skeleton :loading="skeletonLoading" animated>
-            <template #default>
-              <v-chart :option="alarmSeverityOption" autoresize style="height: 260px" />
-            </template>
-          </el-skeleton>
+          <v-chart :option="alarmSeverityOption" autoresize style="height: 260px" />
         </el-card>
       </el-col>
     </el-row>
@@ -118,32 +97,27 @@
       <el-col :span="12">
         <el-card shadow="never">
           <template #header><strong>近期告警</strong></template>
-          <el-skeleton :loading="skeletonLoading" animated>
-            <template #default>
-              <el-table :data="recentAlarms" size="small" max-height="300" style="width: 100%">
-                <template #empty><el-empty description="暂无告警数据" /></template>
-                <el-table-column prop="deviceId" label="设备" width="90" />
-                <el-table-column prop="content" label="告警内容" min-width="180" show-overflow-tooltip />
-                <el-table-column label="级别" width="70">
-                  <template #default="{ row }">
-                    <el-tag :type="severityTag(row.severity)" size="small">{{ severityLabel(row.severity) }}</el-tag>
-                  </template>
-                </el-table-column>
-                <el-table-column label="状态" width="70">
-                  <template #default="{ row }">
-                    <el-tag :type="row.status === 'PENDING' ? 'danger' : 'info'" size="small">
-                      {{ row.status === 'PENDING' ? '待处理' : '已处理' }}
-                    </el-tag>
-                  </template>
-                </el-table-column>
-                <el-table-column label="时间" width="150">
-                  <template #default="{ row }">
-                    {{ formatTime(row.createdAt) }}
-                  </template>
-                </el-table-column>
-              </el-table>
-            </template>
-          </el-skeleton>
+          <el-table :data="recentAlarms" size="small" max-height="300" style="width: 100%">
+            <el-table-column prop="deviceId" label="设备" width="90" />
+            <el-table-column prop="content" label="告警内容" min-width="180" show-overflow-tooltip />
+            <el-table-column label="级别" width="70">
+              <template #default="{ row }">
+                <el-tag :type="severityTag(row.severity)" size="small">{{ severityLabel(row.severity) }}</el-tag>
+              </template>
+            </el-table-column>
+            <el-table-column label="状态" width="70">
+              <template #default="{ row }">
+                <el-tag :type="row.status === 'PENDING' ? 'danger' : 'info'" size="small">
+                  {{ row.status === 'PENDING' ? '待处理' : '已处理' }}
+                </el-tag>
+              </template>
+            </el-table-column>
+            <el-table-column label="时间" width="150">
+              <template #default="{ row }">
+                {{ formatTime(row.createdAt) }}
+              </template>
+            </el-table-column>
+          </el-table>
         </el-card>
       </el-col>
 
@@ -151,38 +125,33 @@
       <el-col :span="12">
         <el-card shadow="never">
           <template #header><strong>近期控制日志</strong></template>
-          <el-skeleton :loading="skeletonLoading" animated>
-            <template #default>
-              <el-table :data="recentControls" size="small" max-height="300" style="width: 100%">
-                <template #empty><el-empty description="暂无控制日志" /></template>
-                <el-table-column prop="deviceId" label="设备" width="90" />
-                <el-table-column label="指令" width="70">
-                  <template #default="{ row }">
-                    <el-tag :type="row.command === 'on' ? 'warning' : 'info'" size="small">
-                      {{ row.command === 'on' ? '开灯' : '关灯' }}
-                    </el-tag>
-                  </template>
-                </el-table-column>
-                <el-table-column label="来源" width="70">
-                  <template #default="{ row }">
-                    {{ row.source === 'auto' ? '自动' : '手动' }}
-                  </template>
-                </el-table-column>
-                <el-table-column label="结果" width="70">
-                  <template #default="{ row }">
-                    <el-tag :type="row.result === 'success' ? 'success' : 'danger'" size="small">
-                      {{ row.result === 'success' ? '成功' : '失败' }}
-                    </el-tag>
-                  </template>
-                </el-table-column>
-                <el-table-column label="时间" width="150">
-                  <template #default="{ row }">
-                    {{ formatTime(row.createdAt) }}
-                  </template>
-                </el-table-column>
-              </el-table>
-            </template>
-          </el-skeleton>
+          <el-table :data="recentControls" size="small" max-height="300" style="width: 100%">
+            <el-table-column prop="deviceId" label="设备" width="90" />
+            <el-table-column label="指令" width="70">
+              <template #default="{ row }">
+                <el-tag :type="row.command === 'on' ? 'warning' : 'info'" size="small">
+                  {{ row.command === 'on' ? '开灯' : '关灯' }}
+                </el-tag>
+              </template>
+            </el-table-column>
+            <el-table-column label="来源" width="70">
+              <template #default="{ row }">
+                {{ row.source === 'auto' ? '自动' : '手动' }}
+              </template>
+            </el-table-column>
+            <el-table-column label="结果" width="70">
+              <template #default="{ row }">
+                <el-tag :type="row.result === 'success' ? 'success' : 'danger'" size="small">
+                  {{ row.result === 'success' ? '成功' : '失败' }}
+                </el-tag>
+              </template>
+            </el-table-column>
+            <el-table-column label="时间" width="150">
+              <template #default="{ row }">
+                {{ formatTime(row.createdAt) }}
+              </template>
+            </el-table-column>
+          </el-table>
         </el-card>
       </el-col>
     </el-row>
@@ -201,55 +170,50 @@
           </el-select>
         </div>
       </template>
-      <el-skeleton :loading="skeletonLoading" animated>
-        <template #default>
-          <el-table :data="latestSensorData" size="small" max-height="280" style="width: 100%">
-            <template #empty><el-empty description="暂无传感器数据" /></template>
-            <el-table-column prop="deviceId" label="设备ID" width="120" />
-            <el-table-column label="传感器类型" width="100">
-              <template #default="{ row }">
-                <el-tag :type="sensorTypeTag(row.sensorType)" size="small">{{ sensorTypeLabel(row.sensorType) }}</el-tag>
-              </template>
-            </el-table-column>
-            <el-table-column label="光照强度" width="200">
-              <template #default="{ row }">
-                <div style="display: flex; align-items: center; gap: 8px">
-                  <el-progress
-                    :percentage="Math.min((row.lightIntensity || 0) / 8, 100)"
-                    :color="lightColor(row.lightIntensity || 0)"
-                    :stroke-width="16"
-                    style="flex: 1"
-                  />
-                  <span style="font-weight: 600; min-width: 60px">{{ row.lightIntensity ?? '-' }} Lux</span>
-                </div>
-              </template>
-            </el-table-column>
-            <el-table-column label="其他指标" min-width="200">
-              <template #default="{ row }">
-                <div style="display: flex; gap: 12px; flex-wrap: wrap">
-                  <span v-if="row.data?.temperature != null" style="font-size: 13px">
-                    🌡 {{ row.data.temperature }}°C
-                  </span>
-                  <span v-if="row.data?.humidity != null" style="font-size: 13px">
-                    💧 {{ row.data.humidity }}%
-                  </span>
-                  <span v-if="row.data?.voltage != null" style="font-size: 13px">
-                    ⚡ {{ row.data.voltage }}V
-                  </span>
-                  <span v-if="row.data?.power != null" style="font-size: 13px">
-                    🔌 {{ row.data.power }}W
-                  </span>
-                </div>
-              </template>
-            </el-table-column>
-            <el-table-column label="上报时间" width="170">
-              <template #default="{ row }">
-                {{ formatTime(row.reportedAt) }}
-              </template>
-            </el-table-column>
-          </el-table>
-        </template>
-      </el-skeleton>
+      <el-table :data="latestSensorData" size="small" max-height="280" style="width: 100%">
+        <el-table-column prop="deviceId" label="设备ID" width="120" />
+        <el-table-column label="传感器类型" width="100">
+          <template #default="{ row }">
+            <el-tag :type="sensorTypeTag(row.sensorType)" size="small">{{ sensorTypeLabel(row.sensorType) }}</el-tag>
+          </template>
+        </el-table-column>
+        <el-table-column label="光照强度" width="200">
+          <template #default="{ row }">
+            <div style="display: flex; align-items: center; gap: 8px">
+              <el-progress
+                :percentage="Math.min((row.lightIntensity || 0) / 8, 100)"
+                :color="lightColor(row.lightIntensity || 0)"
+                :stroke-width="16"
+                style="flex: 1"
+              />
+              <span style="font-weight: 600; min-width: 60px">{{ row.lightIntensity ?? '-' }} Lux</span>
+            </div>
+          </template>
+        </el-table-column>
+        <el-table-column label="其他指标" min-width="200">
+          <template #default="{ row }">
+            <div style="display: flex; gap: 12px; flex-wrap: wrap">
+              <span v-if="row.data?.temperature != null" style="font-size: 13px">
+                🌡 {{ row.data.temperature }}°C
+              </span>
+              <span v-if="row.data?.humidity != null" style="font-size: 13px">
+                💧 {{ row.data.humidity }}%
+              </span>
+              <span v-if="row.data?.voltage != null" style="font-size: 13px">
+                ⚡ {{ row.data.voltage }}V
+              </span>
+              <span v-if="row.data?.power != null" style="font-size: 13px">
+                🔌 {{ row.data.power }}W
+              </span>
+            </div>
+          </template>
+        </el-table-column>
+        <el-table-column label="上报时间" width="170">
+          <template #default="{ row }">
+            {{ formatTime(row.reportedAt) }}
+          </template>
+        </el-table-column>
+      </el-table>
     </el-card>
   </div>
 </template>
@@ -274,7 +238,6 @@ const router = useRouter()
 const deviceStore = useDeviceStore()
 const authStore = useAuthStore()
 const loading = ref(false)
-const skeletonLoading = ref(true)
 
 // 指标选项
 const metricOptions = [
@@ -427,7 +390,7 @@ function sensorTypeLabel(type) {
   return map[type] || type || '未知'
 }
 
-// ========== 数据加载 ==========
+// 数据加载
 async function loadStats() {
   try { stats.value = await dashboardApi.getStats() } catch { /* */ }
 }
@@ -486,7 +449,6 @@ onMounted(async () => {
     loadSensorTrend(), loadAlarmStats(),
     loadRecentAlarms(), loadRecentControls()
   ])
-  skeletonLoading.value = false
 })
 </script>
 
@@ -496,12 +458,11 @@ onMounted(async () => {
   display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px;
 }
 .page-header h2 { font-size: 20px; font-weight: 600; }
-.header-actions { display: flex; align-items: center; gap: 8px; }
 
 .stat-cards { margin-bottom: 0; }
 .stat-card { display: flex; align-items: center; gap: 16px; }
-.stat-card-clickable { cursor: pointer; transition: transform 0.15s, box-shadow 0.15s; }
-.stat-card-clickable:hover {
+.clickable { cursor: pointer; transition: transform 0.15s, box-shadow 0.15s; }
+.clickable:hover {
   transform: translateY(-2px);
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1) !important;
 }
