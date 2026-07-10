@@ -73,7 +73,10 @@
       "lightStatus": "off",
       "controlMode": "auto",
       "dataTopic": "streetlight/sensor/94281/data",
-      "configJson": "{\"min\":0,\"max\":800}"
+      "configJson": "{\"min\":0,\"max\":800}",
+      "autoSendMode": "fixed",
+      "autoSendContent": "{\n  \"illuminance\": 150,\n  \"lightIntensity\": 150,\n  \"temperature\": 28.3,\n  \"voltage\": 226,\n  \"power\": 65,\n  \"cloudCover\": 0.3,\n  \"status\": \"OFF\",\n  \"sensorType\": \"light\",\n  \"timestamp\": \"{{timestamp}}\"\n}",
+      "messageTemplate": ""
     },
     "sensor_15645": {
       "sensorId": 15645,
@@ -89,7 +92,10 @@
       "lightStatus": "off",
       "controlMode": "auto",
       "dataTopic": "streetlight/sensor/15645/data",
-      "configJson": "{\"min\":0,\"max\":800}"
+      "configJson": "{\"min\":0,\"max\":800}",
+      "autoSendMode": "fixed",
+      "autoSendContent": "{\n  \"illuminance\": 5,\n  \"lightIntensity\": 5,\n  \"temperature\": 28.3,\n  \"voltage\": 226,\n  \"power\": 65,\n  \"cloudCover\": 0.3,\n  \"status\": \"OFF\",\n  \"sensorType\": \"light\",\n  \"timestamp\": \"{{timestamp}}\"\n}",
+      "messageTemplate": ""
     }
   },
   "simulation": {
