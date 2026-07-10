@@ -69,10 +69,12 @@
 import { computed } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useAuthStore } from './stores/authStore'
+import { useChatStore } from './stores/chatStore'
 
 const route = useRoute()
 const router = useRouter()
 const authStore = useAuthStore()
+const chatStore = useChatStore()
 
 const activeMenu = computed(() => {
   if (route.path.startsWith('/dashboard')) return '/dashboard'
@@ -86,6 +88,7 @@ const activeMenu = computed(() => {
 
 function handleLogout() {
   authStore.logout()
+  chatStore.reset()
   router.push('/login')
 }
 </script>

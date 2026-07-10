@@ -68,8 +68,15 @@ export const useChatStore = defineStore('chat', () => {
     }
   }
 
+  function reset() {
+    sessions.value = []
+    currentSessionId.value = null
+    currentMessages.value = []
+    isLoading.value = false
+  }
+
   return {
     sessions, currentSessionId, currentMessages, isLoading, currentSession,
-    loadSessions, selectSession, newSession, removeSession, renameCurrentSession, send
+    loadSessions, selectSession, newSession, removeSession, renameCurrentSession, send, reset
   }
 })

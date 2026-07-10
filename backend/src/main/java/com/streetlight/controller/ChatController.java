@@ -32,14 +32,9 @@ public class ChatController {
         return username;
     }
 
-    /** 验证会话归属：非本人会话拒绝访问 */
+    /** 验证会话归属：非本人会话直接抛异常 */
     private ChatSession requireOwnSession(Long sessionId) {
-        // getSessions 已按用户过滤，此处从用户会话列表中查找
-        List<ChatSession> sessions = chatService.getSessions(currentUser());
-        return sessions.stream()
-                .filter(s -> s.getId().equals(sessionId))
-                .findFirst()
-                .orElseThrow(() -> new BusinessException("会话不存在或无权访问"));
+        return chatService.getSession(sessionId, currentUser());
     }
 
     // ==================== 会话管理 ====================

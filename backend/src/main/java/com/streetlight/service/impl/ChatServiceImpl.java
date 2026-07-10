@@ -2,6 +2,7 @@ package com.streetlight.service.impl;
 
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.streetlight.common.BusinessException;
 import com.streetlight.config.DeepSeekConfig;
 import com.streetlight.entity.ChatMessage;
 import com.streetlight.entity.ChatSession;
@@ -46,6 +47,12 @@ public class ChatServiceImpl implements ChatService {
     @Override
     public List<ChatSession> getSessions(String userId) {
         return sessionRepo.findByUserIdOrderByUpdatedAtDesc(userId);
+    }
+
+    @Override
+    public ChatSession getSession(Long sessionId, String userId) {
+        return sessionRepo.findByIdAndUserId(sessionId, userId)
+                .orElseThrow(() -> new BusinessException("会话不存在或无权访问"));
     }
 
     @Override

@@ -24,8 +24,7 @@ public class ChatSession {
     private String title = "新对话";
 
     @Column(name = "user_id", nullable = false, length = 50)
-    @Builder.Default
-    private String userId = "default_user";
+    private String userId;
 
     @CreationTimestamp
     @Column(name = "created_at", updatable = false)

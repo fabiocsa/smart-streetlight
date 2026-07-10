@@ -11,6 +11,9 @@ public interface ChatService {
     /** 获取用户的所有会话列表 */
     List<ChatSession> getSessions(String userId);
 
+    /** 获取属于指定用户的会话，否则抛出异常 */
+    ChatSession getSession(Long sessionId, String userId);
+
     /** 创建新会话 */
     ChatSession createSession(String userId, String title);
 
