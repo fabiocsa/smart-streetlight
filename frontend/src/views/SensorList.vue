@@ -190,6 +190,7 @@ const hasFilter = computed(() =>
 
 const filteredSensors = computed(() => {
   let list = sensorStore.allSensors
+  if (filterDeviceId.value) list = list.filter(s => s.boundDeviceId === filterDeviceId.value)
   if (filterType.value) list = list.filter(s => s.sensorType === filterType.value)
   if (filterEnabled.value !== '' && filterEnabled.value !== null && filterEnabled.value !== undefined) {
     list = list.filter(s => !!s.enabled === filterEnabled.value)

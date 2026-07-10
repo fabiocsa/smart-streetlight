@@ -1,7 +1,9 @@
 package com.streetlight.repository;
 
 import com.streetlight.entity.Device;
+import jakarta.persistence.LockModeType;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Lock;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
@@ -14,6 +16,14 @@ import java.util.Optional;
 public interface DeviceRepository extends JpaRepository<Device, Long> {
 
     Optional<Device> findByDeviceId(String deviceId);
+
+    /**
+     * 悲观锁查询：用于自动联动决策时锁定设备行，防止并发重复触发。
+     * SELECT ... FOR UPDATE 会阻塞其他事务对同一行的写操作，直到当前事务提交。
+     */
+    @Lock(LockModeType.PESSIMISTIC_WRITE)
+    @Query("SELECT d FROM Device d WHERE d.deviceId = :deviceId")
+    Optional<Device> findByDeviceIdForUpdate(@Param("deviceId") String deviceId);
 
     List<Device> findByStatus(String status);
 

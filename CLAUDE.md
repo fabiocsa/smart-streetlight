@@ -10,22 +10,26 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ```
 模拟器/鸿蒙设备 ──MQTT──→ EMQX Broker ──MQTT──→ Spring Boot 后端 ──WebSocket──→ Vue 3 前端
-                                         ←──MQTT── (控制指令下行)
+                                         ←──MQTT── (控制指令下行 → 传感器 cmd 主题)
 ```
 
-**核心数据流：**
-1. mock-sender（`tools/mock-sender/`）或真实设备通过 MQTT 上报传感器数据，topic 格式 `streetlight/sensor/{sensorId}/data`
-2. `MqttMessageHandler` 接收 → `SensorDataServiceImpl.saveAndAutoControl()` 保存到 `sensor_data` 表，同时判断光照阈值自动联动开关灯
+**核心数据流 (v4 — 传感器独立，去设备化)：**
+1. mock-sender（`tools/mock-sender/`）或真实设备通过 MQTT 上报传感器数据，topic 格式 `streetlight/sensor/{sensorId}/data`，**payload 不含 deviceId**
+2. `MqttMessageHandler` 接收 → 通过 `device_sensor` 关联表解析 sensorId → deviceId → `SensorDataServiceImpl.saveAndAutoControl()` 保存到 `sensor_data` 表，同时判断光照阈值自动联动开关灯
 3. 实时数据通过 `WebSocketHandler.pushSensorData()` 推送到前端 `/ws/monitor`
-4. 控制指令（开关灯、模式切换）通过 MQTT 下行 → 设备响应 `streetlight/{deviceId}/control/response`
+4. 控制指令（开关灯、模式切换）通过 MQTT 下行到传感器 cmd 主题 → 传感器响应 `streetlight/sensor/{sensorId}/cmd/response`
 
-**关键设计决策：**
+**关键设计决策 (v4)：**
+- 模拟器端**完全不接触 deviceId**，只认 sensorId。后端通过 `device_sensor` 关联表解析绑定关系
 - 传感器（`Sensor`）与设备（`Device`）是独立实体，通过 `device_sensor` 关联表 N:M 绑定。传感器上报数据时可能未绑定设备，`deviceId` 会以 `sensor_{id}` 作为临时标识
+- 控制指令通过传感器 cmd 主题下发：`streetlight/sensor/{sensorId}/cmd`。后端查找设备绑定的 light 传感器，逐传感器发送
 - 传感器数据统一存 JSON 列（`sensor_data.data_json`），支持异构多维数据（光照、温度、湿度、功率等），无需 ALTER TABLE
 - JPA `ddl-auto: update`，Hibernate 自动同步表结构；`application.yml` 连接远程 MySQL
-- MQTT 使用 Eclipse Paho v5，订阅通配符 topic `streetlight/sensor/+/data` 和 `streetlight/sensor/+/status`
+- MQTT 使用 Eclipse Paho v5，订阅通配符 topic `streetlight/sensor/+/data`、`streetlight/sensor/+/status`、`streetlight/sensor/+/cmd/response`
 - 自动联动仅对 `sensorType=light` 且在 `auto` 模式的设备生效：光照 < `thresholdOn` 开灯，光照 > `thresholdOff` 关灯
-- 告警由 `HeartbeatChecker`（`@Scheduled` 定时任务）检测设备心跳超时自动生成，设备恢复上线时自动解除
+- 自动联动使用 `SELECT ... FOR UPDATE` 悲观行锁防止并发重复触发
+- 告警由 `HeartbeatChecker`（`@Scheduled` 定时任务）检测设备心跳超时自动生成，设备恢复上线时**仅**自动解除 OFFLINE 类型告警
+- 前端为纯 REST 通信，MQTT 主题对前端透明；WebSocket 用于实时推送控制结果与设备状态
 
 ## 常用命令
 
@@ -104,16 +108,16 @@ mysql -h 8.130.102.89 -u remote_user -p streetlight < docs/init.sql
 | `AlarmSeverity` | `enums/` | `INFO`, `WARNING`, `CRITICAL` |
 | `AlarmStatus` | `enums/` | `PENDING`（待处理）, `RESOLVED`（已解除） |
 
-### 速查：关键 Service
+### 速查：关键 Service (v4)
 
 | Service | 职责 |
 |---|---|
-| `SensorDataServiceImpl.saveAndAutoControl()` | **核心方法**：保存传感器数据 → 更新心跳 → 判断光照阈值自动开关灯 → 推送 WebSocket |
-| `ControlServiceImpl` | 执行设备控制指令（开/关灯、模式切换），通过 MQTT 下发 |
-| `SensorRegistrationService` | 处理模拟器传感器自动注册/注销、从数据报文恢复传感器记录 |
-| `HeartbeatChecker.checkHeartbeats()` | `@Scheduled(fixedRate=5000)` 每 5 秒检查心跳超时，标记离线并生成告警 |
+| `SensorDataServiceImpl.saveAndAutoControl()` | **核心方法**：保存传感器数据 → 更新心跳 → `SELECT ... FOR UPDATE` 悲观锁读设备 → 判断光照阈值自动开关灯 → 查绑定的 light 传感器 → 下发 MQTT cmd → 推送 WebSocket |
+| `ControlServiceImpl` | 执行设备控制指令（开/关灯、模式切换），通过查找设备绑定的 light 传感器，经 `streetlight/sensor/{sensorId}/cmd` 下发 |
+| `SensorRegistrationService` | 处理模拟器传感器自动注册/注销、从数据报文恢复传感器记录。`autoRegisterFromData()` 使用 `REQUIRES_NEW` 事务 |
+| `HeartbeatChecker.checkHeartbeats()` | `@Scheduled(fixedRate=5000)` 每 5 秒检查心跳超时，标记离线并委托 `AlarmService.createOfflineAlarm()` 生成告警 |
 | `ChatServiceImpl` | 调用 DeepSeek API，注入系统角色上下文（路灯数量/传感器数据等），支持多轮对话 |
-| `AlarmServiceImpl.autoResolveOfflineAlarm()` | 设备恢复上线时自动将 PENDING 告警标记为 RESOLVED |
+| `AlarmServiceImpl.autoResolveOfflineAlarm()` | 设备恢复上线时**仅**将 OFFLINE 类型的 PENDING 告警标记为 RESOLVED（不误关其他类型告警） |
 
 ### 循环依赖处理
 
@@ -157,34 +161,39 @@ mysql -h 8.130.102.89 -u remote_user -p streetlight < docs/init.sql
 - 支持多轮对话：`ChatMessage` 表存储历史消息，按 `ChatSession` 分组
 - 前端 `/chat` 页面实现流式打字机效果（非真实 SSE 流，前端模拟逐字显示）
 
-## Mock 数据发生器
+## Mock 数据发生器 (v4)
 
 `tools/mock-sender/` 是基于真实时钟 + 太阳位置模型的 Python 模拟器：
 - `data_generator.py`：使用 Spencer(1971) 太阳赤纬公式 + Beer-Lambert 大气光程模型生成符合物理规律的光照数据，包含昼夜变化、云量随机游走、温度季节联动
 - 重庆默认坐标：lat=29.5, lon=106.5, UTC+8
-- `app.py`：Flask Web 管理界面（端口 5000），可动态增删传感器、调整上报间隔
-- `config.json`：传感器配置持久化文件
+- `app.py`：Flask Web 管理界面（端口 5050），可动态增删传感器、调整上报间隔
+- `config.json`：传感器配置持久化文件（**v4: 不含 deviceId**）
+- **v4 关键变更**：模拟器只认 sensorId，订阅 `streetlight/sensor/{sensorId}/cmd` 接收控制指令，响应到 `streetlight/sensor/{sensorId}/cmd/response`
+- `mqtt_client.py`：封装 paho-mqtt，提供传感器 cmd 订阅/发布
+- `sensor_manager.py`：`SensorWorker.on_cmd()` 处理控制指令，`SensorManager.on_sensor_cmd()` 分发
 
-## MQTT Topic 设计
+## MQTT Topic 设计 (v4)
 
 | Topic | 方向 | 说明 |
 |---|---|---|
-| `streetlight/sensor/{sensorId}/data` | 上行 | 传感器数据上报 |
+| `streetlight/sensor/{sensorId}/data` | 上行 | 传感器数据上报（不含 deviceId） |
 | `streetlight/sensor/{sensorId}/status` | 上行 | 传感器心跳 |
+| `streetlight/sensor/{sensorId}/cmd` | **下行** | 后端 → 传感器控制指令 |
+| `streetlight/sensor/{sensorId}/cmd/response` | 上行 | 传感器 → 后端控制响应 |
 | `streetlight/sensor/register` | 上行 | 传感器自动注册 |
 | `streetlight/sensor/unregister` | 上行 | 传感器注销 |
-| `streetlight/{deviceId}/control/response` | 上行 | 设备控制响应 |
-| `streetlight/{deviceId}/control` | 下行 | 后端下发控制指令 |
-| `streetlight/{deviceId}/config/frequency` | 下行 | 调整上报频率 |
 
-## SensorData JSON 列设计
+**已删除的旧 topic：** `streetlight/{deviceId}/control`、`streetlight/{deviceId}/control/response`、`streetlight/mock-sender/config`
 
-`sensor_data` 表的 `data_json` 列存储 JSON 数据，支持异构多维传感器数据，无需 ALTER TABLE：
+## SensorData JSON 列设计 (v4)
+
+`sensor_data` 表的 `data_json` 列存储 JSON 数据，支持异构多维传感器数据，无需 ALTER TABLE。
+**v4: payload 不再含 `deviceId` 字段**，`device_id` 列由后端通过 `device_sensor` 关联表解析后填充。
 
 ```java
 // SensorData.from() 静态工厂 — 将 Map 序列化到 dataJson 列
 SensorData sd = SensorData.from(deviceId, sensorId, sensorType, data, reportedAt);
-// data 示例: {"illuminance": 320.5, "temperature": 28.3, "humidity": 65.0, "voltage": 220.1, "power": 45.0}
+// data 示例 (v4 — 无 deviceId): {"illuminance": 320.5, "temperature": 28.3, "humidity": 65.0, "voltage": 220.1, "power": 45.0}
 ```
 
 Repository 使用 MySQL `JSON_EXTRACT` 函数在 SQL 层直接查询 JSON 字段：
@@ -207,7 +216,7 @@ mqtt.topic-prefix: streetlight          # MQTT 主题前缀，MqttClientManager 
 deepseek.enabled: true                  # 设为 false 可禁用 AI 问答（ChatController 返回 503）
 ```
 
-MQTT Client ID 必须唯一（当前为 `backend-server-v2`），多实例部署时需改为动态生成。
+MQTT Client ID 必须唯一（当前为 `backend-server-v2`，mock-sender 为 `mock-sender-v4`），多实例部署时需改为动态生成。
 
 ### 无测试覆盖
 

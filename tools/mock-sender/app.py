@@ -120,6 +120,7 @@ def api_add_sensor():
     data = request.get_json(force=True)
     sensor_id = data.get("sensorId") or int(time.time() * 1000) % 100000
     data["sensorId"] = sensor_id
+    # v4: 不再携带 deviceId，传感器独立注册
     key = sensor_mgr.add_sensor(data)
     if not key:
         return jsonify({"error": "传感器已存在"}), 409
@@ -236,8 +237,7 @@ def api_update_auto_send_config(sensor_key: str):
 @app.route("/api/sensors/generate-sample/<sensor_type>", methods=["GET"])
 def api_generate_sample(sensor_type: str):
     from sender.data_generator import generate_sample_content
-    device_id = request.args.get("deviceId", "SL-001")
-    sample = generate_sample_content(sensor_type, device_id)
+    sample = generate_sample_content(sensor_type)
     return jsonify({"sample": sample})
 
 
@@ -312,34 +312,28 @@ def api_log_stream():
 # ================================ 配置指令处理 ================================
 
 def _handle_mock_config_command(payload: Dict[str, Any]) -> bool:
+    """处理本地配置指令（v4: 不再支持 deviceId 范围和 bind/unbind）。"""
     action = payload.get("action", "")
-    device_id = payload.get("deviceId", "")
     params = payload.get("params", {})
-    logger.info(f"处理配置指令: action={action}, deviceId={device_id}")
+    logger.info(f"处理配置指令: action={action}")
 
     if action == "set_frequency":
         interval = params.get("interval", 5)
-        if device_id:
-            for s in sensor_mgr.list_sensors():
-                if s["deviceId"] == device_id:
-                    sensor_mgr.update_sensor_config(s["sensorKey"], {"interval": interval})
-            return True
-        else:
-            for s in sensor_mgr.list_sensors():
-                sensor_mgr.update_sensor_config(s["sensorKey"], {"interval": interval})
-            return True
+        for s in sensor_mgr.list_sensors():
+            sensor_mgr.update_sensor_config(s["sensorKey"], {"interval": interval})
+        return True
 
     elif action == "set_data_range":
         data_range = {"min": params.get("min", 0), "max": params.get("max", 800)}
-        if device_id:
-            for s in sensor_mgr.list_sensors():
-                if s["deviceId"] == device_id:
-                    sensor_mgr.update_sensor_config(s["sensorKey"], {"dataRange": data_range})
+        for s in sensor_mgr.list_sensors():
+            sensor_mgr.update_sensor_config(s["sensorKey"], {"dataRange": data_range})
         return True
 
     elif action == "set_light_status":
-        if device_id:
-            sensor_mgr.handle_control_command(device_id, {
+        # v4: 通过 sensor_id 指定目标传感器
+        sensor_id = params.get("sensorId")
+        if sensor_id:
+            sensor_mgr.on_sensor_cmd(int(sensor_id), {
                 "command": params.get("status", "off"),
                 "source": "auto",
             })
@@ -363,19 +357,6 @@ def _handle_mock_config_command(payload: Dict[str, Any]) -> bool:
         if sensor_id:
             key = _make_sensor_key(sensor_id)
             return sensor_mgr.start_sensor(key) if action == "start_sensor" else sensor_mgr.stop_sensor(key)
-        return False
-
-    elif action == "bind_to_device":
-        sensor_id = params.get("sensorId")
-        target_device_id = device_id or params.get("targetDeviceId", "")
-        if sensor_id and target_device_id:
-            return sensor_mgr.bind_to_device(int(sensor_id), target_device_id)
-        return False
-
-    elif action == "unbind_from_device":
-        sensor_id = params.get("sensorId")
-        if sensor_id:
-            return sensor_mgr.unbind_from_device(int(sensor_id))
         return False
 
     else:
@@ -405,9 +386,8 @@ def main():
     mqtt_mgr = MqttClientManager()
     sensor_mgr = SensorManager(config_mgr, mqtt_mgr)
 
-    # 注册 MQTT 回调
-    mqtt_mgr.on_control_command = sensor_mgr.handle_control_command
-    mqtt_mgr.on_mock_config = _handle_mock_config_command
+    # 注册 MQTT 回调 (v4: on_sensor_cmd 替代 on_control_command)
+    mqtt_mgr.on_sensor_cmd = sensor_mgr.on_sensor_cmd
     mqtt_mgr.on_connected = lambda: sensor_mgr.re_register_all()
 
     # 连接 MQTT

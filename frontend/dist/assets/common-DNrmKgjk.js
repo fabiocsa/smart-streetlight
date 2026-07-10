@@ -1,1 +1,0 @@
-const i={light:"光照",temperature:"温度",humidity:"湿度",power:"功率"};function u(e){return e?new Date(e).toLocaleString("zh-CN"):"-"}function o(e){return i[e]||e}function a(e){e.value=1}function c(e,n=300){let t=null;return function(...r){t&&clearTimeout(t),t=setTimeout(()=>e.apply(this,r),n)}}export{c as d,u as f,a as r,o as t};

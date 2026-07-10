@@ -36,9 +36,6 @@ public class SensorRegistrationService {
                 ? payload.get("sensorType").asText() : "light";
         String displayName = payload.has("displayName")
                 ? payload.get("displayName").asText() : sensorType;
-        String dataTopic = payload.has("dataTopic")
-                ? payload.get("dataTopic").asText()
-                : "streetlight/sensor/unknown/data";
         int reportFrequency = payload.has("reportFrequency")
                 ? payload.get("reportFrequency").asInt() : 5;
         String configJson = payload.has("configJson")
@@ -48,6 +45,20 @@ public class SensorRegistrationService {
         Long simulatorSensorId = null;
         if (payload.has("sensorId")) {
             simulatorSensorId = payload.get("sensorId").asLong();
+        }
+
+        // ★ dataTopic 必须与 sensorId 一致：从 sensorId 派生，忽略 payload 中可能不匹配的值
+        String dataTopic = simulatorSensorId != null
+                ? "streetlight/sensor/" + simulatorSensorId + "/data"
+                : (payload.has("dataTopic") ? payload.get("dataTopic").asText() : "streetlight/sensor/unknown/data");
+
+        // 如果 payload 中的 dataTopic 与派生值不一致，记录警告
+        if (payload.has("dataTopic") && simulatorSensorId != null) {
+            String payloadTopic = payload.get("dataTopic").asText();
+            if (!dataTopic.equals(payloadTopic)) {
+                log.warn("传感器注册 dataTopic 不一致，已自动修正: payload topic={}, 派生 topic={}, sensorId={}",
+                        payloadTopic, dataTopic, simulatorSensorId);
+            }
         }
 
         Sensor sensor;
@@ -98,10 +109,17 @@ public class SensorRegistrationService {
     /**
      * 从传感器数据中自动注册/恢复传感器（新事务，独立于数据保存）。
      * 用于 MQTT 数据消息到达时，发现传感器尚未注册的容错恢复场景。
+     * dataTopic 始终从 simulatorSensorId 派生，保证与注册消息一致。
      */
     @Transactional(propagation = org.springframework.transaction.annotation.Propagation.REQUIRES_NEW)
     public void autoRegisterFromData(Long simulatorSensorId, String sensorType,
                                      String displayName, String dataTopic) {
+        // ★ 强制 dataTopic 与 simulatorSensorId 一致，防止因 topic 不匹配产生重复传感器
+        String correctTopic = "streetlight/sensor/" + simulatorSensorId + "/data";
+        if (!correctTopic.equals(dataTopic)) {
+            log.warn("autoRegisterFromData: dataTopic 与 sensorId 不一致，已自动修正: "
+                    + "传入 topic={}, 修正 topic={}, sensorId={}", dataTopic, correctTopic, simulatorSensorId);
+        }
         sensorRepository.findBySimulatorSensorId(simulatorSensorId).ifPresentOrElse(
             existing -> {
                 if (!existing.getEnabled()) {
@@ -119,7 +137,7 @@ public class SensorRegistrationService {
                 Sensor sensor = Sensor.builder()
                         .sensorType(sensorType)
                         .displayName(name)
-                        .dataTopic(dataTopic)
+                        .dataTopic(correctTopic)
                         .reportFrequency(5)
                         .enabled(true)
                         .simulatorSensorId(simulatorSensorId)

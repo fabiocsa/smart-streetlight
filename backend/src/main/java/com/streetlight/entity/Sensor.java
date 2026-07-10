@@ -13,7 +13,9 @@ import java.time.LocalDateTime;
  * 设备与传感器的绑定关系通过 device_sensor 关联表管理（Device 侧 @ManyToMany）。
  */
 @Entity
-@Table(name = "sensor")
+@Table(name = "sensor", indexes = {
+    @Index(name = "idx_sensor_enabled", columnList = "enabled")
+})
 @Data
 @NoArgsConstructor
 @AllArgsConstructor

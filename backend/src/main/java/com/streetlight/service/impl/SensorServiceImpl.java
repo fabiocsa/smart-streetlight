@@ -113,11 +113,18 @@ public class SensorServiceImpl implements SensorService {
         Sensor sensor = sensorRepository.findById(id)
                 .orElseThrow(() -> new BusinessException("传感器不存在, id=" + id));
 
+        String simulatorInfo = sensor.getSimulatorSensorId() != null
+                ? String.valueOf(sensor.getSimulatorSensorId()) : "无(N/A)";
+
+        // ★ 先解除设备绑定（删除 device_sensor 关联），否则 FK 约束阻止删除
+        sensorRepository.removeDeviceBindings(id);
+
         // 硬删除：从数据库移除记录。不通知模拟器（前后端与模拟器隔离）。
         // 模拟器仍可继续发送数据，后端在 handleSensorData 中会自动重新注册。
-        sensorRepository.delete(sensor);
+        // clearAutomatically=true 会使 sensor 变为 detached，使用 deleteById 重新查询并删除。
+        sensorRepository.deleteById(id);
         log.info("传感器已删除（模拟器仍在运行时会自动重新识别） - sensorId: {}, simulatorSensorId: {}",
-                id, sensor.getSimulatorSensorId());
+                id, simulatorInfo);
     }
 
     @Override

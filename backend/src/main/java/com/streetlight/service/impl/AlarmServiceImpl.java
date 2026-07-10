@@ -6,6 +6,7 @@ import com.streetlight.enums.AlarmStatus;
 import com.streetlight.enums.AlarmType;
 import com.streetlight.repository.AlarmLogRepository;
 import com.streetlight.service.AlarmService;
+import com.streetlight.websocket.WebSocketHandler;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.domain.Page;
@@ -25,10 +26,12 @@ import java.util.*;
 public class AlarmServiceImpl implements AlarmService {
 
     private final AlarmLogRepository alarmLogRepository;
+    private final WebSocketHandler webSocketHandler;
 
     @Override
     @Transactional
     public void createOfflineAlarm(String deviceId) {
+        // 防重复：已有未处理的离线告警则不重复创建
         List<AlarmLog> existing = alarmLogRepository.findByDeviceIdAndStatus(deviceId, AlarmStatus.PENDING);
         boolean hasOfflinePending = existing.stream()
                 .anyMatch(a -> a.getAlarmType() == AlarmType.OFFLINE);
@@ -44,22 +47,36 @@ public class AlarmServiceImpl implements AlarmService {
                 .build();
         alarmLogRepository.save(alarm);
         log.warn("创建离线告警: deviceId={}", deviceId);
+
+        // 通过 WebSocket 推送新告警通知到前端
+        webSocketHandler.pushNewAlarm(
+                alarm.getId(),
+                deviceId,
+                "offline",
+                alarm.getContent(),
+                "warning"
+        );
     }
 
     @Override
     @Transactional
     public void autoResolveOfflineAlarm(String deviceId) {
         List<AlarmLog> pending = alarmLogRepository.findByDeviceIdAndStatus(deviceId, AlarmStatus.PENDING);
-        for (AlarmLog alarm : pending) {
+        // 仅自动解决 OFFLINE 类型告警，不误关其他类型的待处理告警（如 ABNORMAL_DATA）
+        List<AlarmLog> offlineAlarms = pending.stream()
+                .filter(a -> a.getAlarmType() == AlarmType.OFFLINE)
+                .toList();
+        if (offlineAlarms.isEmpty()) {
+            return;
+        }
+        for (AlarmLog alarm : offlineAlarms) {
             alarm.setStatus(AlarmStatus.RESOLVED);
             alarm.setResolvedAt(LocalDateTime.now());
             alarm.setResolvedBy("system");
             alarm.setNotes("设备恢复在线，自动解决");
         }
-        alarmLogRepository.saveAll(pending);
-        if (!pending.isEmpty()) {
-            log.info("自动解决离线告警: deviceId={}, count={}", deviceId, pending.size());
-        }
+        alarmLogRepository.saveAll(offlineAlarms);
+        log.info("自动解决离线告警: deviceId={}, count={}", deviceId, offlineAlarms.size());
     }
 
     @Override

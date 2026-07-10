@@ -28,6 +28,9 @@ public interface SensorDataRepository extends JpaRepository<SensorData, Long> {
     List<SensorData> findBySensorTypeAndReportedAtBetweenOrderByReportedAtAsc(
             String sensorType, LocalDateTime start, LocalDateTime end);
 
+    List<SensorData> findByDeviceIdAndSensorTypeAndReportedAtBetweenOrderByReportedAtAsc(
+            String deviceId, String sensorType, LocalDateTime start, LocalDateTime end);
+
     // ===== 通用聚合：指定传感器类型 + 指标名 =====
 
     @Query("SELECT AVG(CAST(function('json_unquote', function('json_extract', s.dataJson, " +

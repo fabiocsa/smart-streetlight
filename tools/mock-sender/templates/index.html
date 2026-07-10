@@ -78,11 +78,8 @@
                                 <option value="start_sensor">启动传感器</option>
                             </select>
                         </div>
-                        <div class="col-md-3">
-                            <input id="cmdDeviceId" class="form-control form-control-sm" placeholder="设备ID (留空=全部)">
-                        </div>
-                        <div class="col-md-4">
-                            <input id="cmdParams" class="form-control form-control-sm" placeholder='参数 JSON (如 {"interval":3})'>
+                        <div class="col-md-7">
+                            <input id="cmdParams" class="form-control form-control-sm" placeholder='参数 JSON (如 {"interval":3, "sensorId": 15704})'>
                         </div>
                         <div class="col-md-2">
                             <button class="btn btn-sm btn-outline-primary w-100" onclick="sendMockConfig()">
@@ -202,6 +199,7 @@
                             <option value="power">⚡ 功率</option>
                         </select>
                     </div>
+                    <!-- v4: 传感器独立，不再需要 deviceId -->
                     <div class="mb-3">
                         <label class="form-label">显示名称</label>
                         <input name="displayName" class="form-control form-control-sm"
@@ -305,10 +303,12 @@
                                 </div>
                             </div>
                             <div id="fixedModeDesc" style="display:none" class="mb-2">
-                                <div class="alert alert-warning py-2 small mb-2">
-                                    <i class="bi bi-exclamation-triangle"></i>
-                                    固定内容模式下，每次自动发送的数据完全相同
-                                    （仅 <code>{{timestamp}}</code> 和 <code>{{deviceId}}</code> 会被替换）。
+                                <div class="alert alert-success py-2 small mb-2">
+                                    <i class="bi bi-check-circle"></i>
+                                    固定内容模式下，先由算法生成完整 payload（含光照/温度/电压等全部字段），
+                                    再用下方 JSON 中的字段<span class="fw-bold">覆盖</span>对应值。
+                                    你只需写想固定的字段（如 <code>"illuminance": 30</code>），
+                                    其他字段仍会自动生成，无需手动补全。
                                 </div>
                             </div>
                             <div id="templateSection">
@@ -317,7 +317,7 @@
                                 </label>
                                 <textarea id="msgTemplateInput" class="form-control form-control-sm" rows="6"
                                     style="font-family: 'Cascadia Code', 'Consolas', monospace; font-size: 0.8rem;"
-                                    placeholder='{"deviceId":"{{deviceId}}","light":{{lightIntensity}},...}'></textarea>
+                                    placeholder='{"lightIntensity":40,"illuminance":40,"temperature":28.3,...}'></textarea>
                                 <div class="d-flex gap-1 mt-1">
                                     <button class="btn btn-sm btn-outline-secondary" onclick="resetTemplate()">
                                         <i class="bi bi-arrow-counterclockwise"></i> 重置
@@ -339,7 +339,7 @@
                             <div class="mb-2">
                                 <textarea id="autoSendContentInput" class="form-control" rows="14"
                                     style="font-family: 'Cascadia Code', 'Consolas', monospace; font-size: 0.85rem;"
-                                    placeholder="选择「固定内容」模式后在此编辑发送的消息体..."></textarea>
+                                    placeholder="填入要覆盖的字段，如 &#10;{&quot;illuminance&quot;: 30}&#10;只写需要固定的字段即可，其余由算法自动生成..."></textarea>
                             </div>
                             <div class="d-flex flex-wrap gap-1 mb-2">
                                 <button class="btn btn-sm btn-outline-success" onclick="generateSampleContent()">
@@ -373,7 +373,7 @@
                             <details class="mb-0">
                                 <summary class="small text-muted" style="cursor:pointer">可用变量参考</summary>
                                 <div class="small bg-light p-2 rounded mt-1" style="font-family:monospace; font-size:0.72rem;">
-                                    <strong>固定模式:</strong> {{"{{timestamp}}"}} {{"{{deviceId}}"}}<br>
+                                    <strong>固定模式:</strong> {{"{{timestamp}}"}}<br>
                                     <strong>算法模式:</strong> {{"{{lightIntensity}}"}} {{"{{temperature}}"}} {{"{{voltage}}"}} {{"{{power}}"}} {{"{{cloudCover}}"}} {{"{{status}}"}}<br>
                                     <strong>通用:</strong> {{"{{sensorType}}"}} {{"{{displayName}}"}} {{"{{location}}"}} {{"{{controlMode}}"}} {{"{{payload}}"}}
                                 </div>
