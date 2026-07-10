@@ -58,6 +58,38 @@
       "controlMode": "auto",
       "dataTopic": "streetlight/sensor/51547/data",
       "configJson": "{\"min\":0,\"max\":800}"
+    },
+    "sensor_94281": {
+      "sensorId": 94281,
+      "displayName": "雷霆大光线传感器",
+      "sensorType": "light",
+      "groupTag": "",
+      "enabled": true,
+      "interval": 5,
+      "dataRange": {
+        "min": 0,
+        "max": 800
+      },
+      "lightStatus": "off",
+      "controlMode": "auto",
+      "dataTopic": "streetlight/sensor/94281/data",
+      "configJson": "{\"min\":0,\"max\":800}"
+    },
+    "sensor_15645": {
+      "sensorId": 15645,
+      "displayName": "究极黑暗",
+      "sensorType": "light",
+      "groupTag": "",
+      "enabled": true,
+      "interval": 5,
+      "dataRange": {
+        "min": 0,
+        "max": 800
+      },
+      "lightStatus": "off",
+      "controlMode": "auto",
+      "dataTopic": "streetlight/sensor/15645/data",
+      "configJson": "{\"min\":0,\"max\":800}"
     }
   },
   "simulation": {

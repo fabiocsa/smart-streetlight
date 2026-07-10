@@ -422,33 +422,52 @@ def generate_sensor_data_with_template(
 # 固定内容模式的示例覆盖字段（仅写想固定的字段即可，其余由算法自动生成）
 # ---------------------------------------------------------------------------
 
+# 固定内容模式的完整字段模板（v4: 不含 deviceId）
+# 固定模式下算法先算完整 payload，再用下面的字段覆盖对应值，只需写想固定的字段
 SAMPLE_TEMPLATES = {
     "light": {
-        "_comment": "只写要固定的字段，其余由算法自动生成",
-        "illuminance": 30,
+        "illuminance": 40,
+        "lightIntensity": 40,
+        "temperature": 28.3,
+        "voltage": 226,
+        "power": 65,
+        "cloudCover": 0.3,
+        "status": "OFF",
+        "sensorType": "light",
+        "timestamp": "{{timestamp}}",
     },
     "temperature": {
-        "_comment": "只写要固定的字段，其余由算法自动生成",
         "temperature": 35.5,
+        "voltage": 226,
+        "power": 0.5,
+        "cloudCover": 0.3,
+        "sensorType": "temperature",
+        "timestamp": "{{timestamp}}",
     },
     "humidity": {
-        "_comment": "只写要固定的字段，其余由算法自动生成",
         "humidity": 80.0,
+        "temperature": 28.3,
+        "voltage": 226,
+        "power": 0.5,
+        "sensorType": "humidity",
+        "timestamp": "{{timestamp}}",
     },
     "power": {
-        "_comment": "只写要固定的字段，其余由算法自动生成",
         "power": 80.0,
         "voltage": 230.0,
+        "temperature": 28.3,
+        "sensorType": "power",
+        "timestamp": "{{timestamp}}",
     },
 }
 
 
 def generate_sample_content(sensor_type: str) -> str:
-    """根据传感器类型生成固定内容的示例（仅覆盖关键字段, v4: 无需 deviceId）。"""
+    """根据传感器类型生成固定内容的完整字段模板（v4: 不含 deviceId）。"""
     import json as _json
     template = SAMPLE_TEMPLATES.get(sensor_type, SAMPLE_TEMPLATES["light"])
     sample = dict(template)
-    del sample["_comment"]
+    sample.pop("_comment", None)  # 兼容旧模板中的 _comment 字段
     return _json.dumps(sample, ensure_ascii=False, indent=2)
 
 

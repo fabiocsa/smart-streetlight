@@ -370,12 +370,12 @@
                                 </div>
                             </div>
                             <div id="autoSendValidation" class="small"></div>
-                            <details class="mb-0">
-                                <summary class="small text-muted" style="cursor:pointer">可用变量参考</summary>
+                            <details class="mb-0" open>
+                                <summary class="small text-muted" style="cursor:pointer">可用变量参考 (v4: 不含 deviceId)</summary>
                                 <div class="small bg-light p-2 rounded mt-1" style="font-family:monospace; font-size:0.72rem;">
-                                    <strong>固定模式:</strong> {{"{{timestamp}}"}}<br>
-                                    <strong>算法模式:</strong> {{"{{lightIntensity}}"}} {{"{{temperature}}"}} {{"{{voltage}}"}} {{"{{power}}"}} {{"{{cloudCover}}"}} {{"{{status}}"}}<br>
-                                    <strong>通用:</strong> {{"{{sensorType}}"}} {{"{{displayName}}"}} {{"{{location}}"}} {{"{{controlMode}}"}} {{"{{payload}}"}}
+                                    <strong>数据字段:</strong> {{"{{illuminance}}"}} {{"{{lightIntensity}}"}} {{"{{temperature}}"}} {{"{{voltage}}"}} {{"{{power}}"}} {{"{{cloudCover}}"}} {{"{{status}}"}}<br>
+                                    <strong>元信息:</strong> {{"{{sensorType}}"}} {{"{{sensorId}}"}} {{"{{displayName}}"}} {{"{{controlMode}}"}} {{"{{brightness}}"}}<br>
+                                    <strong>特殊:</strong> {{"{{timestamp}}"}} &nbsp;|&nbsp; {{"{{payload}}"}} = 完整 JSON
                                 </div>
                             </details>
                         </div>
