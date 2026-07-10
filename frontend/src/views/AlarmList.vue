@@ -4,7 +4,7 @@
       <h2>告警管理</h2>
       <div class="header-actions">
         <el-button
-          v-if="selectedIds.length > 0"
+          v-if="selectedIds.length > 0 && authStore.isAdmin"
           type="primary"
           @click="handleBatchResolve"
         >
@@ -21,12 +21,14 @@
       <el-row :gutter="12">
         <el-col :span="4">
           <el-select v-model="filterStatus" placeholder="状态" clearable @change="loadAlarms">
+            <el-option label="全部" value="" />
             <el-option label="待处理" value="PENDING" />
             <el-option label="已处理" value="RESOLVED" />
           </el-select>
         </el-col>
         <el-col :span="4">
           <el-select v-model="filterSeverity" placeholder="级别" clearable @change="loadAlarms">
+            <el-option label="全部" value="" />
             <el-option label="严重" value="CRITICAL" />
             <el-option label="警告" value="WARNING" />
             <el-option label="信息" value="INFO" />
@@ -34,6 +36,7 @@
         </el-col>
         <el-col :span="4">
           <el-select v-model="filterType" placeholder="类型" clearable @change="loadAlarms">
+            <el-option label="全部" value="" />
             <el-option label="设备离线" value="OFFLINE" />
             <el-option label="传感器异常" value="SENSOR_ABNORMAL" />
           </el-select>
@@ -101,7 +104,7 @@
         <el-table-column label="操作" width="180" fixed="right">
           <template #default="{ row }">
             <el-button
-              v-if="row.status === 'PENDING'"
+              v-if="row.status === 'PENDING' && authStore.isAdmin"
               type="primary"
               link
               @click="openResolveDialog(row)"
@@ -155,8 +158,10 @@ import { useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { getAlarms, resolveAlarm, batchResolve, getPendingCount } from '../api/alarm'
 import { formatTime, debounce, resetPage } from '../utils/common'
+import { useAuthStore } from '../stores/authStore'
 
 const router = useRouter()
+const authStore = useAuthStore()
 
 // 数据
 const alarms = ref([])

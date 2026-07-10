@@ -20,6 +20,8 @@ public class AuthService {
 
     private final UserRepository userRepository;
 
+    private static final java.util.Set<String> VALID_ROLES = java.util.Set.of("admin", "municipal", "operator");
+
     /** 注册新用户 */
     @Transactional
     public Map<String, Object> register(String username, String password, String role) {
@@ -28,6 +30,9 @@ public class AuthService {
         }
         if (role == null || role.isBlank()) {
             role = "municipal";
+        }
+        if (!VALID_ROLES.contains(role)) {
+            throw new BusinessException("无效的角色: " + role);
         }
         User user = User.builder()
                 .username(username)

@@ -51,4 +51,7 @@ public interface AlarmLogRepository extends JpaRepository<AlarmLog, Long> {
 
     /** 按严重级别和状态分页查询 */
     Page<AlarmLog> findBySeverityAndStatus(AlarmSeverity severity, AlarmStatus status, Pageable pageable);
+
+    /** 按严重级别分页查询 */
+    Page<AlarmLog> findBySeverity(AlarmSeverity severity, Pageable pageable);
 }

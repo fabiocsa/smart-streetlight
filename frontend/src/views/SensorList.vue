@@ -122,8 +122,9 @@
         </el-table-column>
         <el-table-column label="操作" width="160" fixed="right">
           <template #default="{ row }">
-            <el-button type="primary" link @click="openEditDialog(row)">编辑</el-button>
+            <el-button v-if="authStore.isAdmin" type="primary" link @click="openEditDialog(row)">编辑</el-button>
             <el-popconfirm
+              v-if="authStore.isAdmin"
               title="确定删除该传感器吗？模拟器仍在运行时会自动重新识别。"
               confirm-button-text="确定"
               cancel-button-text="取消"
@@ -169,9 +170,11 @@ import { useDeviceStore } from '../store/device'
 import { useSensorStore } from '../store/sensor'
 import SensorForm from '../components/SensorForm.vue'
 import { formatTime, typeLabel, debounce, resetPage } from '../utils/common'
+import { useAuthStore } from '../stores/authStore'
 
 const deviceStore = useDeviceStore()
 const sensorStore = useSensorStore()
+const authStore = useAuthStore()
 
 const searchKeyword = ref('')
 const filterDeviceId = ref('')

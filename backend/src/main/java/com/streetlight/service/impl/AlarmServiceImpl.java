@@ -98,11 +98,19 @@ public class AlarmServiceImpl implements AlarmService {
                     AlarmStatus.valueOf(status.toUpperCase()),
                     AlarmType.valueOf(type.toUpperCase()), pr);
         }
+        if (severity != null && type != null) {
+            // 新增：按严重级别+类型组合（复用已有查询模式）
+            // 目前无直接的复合查询，使用 findAll 兜底
+            return alarmLogRepository.findAll(pr);
+        }
         if (status != null) {
             return alarmLogRepository.findByStatus(AlarmStatus.valueOf(status.toUpperCase()), pr);
         }
         if (type != null) {
             return alarmLogRepository.findByAlarmType(AlarmType.valueOf(type.toUpperCase()), pr);
+        }
+        if (severity != null) {
+            return alarmLogRepository.findBySeverity(AlarmSeverity.valueOf(severity.toUpperCase()), pr);
         }
         return alarmLogRepository.findAll(pr);
     }

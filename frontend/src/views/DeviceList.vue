@@ -24,7 +24,7 @@
         >
           <el-icon><Delete /></el-icon> 批量删除 ({{ selectedIds.length }})
         </el-button>
-        <el-button v-if="authStore.isAdmin" type="primary" @click="openAddDialog">
+        <el-button v-if="authStore.isAdmin || authStore.isOperator" type="primary" @click="openAddDialog">
             <el-icon><Plus /></el-icon> 添加设备
           </el-button>
       </div>
