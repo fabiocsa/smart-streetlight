@@ -97,11 +97,12 @@ CREATE TABLE sensor_data (
     created_at      DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '记录写入时间',
 
     PRIMARY KEY (id),
+    UNIQUE KEY uk_sd_dedup (sensor_id, reported_at),
     INDEX idx_device_reported (device_id, reported_at),
     INDEX idx_sensor_reported (sensor_id, reported_at),
     INDEX idx_type_reported  (sensor_type, reported_at),
     INDEX idx_reported_at    (reported_at)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='传感器数据表(v4: JSON不含deviceId)';
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='传感器数据表(v4: UK防多实例重复)';
 
 -- ============================================================================
 -- 5. 告警日志表 (alarm_log)

@@ -26,7 +26,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 - 传感器数据统一存 JSON 列（`sensor_data.data_json`），支持异构多维数据（光照、温度、湿度、功率等），无需 ALTER TABLE
 - JPA `ddl-auto: update`，Hibernate 自动同步表结构；`application.yml` 连接远程 MySQL
 - MQTT 使用 Eclipse Paho v5，订阅通配符 topic `streetlight/sensor/+/data`、`streetlight/sensor/+/status`、`streetlight/sensor/+/cmd/response`
-- **多实例部署**：全部通配符订阅使用 EMQX 共享订阅 `$share/backend/` 前缀，每条消息仅投递给组内一个实例，防止数据多倍写入。Client ID 使用 UUID 后缀确保唯一（`MqttConfig` 第 37 行）
+- **多实例部署**：所有实例完全相同（同一份代码、同一份配置）。数据主题使用 EMQX 共享订阅 `$share/backend/` 前缀，EMQX 轮询分发给组内一个实例；控制响应使用普通订阅，所有实例都收到（确保发令实例能收到回应）。DB 唯一约束 `UNIQUE(sensor_id, reported_at)` 作为兜底。Client ID 使用 UUID 后缀确保唯一（`MqttConfig` 第 37 行）
 - 自动联动仅对 `sensorType=light` 且在 `auto` 模式的设备生效：光照 < `thresholdOn` 开灯，光照 > `thresholdOff` 关灯
 - 自动联动使用 `SELECT ... FOR UPDATE` 悲观行锁防止并发重复触发
 - 告警由 `HeartbeatChecker`（`@Scheduled` 定时任务）检测设备心跳超时自动生成，设备恢复上线时**仅**自动解除 OFFLINE 类型告警

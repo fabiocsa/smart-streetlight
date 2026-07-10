@@ -15,6 +15,7 @@ import com.streetlight.service.SensorRegistrationService;
 import com.streetlight.websocket.WebSocketHandler;
 import jakarta.persistence.EntityManager;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -59,54 +60,71 @@ public class SensorDataServiceImpl implements SensorDataService {
     }
 
     @Override
-    @Transactional
+    @Transactional(noRollbackFor = DataIntegrityViolationException.class)
     public SensorData saveAndAutoControl(String deviceId, Long sensorId, String sensorType,
                                           Map<String, Object> data, LocalDateTime reportedAt) {
-        // ===== 第1步：保存传感器数据（无论是否绑定设备，数据都要入库） =====
+        // ===== 第1步：保存数据（UK 充当分布式锁，决定哪个实例走自动联动） =====
         SensorData sd = SensorData.from(deviceId, sensorId, sensorType, data, reportedAt);
-        sensorDataRepository.save(sd);
-        log.info("[自动联动诊断] deviceId={}, sensorId={}, sensorType={}, 是否未绑定={}, data字段={}",
-                deviceId, sensorId, sensorType, deviceId.startsWith("sensor_"), data.keySet());
+        boolean iAmFirst = true;  // 本实例是否是第一个入库的
+        try {
+            sensorDataRepository.save(sd);
+        } catch (DataIntegrityViolationException e) {
+            iAmFirst = false;
+            entityManager.clear();
+            log.debug("重复消息（多实例去重）: sensorId={}, reportedAt={}", sensorId, reportedAt);
+            // 不回滚、不 return！心跳和 WebSocket 仍需本实例执行（为连接到此实例的前端服务）
+        }
 
-        // ===== 第2步：传感器未绑定时，自动注册并跳过联动 =====
+        if (iAmFirst) {
+            log.info("[自动联动诊断] deviceId={}, sensorId={}, sensorType={}, 是否未绑定={}, data字段={}",
+                    deviceId, sensorId, sensorType, deviceId.startsWith("sensor_"), data.keySet());
+        }
+
+        // ===== 第2步：传感器未绑定时，自动注册（仅赢家执行，避免重复注册） =====
         if (deviceId.startsWith("sensor_")) {
-            try {
-                String displayName = data.containsKey("displayName") && data.get("displayName") != null
-                        ? data.get("displayName").toString() : null;
-                sensorRegistrationService.autoRegisterFromData(
-                        sensorId, sensorType, displayName,
-                        "streetlight/sensor/" + sensorId + "/data");
-            } catch (Exception e) {
-                log.warn("传感器自动注册失败（不影响数据保存）: sensorId={}, error={}",
-                        sensorId, e.getMessage());
+            if (iAmFirst) {
+                try {
+                    String displayName = data.containsKey("displayName") && data.get("displayName") != null
+                            ? data.get("displayName").toString() : null;
+                    sensorRegistrationService.autoRegisterFromData(
+                            sensorId, sensorType, displayName,
+                            "streetlight/sensor/" + sensorId + "/data");
+                } catch (Exception e) {
+                    log.warn("传感器自动注册失败: sensorId={}, error={}", sensorId, e.getMessage());
+                }
+                log.info("传感器未绑定设备，跳过自动联动。");
             }
-            log.info("传感器未绑定设备，跳过自动联动。请在前端将传感器绑定到设备以启用自动开关灯。" +
-                     " deviceId={}, sensorId={}, sensorType={}", deviceId, sensorId, sensorType);
             return sd;
         }
 
-        // ===== 第3步：非锁定查找设备（用于心跳更新） =====
+        // ===== 第3步：查找设备 + 更新心跳（所有实例都做，收益 > 成本） =====
         Optional<Device> deviceOpt = deviceRepository.findByDeviceId(deviceId);
         if (deviceOpt.isEmpty()) {
-            log.info("设备 {} 不存在（可能已被删除），跳过自动联动", deviceId);
+            log.info("设备 {} 不存在，跳过", deviceId);
             return sd;
         }
         Device device = deviceOpt.get();
-
-        // ===== 第4步：更新心跳 & 设备恢复在线 =====
         Double lightIntensity = extractLightIntensity(data);
+
         boolean wasOffline = "offline".equals(device.getStatus());
         device.setLastHeartbeat(LocalDateTime.now());
         if (wasOffline) {
             device.setStatus("online");
-            alarmService.autoResolveOfflineAlarm(deviceId);
-            log.info("设备恢复在线: deviceId={}", deviceId);
+            if (iAmFirst) {
+                alarmService.autoResolveOfflineAlarm(deviceId);
+                log.info("设备恢复在线: deviceId={}", deviceId);
+            }
         }
         deviceRepository.save(device);
 
-        // ===== 第5步：推送 WebSocket 实时数据 =====
+        // ===== 第4步：WebSocket 推送（所有实例都做，确保每个前端都能收到实时数据） =====
         webSocketHandler.pushSensorData(deviceId, sensorType, data,
                 reportedAt != null ? reportedAt.toString() : LocalDateTime.now().toString());
+
+        // ===== 以下自动联动逻辑仅第一个入库的实例执行（避免重复控制指令） =====
+        if (!iAmFirst) {
+            return sd;  // 其他实例到此为止：心跳已更新、WebSocket 已推送，联动交给赢家
+        }
 
         // ===== 第6步：判断是否需要进入自动联动决策 =====
         if (lightIntensity == null) {
