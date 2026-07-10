@@ -71,9 +71,10 @@ public class AuthInterceptor implements HandlerInterceptor {
 
         // 辅助方法：是否为管理员或操作员
         boolean isAdmin = "admin".equals(role);
+        boolean isManager = "manager".equals(role);
         boolean isOperator = "operator".equals(role);
 
-        // --- 告警规则 — 仅 admin ---
+        // 告警规则 — 仅 admin
         if (path.startsWith("/api/alarm-rules")) {
             if (!isAdmin) {
                 sendError(response, 403, "权限不足，仅管理员可管理告警规则");
@@ -81,57 +82,57 @@ public class AuthInterceptor implements HandlerInterceptor {
             }
         }
 
-        // --- 告警管理 ---
+        // 告警管理
         if (path.startsWith("/api/alarms")) {
-            // 查看告警列表 & 待处理数量 → admin + operator（市政人员不可见）
+            // 查看告警列表 & 待处理数量 → admin + manager + operator
             if ("GET".equalsIgnoreCase(request.getMethod())) {
-                if (!isAdmin && !isOperator) {
+                if (!isAdmin && !isManager && !isOperator) {
                     sendError(response, 403, "权限不足，仅管理员和操作员可查看告警");
                     return false;
                 }
             } else {
-                // 告警处理（resolve / batch-resolve）→ 仅 admin
-                if (!isAdmin) {
+                // 告警处理（resolve / batch-resolve）→ admin + manager
+                if (!isAdmin && !isManager) {
                     sendError(response, 403, "权限不足，仅管理员可处理告警");
                     return false;
                 }
             }
         }
 
-        // --- 传感器绑定/解绑 ---
+        // 传感器绑定/解绑
         if (path.matches(".*/devices/[^/]+/bind-sensor")) {
-            if (!isAdmin) {
+            if (!isAdmin && !isManager) {
                 sendError(response, 403, "权限不足，仅管理员可绑定传感器");
                 return false;
             }
         }
         if (path.matches(".*/devices/[^/]+/unbind-sensor/[^/]+")) {
-            if (!isAdmin && !isOperator) {
+            if (!isAdmin && !isManager && !isOperator) {
                 sendError(response, 403, "权限不足，仅管理员和操作员可解绑传感器");
                 return false;
             }
         }
 
-        // 传感器列表写操作 — 仅 admin（GET /sensors 允许 municipal 查看）
+        // 传感器列表写操作 — 仅 admin + manager（GET /sensors 允许 municipal 查看）
         if (path.matches(".*/devices/[^/]+/sensors") && !"GET".equalsIgnoreCase(request.getMethod())) {
-            if (!isAdmin) {
+            if (!isAdmin && !isManager) {
                 sendError(response, 403, "权限不足，仅管理员可管理传感器");
                 return false;
             }
         }
 
-        // 设备增删改 — admin 可全部操作，operator 可新增/删除设备
+        // 设备增删改 — admin + manager 可全部操作，operator 可新增/删除设备
         if (path.matches(".*/devices/?$")) {
             if (!"GET".equalsIgnoreCase(request.getMethod())) {
                 if ("POST".equalsIgnoreCase(request.getMethod())) {
-                    // 添加设备 → admin + operator
-                    if (!isAdmin && !isOperator) {
+                    // 添加设备 → admin + manager + operator
+                    if (!isAdmin && !isManager && !isOperator) {
                         sendError(response, 403, "权限不足，仅管理员和操作员可添加设备");
                         return false;
                     }
                 } else {
-                    // PUT/DELETE 设备列表 → 仅 admin
-                    if (!isAdmin) {
+                    // PUT/DELETE 设备列表 → admin + manager
+                    if (!isAdmin && !isManager) {
                         sendError(response, 403, "权限不足，仅管理员可修改设备");
                         return false;
                     }
@@ -140,16 +141,16 @@ public class AuthInterceptor implements HandlerInterceptor {
         }
         if (path.matches(".*/devices/\\d+$")) {
             if (!"GET".equalsIgnoreCase(request.getMethod())) {
-                // PUT（修改设备信息）→ 仅 admin
+                // PUT（修改设备信息）→ admin + manager
                 if ("PUT".equalsIgnoreCase(request.getMethod())) {
-                    if (!isAdmin) {
+                    if (!isAdmin && !isManager) {
                         sendError(response, 403, "权限不足，仅管理员可修改设备");
                         return false;
                     }
                 }
-                // DELETE（删除设备）→ admin + operator
+                // DELETE（删除设备）→ admin + manager + operator
                 if ("DELETE".equalsIgnoreCase(request.getMethod())) {
-                    if (!isAdmin && !isOperator) {
+                    if (!isAdmin && !isManager && !isOperator) {
                         sendError(response, 403, "权限不足，仅管理员和操作员可删除设备");
                         return false;
                     }

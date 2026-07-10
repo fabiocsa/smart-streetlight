@@ -20,7 +20,7 @@ public class AuthService {
 
     private final UserRepository userRepository;
 
-    private static final java.util.Set<String> VALID_ROLES = java.util.Set.of("admin", "municipal", "operator");
+    private static final java.util.Set<String> VALID_ROLES = java.util.Set.of("admin", "manager", "municipal", "operator");
 
     /** 注册新用户 */
     @Transactional

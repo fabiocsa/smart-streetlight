@@ -94,7 +94,9 @@ public class ChatServiceImpl implements ChatService {
 
         // 默认最低权限
         String effectiveRole = (role != null && !role.isBlank())
-                ? role : ToolPermissionConfig.ROLE_OPERATOR;
+                ? role.trim().toLowerCase() : ToolPermissionConfig.ROLE_OPERATOR;
+
+        log.info("AI 问答请求: role={}, sessionId={}, question={}", effectiveRole, sessionId, question);
 
         // 1. 保存用户消息
         messageRepo.save(ChatMessage.builder()
