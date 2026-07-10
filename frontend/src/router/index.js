@@ -33,7 +33,7 @@ const routes = [
     path: '/sensors',
     name: 'SensorList',
     component: () => import('../views/SensorList.vue'),
-    meta: { title: '传感器管理', roles: ['admin', 'municipal', 'operator'] }
+    meta: { title: '传感器查看', roles: ['admin', 'municipal', 'operator'] }
   },
   {
     path: '/chat',
@@ -51,7 +51,7 @@ const routes = [
     path: '/alarms',
     name: 'AlarmList',
     component: () => import('../views/AlarmList.vue'),
-    meta: { title: '告警管理', roles: ['admin', 'operator', 'municipal'] }
+    meta: { title: '告警管理', roles: ['admin', 'operator'] }
   }
 ]
 

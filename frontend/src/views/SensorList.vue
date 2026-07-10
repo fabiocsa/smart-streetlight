@@ -1,24 +1,24 @@
 <template>
   <div>
     <div class="page-header">
-      <h2>传感器管理</h2>
+      <h2>传感器查看</h2>
       <div class="header-actions">
         <el-button
-          v-if="selectedIds.length > 0"
+          v-if="selectedIds.length > 0 && authStore.isAdmin"
           type="success"
           @click="handleBatchEnable(true)"
         >
           批量启用 ({{ selectedIds.length }})
         </el-button>
         <el-button
-          v-if="selectedIds.length > 0"
+          v-if="selectedIds.length > 0 && authStore.isAdmin"
           type="warning"
           @click="handleBatchEnable(false)"
         >
           批量删除 ({{ selectedIds.length }})
         </el-button>
         <el-button
-          v-if="selectedIds.length > 0"
+          v-if="selectedIds.length > 0 && authStore.isAdmin"
           type="danger"
           @click="handleBatchDelete"
         >
@@ -92,6 +92,7 @@
         <el-table-column label="上报频率" width="120" sortable prop="reportFrequency">
           <template #default="{ row }">
             <el-input-number
+              v-if="authStore.isAdmin"
               :model-value="row.reportFrequency"
               :min="1"
               :max="3600"
@@ -99,15 +100,20 @@
               style="width: 80px"
               @change="(v) => handleFrequencyChange(row, v)"
             />
-            <span style="margin-left: 2px; font-size: 12px; color: #909399">秒</span>
+            <span v-else>{{ row.reportFrequency || '-' }}</span>
+            <span v-if="authStore.isAdmin" style="margin-left: 2px; font-size: 12px; color: #909399">秒</span>
           </template>
         </el-table-column>
         <el-table-column label="启用" width="80">
           <template #default="{ row }">
             <el-switch
+              v-if="authStore.isAdmin"
               :model-value="row.enabled"
               @change="(v) => handleToggleEnabled(row, v)"
             />
+            <el-tag v-else :type="row.enabled ? 'success' : 'info'" size="small">
+              {{ row.enabled ? '已启用' : '已停用' }}
+            </el-tag>
           </template>
         </el-table-column>
         <el-table-column label="配置" width="140" show-overflow-tooltip>

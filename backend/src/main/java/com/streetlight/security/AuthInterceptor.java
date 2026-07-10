@@ -83,9 +83,12 @@ public class AuthInterceptor implements HandlerInterceptor {
 
         // --- 告警管理 ---
         if (path.startsWith("/api/alarms")) {
-            // 查看告警列表 & 待处理数量 → 全部已认证用户（admin + operator + municipal）
+            // 查看告警列表 & 待处理数量 → admin + operator（市政人员不可见）
             if ("GET".equalsIgnoreCase(request.getMethod())) {
-                // 放行所有角色
+                if (!isAdmin && !isOperator) {
+                    sendError(response, 403, "权限不足，仅管理员和操作员可查看告警");
+                    return false;
+                }
             } else {
                 // 告警处理（resolve / batch-resolve）→ 仅 admin
                 if (!isAdmin) {
