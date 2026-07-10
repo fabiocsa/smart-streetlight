@@ -56,6 +56,18 @@ public class Device {
     @Column(length = 200)
     private String location;
 
+    /**
+     * 纬度（WGS84 坐标系）
+     */
+    @Column(nullable = true)
+    private Double latitude;
+
+    /**
+     * 经度（WGS84 坐标系）
+     */
+    @Column(nullable = true)
+    private Double longitude;
+
     @ManyToMany(fetch = FetchType.LAZY)
     @JoinTable(
         name = "device_sensor",

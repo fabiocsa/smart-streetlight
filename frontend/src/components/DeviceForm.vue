@@ -25,6 +25,30 @@
       <el-form-item label="安装位置" prop="location">
         <el-input v-model="form.location" placeholder="如 图书馆东侧" />
       </el-form-item>
+      <el-form-item label="纬度" prop="latitude">
+        <el-input-number
+          v-model="form.latitude"
+          :step="0.0001"
+          :precision="6"
+          :min="-90"
+          :max="90"
+          placeholder="如 29.5"
+          controls-position="right"
+          style="width: 100%"
+        />
+      </el-form-item>
+      <el-form-item label="经度" prop="longitude">
+        <el-input-number
+          v-model="form.longitude"
+          :step="0.0001"
+          :precision="6"
+          :min="-180"
+          :max="180"
+          placeholder="如 106.5"
+          controls-position="right"
+          style="width: 100%"
+        />
+      </el-form-item>
     </el-form>
     <template #footer>
       <el-button @click="$emit('update:visible', false)">取消</el-button>
@@ -55,7 +79,9 @@ const formRef = ref(null)
 const form = reactive({
   deviceId: '',
   name: '',
-  location: ''
+  location: '',
+  latitude: null,
+  longitude: null
 })
 
 const rules = {
@@ -69,6 +95,8 @@ watch(() => props.editData, (val) => {
     form.deviceId = val.deviceId || ''
     form.name = val.name || ''
     form.location = val.location || ''
+    form.latitude = val.latitude ?? null
+    form.longitude = val.longitude ?? null
   }
 }, { immediate: true })
 
@@ -79,6 +107,8 @@ watch(() => props.visible, (val) => {
     form.deviceId = ''
     form.name = ''
     form.location = ''
+    form.latitude = null
+    form.longitude = null
   }
 })
 
@@ -95,14 +125,18 @@ async function submit() {
     if (isEdit.value) {
       await deviceStore.update(props.editData.id, {
         name: form.name,
-        location: form.location
+        location: form.location,
+        latitude: form.latitude,
+        longitude: form.longitude
       })
       ElMessage.success('设备信息已更新')
     } else {
       await deviceStore.create({
         deviceId: form.deviceId,
         name: form.name,
-        location: form.location
+        location: form.location,
+        latitude: form.latitude,
+        longitude: form.longitude
       })
       ElMessage.success('设备添加成功')
     }

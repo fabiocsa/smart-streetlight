@@ -24,6 +24,7 @@ com\streetlight\service\AlarmService.class
 com\streetlight\mqtt\MqttPublishService.class
 com\streetlight\entity\User.class
 com\streetlight\entity\Device$DeviceBuilder.class
+com\streetlight\config\MaxKBProperties.class
 com\streetlight\dto\SensorRequest.class
 com\streetlight\repository\UserRepository.class
 com\streetlight\entity\Sensor.class
@@ -70,6 +71,7 @@ com\streetlight\common\BusinessException.class
 com\streetlight\config\CorsConfig.class
 com\streetlight\dto\ControlModeRequest.class
 com\streetlight\service\ToolExecutor.class
+com\streetlight\service\MaxKBClient.class
 com\streetlight\config\WebConfig.class
 com\streetlight\dto\ChatRequest.class
 com\streetlight\config\WebSocketConfig.class
