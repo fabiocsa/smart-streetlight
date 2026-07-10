@@ -3,6 +3,7 @@ package com.streetlight.service.impl;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.streetlight.config.DeepSeekConfig;
+import com.streetlight.config.ToolPermissionConfig;
 import com.streetlight.entity.ChatMessage;
 import com.streetlight.entity.ChatSession;
 import com.streetlight.repository.ChatMessageRepository;
@@ -82,8 +83,18 @@ public class ChatServiceImpl implements ChatService {
     @Override
     @Transactional
     public Map<String, Object> sendMessage(Long sessionId, String question) {
+        return sendMessage(sessionId, question, ToolPermissionConfig.ROLE_OPERATOR);
+    }
+
+    @Override
+    @Transactional
+    public Map<String, Object> sendMessage(Long sessionId, String question, String role) {
         ChatSession session = sessionRepo.findById(sessionId)
                 .orElseThrow(() -> new RuntimeException("会话不存在, id=" + sessionId));
+
+        // 默认最低权限
+        String effectiveRole = (role != null && !role.isBlank())
+                ? role : ToolPermissionConfig.ROLE_OPERATOR;
 
         // 1. 保存用户消息
         messageRepo.save(ChatMessage.builder()
@@ -98,7 +109,7 @@ public class ChatServiceImpl implements ChatService {
         if (!config.isEnabled()) {
             answer = "AI 问答服务未启用，请联系管理员。";
         } else {
-            answer = generateAnswer(question, context);
+            answer = generateAnswer(question, context, effectiveRole);
         }
 
         // 4. 保存 AI 回复
@@ -117,28 +128,28 @@ public class ChatServiceImpl implements ChatService {
 
     // ==================== LLM 调用 ====================
 
-    private String generateAnswer(String question, List<Map<String, String>> context) {
-        // 第一步：工具选择
+    private String generateAnswer(String question, List<Map<String, String>> context, String role) {
+        // 第一步：工具选择（传入角色以生成对应权限的工具列表）
         ToolCall toolCall = null;
         try {
-            toolCall = selectTool(question);
+            toolCall = selectTool(question, role);
         } catch (Exception e) {
             log.warn("工具选择失败，降级为通用问答", e);
         }
 
         // 第二步：生成回答（带上下文）
         if (toolCall != null && toolCall.tool != null) {
-            return answerWithData(question, context, toolCall);
+            return answerWithData(question, context, toolCall, role);
         }
-        return answerDirect(question, context);
+        return answerDirect(question, context, role);
     }
 
-    private ToolCall selectTool(String question) {
+    private ToolCall selectTool(String question, String role) {
         String url = config.getBaseUrl() + "/v1/chat/completions";
         Map<String, Object> body = Map.of(
                 "model", config.getModel(),
                 "messages", List.of(
-                        Map.of("role", "system", "content", toolExecutor.getToolsPrompt()),
+                        Map.of("role", "system", "content", toolExecutor.getToolsPrompt(role)),
                         Map.of("role", "user", "content", question)
                 ),
                 "temperature", 0.0,
@@ -149,7 +160,7 @@ public class ChatServiceImpl implements ChatService {
         ResponseEntity<Map> response = restTemplate.postForEntity(url, request, Map.class);
         String content = extractContent(response);
         String json = extractJson(content);
-        log.info("LLM 工具选择: {}", json);
+        log.info("LLM 工具选择 (role={}): {}", role, json);
 
         Map<String, Object> parsed;
         try {
@@ -165,19 +176,15 @@ public class ChatServiceImpl implements ChatService {
         return new ToolCall(toolName, params != null ? params : Map.of());
     }
 
-    private String answerWithData(String question, List<Map<String, String>> context, ToolCall toolCall) {
-        log.info("执行工具: {} params={}", toolCall.tool, toolCall.params);
-        String toolResult = toolExecutor.execute(toolCall.tool, toolCall.params);
+    private String answerWithData(String question, List<Map<String, String>> context,
+                                  ToolCall toolCall, String role) {
+        log.info("执行工具: {} params={} role={}", toolCall.tool, toolCall.params, role);
+        String toolResult = toolExecutor.execute(toolCall.tool, toolCall.params, role);
 
-        String systemPrompt = """
-                你是智慧路灯管理系统的智能助手，用中文简洁自然地回答用户问题。
-                以下是系统查询到的实时数据，请基于这些数据回答用户问题。
-                如果数据中有 error 字段，请友好地告知用户查询出了问题。
-                不要编造数据中没有的信息。""";
+        String systemPrompt = ToolPermissionConfig.getAnswerSystemPrompt(role);
 
         String userPrompt = "用户问题：" + question + "\n\n系统查询数据：" + toolResult;
 
-        // 构造 messages：system + 历史上下文 + 当前数据问题
         List<Map<String, String>> messages = new ArrayList<>();
         messages.add(Map.of("role", "system", "content", systemPrompt));
         messages.addAll(context);
@@ -186,9 +193,10 @@ public class ChatServiceImpl implements ChatService {
         return callLLM(messages);
     }
 
-    private String answerDirect(String question, List<Map<String, String>> context) {
+    private String answerDirect(String question, List<Map<String, String>> context, String role) {
         List<Map<String, String>> messages = new ArrayList<>();
-        messages.add(Map.of("role", "system", "content", config.getSystemPrompt()));
+        messages.add(Map.of("role", "system", "content",
+                ToolPermissionConfig.getDirectSystemPrompt(role)));
         messages.addAll(context);
         messages.add(Map.of("role", "user", "content", question));
 
@@ -217,14 +225,11 @@ public class ChatServiceImpl implements ChatService {
 
     // ==================== 工具方法 ====================
 
-    /** 将数据库中的历史消息转为 LLM 所需的 messages 格式，只保留最近 maxCount 条 */
     private List<Map<String, String>> buildContext(List<ChatMessage> history, int maxCount) {
         List<ChatMessage> recent = history;
         if (history.size() > maxCount) {
-            // 保留最后一条（当前用户消息）以及之前最近的消息
             recent = history.subList(history.size() - maxCount, history.size());
         }
-        // 去掉刚保存的当前用户消息（最后一条），它会在调用方单独加入
         List<Map<String, String>> context = new ArrayList<>();
         for (int i = 0; i < recent.size() - 1; i++) {
             ChatMessage msg = recent.get(i);

@@ -25,4 +25,7 @@ public interface ChatService {
 
     /** 在指定会话中发送消息并获取 AI 回复 */
     Map<String, Object> sendMessage(Long sessionId, String question);
+
+    /** 在指定会话中发送消息并获取 AI 回复（含角色信息用于 RBAC 权限控制） */
+    Map<String, Object> sendMessage(Long sessionId, String question, String role);
 }

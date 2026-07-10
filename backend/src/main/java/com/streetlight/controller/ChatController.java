@@ -32,6 +32,12 @@ public class ChatController {
         return username;
     }
 
+    /** 从 AuthInterceptor 注入的 request attribute 获取当前用户角色 */
+    private String currentRole() {
+        String role = (String) httpRequest.getAttribute("role");
+        return (role != null && !role.isBlank()) ? role : "municipal";
+    }
+
     /** 验证会话归属：非本人会话拒绝访问 */
     private ChatSession requireOwnSession(Long sessionId) {
         // getSessions 已按用户过滤，此处从用户会话列表中查找
@@ -81,6 +87,6 @@ public class ChatController {
     public Result<Map<String, Object>> sendMessage(@PathVariable Long sessionId,
                                                     @Valid @RequestBody ChatRequest req) {
         requireOwnSession(sessionId);
-        return Result.success(chatService.sendMessage(sessionId, req.getQuestion()));
+        return Result.success(chatService.sendMessage(sessionId, req.getQuestion(), currentRole()));
     }
 }
