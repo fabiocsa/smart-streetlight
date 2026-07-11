@@ -19,6 +19,8 @@ public interface ControlService {
 
     void setThreshold(Long deviceId, Double thresholdOn, Double thresholdOff);
 
+    int batchSetThreshold(List<Long> ids, Double thresholdOn, Double thresholdOff);
+
     List<Map<String, Object>> sendBatchControlCommand(List<String> deviceIds, String command, Integer brightness);
 
     Page<ControlLog> getControlLogs(String deviceId, Pageable pageable);

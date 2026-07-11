@@ -50,6 +50,13 @@
           </template>
         </el-dropdown>
         <el-button
+          v-if="selectedIds.length > 0 && (authStore.isAdmin || authStore.isOperator)"
+          type="warning"
+          @click="openBatchThresholdDialog"
+        >
+          <el-icon><Setting /></el-icon> 批量设置阈值 ({{ selectedIds.length }})
+        </el-button>
+        <el-button
           v-if="selectedIds.length > 0 && authStore.isAdmin"
           type="info"
           @click="handleBatchUnbind"
@@ -221,6 +228,26 @@
       :init-coords="mapAddCoords"
       @saved="handleSaved"
     />
+
+    <!-- 批量阈值对话框 -->
+    <el-dialog v-model="thresholdDialogVisible" title="批量设置光照阈值" width="400px" :close-on-click-modal="false">
+      <el-form label-width="120px">
+        <el-form-item label="开灯阈值 (Lux)">
+          <el-input-number v-model="batchThresholdOn" :min="0" :max="500" :step="5" controls-position="right" style="width:100%" />
+          <div style="font-size:12px;color:#909399;margin-top:4px">光照低于此值时自动开灯</div>
+        </el-form-item>
+        <el-form-item label="关灯阈值 (Lux)">
+          <el-input-number v-model="batchThresholdOff" :min="10" :max="800" :step="5" controls-position="right" style="width:100%" />
+          <div style="font-size:12px;color:#909399;margin-top:4px">光照高于此值时自动关灯（必须 &gt; 开灯阈值）</div>
+        </el-form-item>
+      </el-form>
+      <template #footer>
+        <el-button @click="thresholdDialogVisible = false">取消</el-button>
+        <el-button type="primary" :disabled="batchThresholdOn >= batchThresholdOff" @click="handleBatchThreshold">
+          应用到 {{ selectedIds.length }} 个设备
+        </el-button>
+      </template>
+    </el-dialog>
   </div>
 </template>
 
@@ -233,7 +260,7 @@ import { useAuthStore } from '../stores/authStore'
 import { useDeviceStore } from '../store/device'
 import DeviceForm from '../components/DeviceForm.vue'
 import DeviceMap from '../components/DeviceMap.vue'
-import { sendControl, sendBatchControl, setControlMode } from '../api/control'
+import { sendControl, sendBatchControl, setControlMode, setBatchThreshold } from '../api/control'
 import { unbindSensor } from '../api/device'
 import { formatTime, debounce, resetPage } from '../utils/common'
 
@@ -253,6 +280,9 @@ const selectedIds = ref([])
 const controllingId = ref('')   // 当前正在控制的设备ID
 const viewMode = ref('table')   // 'table' | 'map'
 const mapAddCoords = ref(null)  // 地图添加设备坐标
+const thresholdDialogVisible = ref(false)
+const batchThresholdOn = ref(30)
+const batchThresholdOff = ref(100)
 
 // 防抖搜索
 const onSearchInput = debounce(filterDevices, 300)
@@ -333,6 +363,29 @@ async function handleDelete(id) {
   } catch {
     // 错误已在拦截器统一提示
   }
+}
+
+function openBatchThresholdDialog() {
+  batchThresholdOn.value = 30
+  batchThresholdOff.value = 100
+  thresholdDialogVisible.value = true
+}
+
+async function handleBatchThreshold() {
+  if (batchThresholdOn.value >= batchThresholdOff.value) {
+    ElMessage.warning('开灯阈值必须小于关灯阈值')
+    return
+  }
+  try {
+    const res = await setBatchThreshold({
+      ids: selectedIds.value,
+      thresholdOn: batchThresholdOn.value,
+      thresholdOff: batchThresholdOff.value
+    })
+    ElMessage.success(`已更新 ${res.updatedCount} 个设备的阈值`)
+    thresholdDialogVisible.value = false
+    deviceStore.fetchAll()
+  } catch { /* 错误已拦截 */ }
 }
 
 async function handleBatchDelete() {

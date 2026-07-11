@@ -4,6 +4,7 @@ import com.streetlight.common.Result;
 import com.streetlight.dto.BatchControlRequest;
 import com.streetlight.dto.ControlModeRequest;
 import com.streetlight.dto.ControlRequest;
+import com.streetlight.dto.BatchThresholdRequest;
 import com.streetlight.dto.ThresholdRequest;
 import com.streetlight.entity.ControlLog;
 import com.streetlight.service.ControlService;
@@ -96,5 +97,16 @@ public class ControlController {
             @Valid @RequestBody ThresholdRequest request) {
         controlService.setThreshold(id, request.getThresholdOn(), request.getThresholdOff());
         return Result.success();
+    }
+
+    @PutMapping("/batch/threshold")
+    public Result<Map<String, Object>> batchSetThreshold(
+            @Valid @RequestBody BatchThresholdRequest request) {
+        int count = controlService.batchSetThreshold(
+                request.getIds(), request.getThresholdOn(), request.getThresholdOff());
+        Map<String, Object> data = new LinkedHashMap<>();
+        data.put("updatedCount", count);
+        data.put("total", request.getIds().size());
+        return Result.success(data);
     }
 }

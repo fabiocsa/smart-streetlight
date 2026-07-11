@@ -168,4 +168,24 @@ public class ControlServiceImpl implements ControlService {
         deviceRepository.save(d);
         log.info("更新阈值: id={}, thresholdOn={}, thresholdOff={}", id, thresholdOn, thresholdOff);
     }
+
+    @Override
+    @Transactional
+    public int batchSetThreshold(List<Long> ids, Double thresholdOn, Double thresholdOff) {
+        if (thresholdOn >= thresholdOff) {
+            throw new BusinessException("thresholdOn 必须小于 thresholdOff");
+        }
+        int count = 0;
+        for (Long id : ids) {
+            Device d = deviceRepository.findById(id).orElse(null);
+            if (d != null) {
+                d.setThresholdOn(thresholdOn);
+                d.setThresholdOff(thresholdOff);
+                deviceRepository.save(d);
+                count++;
+            }
+        }
+        log.info("批量更新阈值: {} 个设备, thresholdOn={}, thresholdOff={}", count, thresholdOn, thresholdOff);
+        return count;
+    }
 }

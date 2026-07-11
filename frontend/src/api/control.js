@@ -24,3 +24,8 @@ export function setControlMode(id, data) {
 export function setThreshold(id, data) {
   return request.put(`/devices/${id}/threshold`, data)
 }
+
+/** 批量设置光照阈值 */
+export function setBatchThreshold(data) {
+  return request.put('/devices/batch/threshold', data)
+}

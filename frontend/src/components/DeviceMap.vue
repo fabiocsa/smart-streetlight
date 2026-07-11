@@ -63,6 +63,7 @@
             </el-dropdown-menu>
           </template>
         </el-dropdown>
+        <el-button type="warning" size="small" @click="openThresholdDialog">⚡ 批量设置阈值</el-button>
         <el-button v-if="isAdmin" type="danger" size="small" @click="batchDelete">🗑 批量删除</el-button>
         <el-button v-if="isAdmin" type="info" size="small" @click="batchUnbind">🔓 批量解绑传感器</el-button>
         <el-button size="small" @click="clearSelection">✕ 取消选择</el-button>
@@ -91,6 +92,26 @@
         <div class="context-menu-item" @click="clearSelection">✕ 取消选择</div>
       </template>
     </div>
+
+    <!-- 批量阈值对话框 -->
+    <el-dialog v-model="thresholdVisible" title="批量设置光照阈值" width="400px" :close-on-click-modal="false">
+      <el-form label-width="120px">
+        <el-form-item label="开灯阈值 (Lux)">
+          <el-input-number v-model="thOn" :min="0" :max="500" :step="5" controls-position="right" style="width:100%" />
+          <div style="font-size:12px;color:#909399;margin-top:4px">光照低于此值时自动开灯</div>
+        </el-form-item>
+        <el-form-item label="关灯阈值 (Lux)">
+          <el-input-number v-model="thOff" :min="10" :max="800" :step="5" controls-position="right" style="width:100%" />
+          <div style="font-size:12px;color:#909399;margin-top:4px">光照高于此值时自动关灯（必须 &gt; 开灯阈值）</div>
+        </el-form-item>
+      </el-form>
+      <template #footer>
+        <el-button @click="thresholdVisible = false">取消</el-button>
+        <el-button type="primary" :disabled="thOn >= thOff" @click="applyThreshold">
+          应用到 {{ selectedDeviceIds.size }} 个设备
+        </el-button>
+      </template>
+    </el-dialog>
   </div>
 </template>
 
@@ -99,6 +120,7 @@ import { ref, reactive, computed, watch, onMounted, onBeforeUnmount, nextTick } 
 import { useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { Rank, Select, Plus } from '@element-plus/icons-vue'
+import { setBatchThreshold } from '../api/control'
 import AMapLoader from '@amap/amap-jsapi-loader'
 import { sendControl, sendBatchControl, setControlMode } from '../api/control'
 import { unbindSensor } from '../api/device'
@@ -129,6 +151,9 @@ const currentTool = ref('pan')   // 'pan' | 'select' | 'add-location'
 
 // ======================== 添加设备坐标 ========================
 const addLocationCoords = ref(null)
+const thresholdVisible = ref(false)
+const thOn = ref(30)
+const thOff = ref(100)
 
 // ======================== 框选状态 ========================
 const selectionBox = reactive({
@@ -476,6 +501,30 @@ function buildInfoContent(device) {
 }
 
 // ======================== 批量操作 ========================
+function openThresholdDialog() {
+  thOn.value = 30
+  thOff.value = 100
+  thresholdVisible.value = true
+}
+
+async function applyThreshold() {
+  if (thOn.value >= thOff.value) {
+    ElMessage.warning('开灯阈值必须小于关灯阈值')
+    return
+  }
+  try {
+    const ids = [...selectedDeviceIds.value]
+    const res = await setBatchThreshold({
+      ids,
+      thresholdOn: thOn.value,
+      thresholdOff: thOff.value
+    })
+    ElMessage.success(`已更新 ${res.updatedCount} 个设备的阈值`)
+    thresholdVisible.value = false
+    emit('refresh')
+  } catch { /* 错误已拦截 */ }
+}
+
 async function batchControl(command) {
   const actionText = command === 'on' ? '开灯' : '关灯'
   const devices = selectedDevices.value
