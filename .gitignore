@@ -1,3 +1,17 @@
 /.idea/
 /node_modules/
 /frontend/node_modules/
+
+# Maven
+backend/target/
+
+# Python
+__pycache__/
+*.pyc
+
+# Frontend build
+frontend/dist/
+
+# OS
+.DS_Store
+Thumbs.db
