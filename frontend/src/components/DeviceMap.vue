@@ -674,18 +674,17 @@ onBeforeUnmount(() => {
   flex-direction: column;
   gap: 4px;
   background: rgba(255, 255, 255, 0.95);
-  padding: 4px;
+  padding: 6px;
   border-radius: 6px;
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
+}
+.map-toolbar > .el-tooltip {
+  display: block;
 }
 .map-toolbar .el-button {
   width: 28px;
   height: 28px;
-  min-width: 28px;
   padding: 0;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
 }
 
 
