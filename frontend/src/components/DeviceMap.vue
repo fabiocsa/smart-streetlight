@@ -675,6 +675,7 @@ onBeforeUnmount(() => {
   z-index: 10;
   display: flex;
   flex-direction: column;
+  align-items: center;
   gap: 4px;
   background: rgba(255, 255, 255, 0.95);
   padding: 4px;
