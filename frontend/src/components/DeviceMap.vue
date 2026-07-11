@@ -54,18 +54,18 @@
         <span class="op-count">已选中 {{ selectedDeviceIds.size }} 个设备</span>
         <el-button type="success" size="small" @click="batchControl('on')">💡 批量开灯</el-button>
         <el-button type="warning" size="small" @click="batchControl('off')">🌙 批量关灯</el-button>
-        <el-dropdown trigger="click" @command="batchModeChange">
-          <el-button type="primary" size="small">⚙ 批量切换模式</el-button>
+        <el-dropdown trigger="click" @command="handleOpMenu">
+          <el-button size="small">更多操作 ▾</el-button>
           <template #dropdown>
             <el-dropdown-menu>
-              <el-dropdown-item command="auto">切换为自动模式</el-dropdown-item>
-              <el-dropdown-item command="manual">切换为手动模式</el-dropdown-item>
+              <el-dropdown-item command="mode-auto">切换为自动模式</el-dropdown-item>
+              <el-dropdown-item command="mode-manual">切换为手动模式</el-dropdown-item>
+              <el-dropdown-item command="threshold" divided>批量设置阈值</el-dropdown-item>
+              <el-dropdown-item v-if="isAdmin" command="unbind">批量解绑传感器</el-dropdown-item>
+              <el-dropdown-item v-if="isAdmin" command="delete" divided style="color:#F56C6C">批量删除</el-dropdown-item>
             </el-dropdown-menu>
           </template>
         </el-dropdown>
-        <el-button type="warning" size="small" @click="openThresholdDialog">⚡ 批量设置阈值</el-button>
-        <el-button v-if="isAdmin" type="danger" size="small" @click="batchDelete">🗑 批量删除</el-button>
-        <el-button v-if="isAdmin" type="info" size="small" @click="batchUnbind">🔓 批量解绑传感器</el-button>
         <el-button size="small" @click="clearSelection">✕ 取消选择</el-button>
       </div>
     </transition>
@@ -501,6 +501,16 @@ function buildInfoContent(device) {
 }
 
 // ======================== 批量操作 ========================
+function handleOpMenu(cmd) {
+  switch (cmd) {
+    case 'mode-auto': return batchModeChange('auto')
+    case 'mode-manual': return batchModeChange('manual')
+    case 'threshold': return openThresholdDialog()
+    case 'unbind': return batchUnbind()
+    case 'delete': return batchDelete()
+  }
+}
+
 function openThresholdDialog() {
   thOn.value = 30
   thOff.value = 100
