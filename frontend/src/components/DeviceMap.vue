@@ -679,6 +679,19 @@ onBeforeUnmount(() => {
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
 }
 
+/* 工具栏按钮统一尺寸 */
+.map-toolbar .el-button {
+  width: 32px;
+  height: 32px;
+  padding: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.map-toolbar .el-button .el-icon {
+  font-size: 16px;
+}
+
 /* 选框 */
 .selection-box {
   position: absolute;
