@@ -193,7 +193,7 @@ function getMarkerColor(device) {
   return device.lightStatus === 'on' ? '#faad14' : '#1890ff'
 }
 
-/** 创建标记 DOM 元素：圆点 + 半透明设备名 */
+/** 创建标记 DOM 元素：圆点 + 半透明设备名 + hover 动画 */
 function createMarkerEl(device, selected) {
   const wrap = document.createElement('div')
   wrap.style.cssText = 'display:flex; align-items:center; gap:4px; cursor:pointer;'
@@ -203,13 +203,25 @@ function createMarkerEl(device, selected) {
 
   const label = document.createElement('span')
   label.textContent = device.name || device.deviceId
-  label.style.cssText = 'font-size:11px; opacity:0.45; color:#333; white-space:nowrap; pointer-events:none; text-shadow:0 1px 2px #fff;'
+  label.style.cssText = 'font-size:11px; opacity:0.35; color:#333; white-space:nowrap; pointer-events:none; text-shadow:0 1px 2px #fff; transition:opacity 0.2s;'
 
   wrap.appendChild(dot)
   wrap.appendChild(label)
-  // 把事件绑定和样式刷新关联到 wrap，内部 dot 存储引用
   wrap._dot = dot
   wrap._label = label
+
+  // hover 动画
+  wrap.addEventListener('mouseenter', () => {
+    dot.style.transform = 'scale(1.4)'
+    dot.style.boxShadow = '0 0 10px rgba(0,0,0,0.4), 0 0 0 4px rgba(64,158,255,0.3)'
+    label.style.opacity = '0.85'
+  })
+  wrap.addEventListener('mouseleave', () => {
+    dot.style.transform = 'scale(1)'
+    applyMarkerStyle(dot, device, selectedDeviceIds.has(device.id))
+    label.style.opacity = '0.35'
+  })
+
   return wrap
 }
 
