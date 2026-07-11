@@ -9,16 +9,18 @@
           :type="currentTool === 'pan' ? 'primary' : 'default'"
           size="small"
           @click="switchTool('pan')"
-          :icon="Rank"
-        />
+        >
+          <el-icon><Rank /></el-icon>
+        </el-button>
       </el-tooltip>
       <el-tooltip content="框选 — 拖拽画框圈选设备" placement="right">
         <el-button
           :type="currentTool === 'select' ? 'primary' : 'default'"
           size="small"
           @click="switchTool('select')"
-          :icon="Grid"
-        />
+        >
+          <el-icon><Grid /></el-icon>
+        </el-button>
       </el-tooltip>
       <el-divider direction="horizontal" style="margin: 4px 0; border-color: #e8e8e8" />
       <el-tooltip content="添加设备 — 右键地图快速添加设备" placement="right">
@@ -26,8 +28,9 @@
           :type="currentTool === 'add-location' ? 'primary' : 'default'"
           size="small"
           @click="switchTool('add-location')"
-          :icon="Plus"
-        />
+        >
+          <el-icon><Plus /></el-icon>
+        </el-button>
       </el-tooltip>
     </div>
 
@@ -674,17 +677,9 @@ onBeforeUnmount(() => {
   flex-direction: column;
   gap: 4px;
   background: rgba(255, 255, 255, 0.95);
-  padding: 6px;
+  padding: 4px;
   border-radius: 6px;
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
-}
-.map-toolbar > .el-tooltip {
-  display: block;
-}
-.map-toolbar .el-button {
-  width: 28px;
-  height: 28px;
-  padding: 0;
 }
 
 
