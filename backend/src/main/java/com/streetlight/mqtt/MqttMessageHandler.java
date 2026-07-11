@@ -105,8 +105,18 @@ public class MqttMessageHandler implements MqttCallback {
         LocalDateTime reportedAt = LocalDateTime.now();
         if (root.has("timestamp") && !root.get("timestamp").isNull()) {
             try {
-                String ts = root.get("timestamp").asText().replace("Z", "").replace(" ", "T");
-                reportedAt = LocalDateTime.parse(ts);
+                String raw = root.get("timestamp").asText().trim();
+                // 模拟器发送的是 UTC 时间（带 Z 后缀），DB 存北京时间 → 需要 +8h
+                if (raw.endsWith("Z") || raw.contains("+00:00")) {
+                    String ts = raw.replace("Z", "").replace("+00:00", "").replace(" ", "T");
+                    reportedAt = LocalDateTime.parse(ts).plusHours(8);
+                } else if (raw.contains("+08:00") || raw.endsWith("+08")) {
+                    String ts = raw.replace("+08:00", "").replace("+08", "").replace(" ", "T");
+                    reportedAt = LocalDateTime.parse(ts);
+                } else {
+                    String ts = raw.replace(" ", "T");
+                    reportedAt = LocalDateTime.parse(ts);
+                }
             } catch (Exception e) { log.debug("时间戳解析失败: {}", e.getMessage()); }
         }
         sensorDataService.saveAndAutoControl(deviceId, sensorId, sensorType, data, reportedAt);
