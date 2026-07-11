@@ -4,30 +4,36 @@
 
     <!-- 工具栏（左上角） -->
     <div class="map-toolbar">
-      <el-button
-        :type="currentTool === 'pan' ? 'primary' : 'default'"
-        size="small"
-        @click="switchTool('pan')"
-      >
-        <el-icon><Rank /></el-icon>
-        <span class="tool-btn-label">拖拽</span>
-      </el-button>
-      <el-button
-        :type="currentTool === 'select' ? 'primary' : 'default'"
-        size="small"
-        @click="switchTool('select')"
-      >
-        <el-icon><Select /></el-icon>
-        <span class="tool-btn-label">框选</span>
-      </el-button>
-      <el-button
-        :type="currentTool === 'add-location' ? 'primary' : 'default'"
-        size="small"
-        @click="switchTool('add-location')"
-      >
-        <el-icon><Plus /></el-icon>
-        <span class="tool-btn-label">添加</span>
-      </el-button>
+      <el-tooltip content="拖拽移动地图" placement="right" :show-after="500">
+        <el-button
+          :type="currentTool === 'pan' ? 'primary' : 'default'"
+          size="small"
+          @click="switchTool('pan')"
+        >
+          <el-icon><Rank /></el-icon>
+          <span class="tool-btn-label">拖拽</span>
+        </el-button>
+      </el-tooltip>
+      <el-tooltip content="拖拽框选圈选设备，Ctrl+点击可多选" placement="right" :show-after="500">
+        <el-button
+          :type="currentTool === 'select' ? 'primary' : 'default'"
+          size="small"
+          @click="switchTool('select')"
+        >
+          <el-icon><Select /></el-icon>
+          <span class="tool-btn-label">框选</span>
+        </el-button>
+      </el-tooltip>
+      <el-tooltip content="切换到添加模式后，在地图上右键点击目标位置即可添加设备" placement="right" :show-after="300">
+        <el-button
+          :type="currentTool === 'add-location' ? 'primary' : 'default'"
+          size="small"
+          @click="switchTool('add-location')"
+        >
+          <el-icon><Plus /></el-icon>
+          <span class="tool-btn-label">添加</span>
+        </el-button>
+      </el-tooltip>
     </div>
 
     <!-- 拖拽选框 -->
