@@ -4,33 +4,30 @@
 
     <!-- 工具栏（左上角） -->
     <div class="map-toolbar">
-      <el-tooltip content="抓手 — 拖拽移动地图" placement="right">
-        <el-button
-          :type="currentTool === 'pan' ? 'primary' : 'default'"
-          size="small"
-          @click="switchTool('pan')"
-        >
-          <el-icon><Rank /></el-icon>
-        </el-button>
-      </el-tooltip>
-      <el-tooltip content="框选 — 拖拽画框圈选设备" placement="right">
-        <el-button
-          :type="currentTool === 'select' ? 'primary' : 'default'"
-          size="small"
-          @click="switchTool('select')"
-        >
-          <el-icon><Grid /></el-icon>
-        </el-button>
-      </el-tooltip>
-      <el-tooltip content="添加设备 — 右键地图快速添加设备" placement="right">
-        <el-button
-          :type="currentTool === 'add-location' ? 'primary' : 'default'"
-          size="small"
-          @click="switchTool('add-location')"
-        >
-          <el-icon><Plus /></el-icon>
-        </el-button>
-      </el-tooltip>
+      <el-button
+        :type="currentTool === 'pan' ? 'primary' : 'default'"
+        size="small"
+        title="抓手 — 拖拽移动地图"
+        @click="switchTool('pan')"
+      >
+        <el-icon><Rank /></el-icon>
+      </el-button>
+      <el-button
+        :type="currentTool === 'select' ? 'primary' : 'default'"
+        size="small"
+        title="框选 — 拖拽画框圈选设备"
+        @click="switchTool('select')"
+      >
+        <el-icon><Grid /></el-icon>
+      </el-button>
+      <el-button
+        :type="currentTool === 'add-location' ? 'primary' : 'default'"
+        size="small"
+        title="添加设备 — 右键地图快速添加设备"
+        @click="switchTool('add-location')"
+      >
+        <el-icon><Plus /></el-icon>
+      </el-button>
     </div>
 
     <!-- 拖拽选框 -->
@@ -681,20 +678,24 @@ onBeforeUnmount(() => {
   border-radius: 6px;
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
 }
-.map-toolbar > .el-tooltip {
-  display: flex;
+.map-toolbar > * {
+  margin: 0 !important;
+  padding: 0 !important;
 }
 .map-toolbar .el-button {
-  width: 30px;
-  height: 30px;
+  width: 32px;
+  height: 32px;
+  min-width: 32px;
   padding: 0 !important;
-  display: inline-flex !important;
+  display: flex !important;
   align-items: center !important;
   justify-content: center !important;
 }
 .map-toolbar .el-button .el-icon {
-  font-size: 16px;
-  line-height: 1;
+  font-size: 18px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
 }
 
 
