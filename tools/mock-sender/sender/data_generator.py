@@ -23,6 +23,14 @@ DEFAULT_LAT = 29.5
 DEFAULT_LON = 106.5
 DEFAULT_TZ_OFFSET = 8  # UTC+8 (Asia/Shanghai)
 
+# 每种传感器类型只发送自己相关的字段（v5 — 按类型分离数据）
+SENSOR_TYPE_FIELDS = {
+    "light":       ["illuminance", "lightIntensity", "cloudCover", "status"],
+    "temperature": ["temperature"],
+    "humidity":    ["humidity"],
+    "power":       ["voltage", "power"],
+}
+
 # ---------------------------------------------------------------------------
 # 太阳位置计算
 # ---------------------------------------------------------------------------
@@ -336,9 +344,8 @@ def generate_sensor_data(
         power = round(random.uniform(0.3, 1.8), 2)
     cloud_opacity = _cloud_state["opacity"]
 
-    # v4: 不再包含 deviceId
-    payload = {
-        "sensorType": sensor_type,
+    # v5: 按传感器类型分离数据 — 每种类型只发送自己相关的字段
+    full_data = {
         "illuminance": illuminance,
         "lightIntensity": illuminance,
         "temperature": temperature,
@@ -347,8 +354,17 @@ def generate_sensor_data(
         "power": power,
         "cloudCover": round(cloud_opacity, 2),
         "status": "ON" if light_on else "OFF",
+    }
+
+    # 只保留该传感器类型应有的字段
+    allowed_fields = SENSOR_TYPE_FIELDS.get(sensor_type, SENSOR_TYPE_FIELDS["light"])
+    payload = {
+        "sensorType": sensor_type,
         "timestamp": now_utc.strftime("%Y-%m-%dT%H:%M:%SZ"),
     }
+    for key in allowed_fields:
+        if key in full_data:
+            payload[key] = full_data[key]
 
     if sensor_id is not None:
         payload["sensorId"] = sensor_id
@@ -465,9 +481,6 @@ SAMPLE_TEMPLATES = {
     "light": {
         "illuminance": 40,
         "lightIntensity": 40,
-        "temperature": 28.3,
-        "voltage": 226,
-        "power": 65,
         "cloudCover": 0.3,
         "status": "OFF",
         "sensorType": "light",
@@ -475,24 +488,17 @@ SAMPLE_TEMPLATES = {
     },
     "temperature": {
         "temperature": 35.5,
-        "voltage": 226,
-        "power": 0.5,
-        "cloudCover": 0.3,
         "sensorType": "temperature",
         "timestamp": "{{timestamp}}",
     },
     "humidity": {
         "humidity": 80.0,
-        "temperature": 28.3,
-        "voltage": 226,
-        "power": 0.5,
         "sensorType": "humidity",
         "timestamp": "{{timestamp}}",
     },
     "power": {
-        "power": 80.0,
         "voltage": 230.0,
-        "temperature": 28.3,
+        "power": 80.0,
         "sensorType": "power",
         "timestamp": "{{timestamp}}",
     },

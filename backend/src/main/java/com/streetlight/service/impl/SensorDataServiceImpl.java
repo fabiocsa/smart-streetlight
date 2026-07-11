@@ -93,8 +93,9 @@ public class SensorDataServiceImpl implements SensorDataService {
                 data.containsKey("temperature") && data.get("temperature") instanceof Number,
                 data.containsKey("power") && data.get("power") instanceof Number);
 
-        // 电压异常检测
-        if (iAmFirst && data.containsKey("voltage") && data.get("voltage") instanceof Number) {
+        // 电压异常检测（仅 light / power 传感器携带电压数据）
+        if (iAmFirst && ("light".equals(sensorType) || "power".equals(sensorType))
+                && data.containsKey("voltage") && data.get("voltage") instanceof Number) {
             Double voltage = ((Number) data.get("voltage")).doubleValue();
             Double voltageMin = getConfigDouble("voltage_min", 210.0);
             Double voltageMax = getConfigDouble("voltage_max", 240.0);
@@ -113,8 +114,9 @@ public class SensorDataServiceImpl implements SensorDataService {
                     data.containsKey("voltage") ? data.get("voltage") instanceof Number : "N/A");
         }
 
-        // 温度过高检测
-        if (iAmFirst && data.containsKey("temperature") && data.get("temperature") instanceof Number) {
+        // 温度过高检测（仅 temperature 传感器携带温度数据）
+        if (iAmFirst && "temperature".equals(sensorType)
+                && data.containsKey("temperature") && data.get("temperature") instanceof Number) {
             Double temperature = ((Number) data.get("temperature")).doubleValue();
             Double tempMax = getConfigDouble("temperature_max", 45.0);
             log.info("[告警检测] 温度检测: temperature={}, max={}, 是否异常={}",
@@ -132,8 +134,9 @@ public class SensorDataServiceImpl implements SensorDataService {
                     data.containsKey("temperature") ? data.get("temperature") instanceof Number : "N/A");
         }
 
-        // 功率过高检测
-        if (iAmFirst && data.containsKey("power") && data.get("power") instanceof Number) {
+        // 功率过高检测（仅 light / power 传感器携带功率数据）
+        if (iAmFirst && ("light".equals(sensorType) || "power".equals(sensorType))
+                && data.containsKey("power") && data.get("power") instanceof Number) {
             Double power = ((Number) data.get("power")).doubleValue();
             Double powerMax = getConfigDouble("power_max", 100.0);
             log.info("[告警检测] 功率检测: power={}, max={}, 是否异常={}",

@@ -75,7 +75,7 @@
       "dataTopic": "streetlight/sensor/94281/data",
       "configJson": "{\"min\":0,\"max\":800}",
       "autoSendMode": "fixed",
-      "autoSendContent": "{\n  \"illuminance\": 150,\n  \"lightIntensity\": 150,\n  \"temperature\": 28.3,\n  \"voltage\": 226,\n  \"power\": 65,\n  \"cloudCover\": 0.3,\n  \"status\": \"OFF\",\n  \"sensorType\": \"light\",\n  \"timestamp\": \"{{timestamp}}\"\n}",
+      "autoSendContent": "{\n  \"illuminance\": 150,\n  \"lightIntensity\": 150,\n  \"cloudCover\": 0.3,\n  \"status\": \"OFF\",\n  \"sensorType\": \"light\",\n  \"timestamp\": \"{{timestamp}}\"\n}",
       "messageTemplate": ""
     },
     "sensor_15645": {
@@ -94,8 +94,56 @@
       "dataTopic": "streetlight/sensor/15645/data",
       "configJson": "{\"min\":0,\"max\":800}",
       "autoSendMode": "fixed",
-      "autoSendContent": "{\n  \"illuminance\": 5,\n  \"lightIntensity\": 5,\n  \"temperature\": 28.3,\n  \"voltage\": 226,\n  \"power\": 65,\n  \"cloudCover\": 0.3,\n  \"status\": \"OFF\",\n  \"sensorType\": \"light\",\n  \"timestamp\": \"{{timestamp}}\"\n}",
+      "autoSendContent": "{\n  \"illuminance\": 5,\n  \"lightIntensity\": 5,\n  \"cloudCover\": 0.3,\n  \"status\": \"OFF\",\n  \"sensorType\": \"light\",\n  \"timestamp\": \"{{timestamp}}\"\n}",
       "messageTemplate": ""
+    },
+    "sensor_47401": {
+      "sensorId": 47401,
+      "displayName": "A01温度",
+      "sensorType": "temperature",
+      "groupTag": "",
+      "enabled": true,
+      "interval": 5,
+      "dataRange": {
+        "min": 0,
+        "max": 800
+      },
+      "lightStatus": "off",
+      "controlMode": "auto",
+      "dataTopic": "streetlight/sensor/47401/data",
+      "configJson": "{\"min\":0,\"max\":800}"
+    },
+    "sensor_59264": {
+      "sensorId": 59264,
+      "displayName": "A01功率",
+      "sensorType": "power",
+      "groupTag": "",
+      "enabled": true,
+      "interval": 5,
+      "dataRange": {
+        "min": 0,
+        "max": 800
+      },
+      "lightStatus": "off",
+      "controlMode": "auto",
+      "dataTopic": "streetlight/sensor/59264/data",
+      "configJson": "{\"min\":0,\"max\":800}"
+    },
+    "sensor_73679": {
+      "sensorId": 73679,
+      "displayName": "A01湿度",
+      "sensorType": "humidity",
+      "groupTag": "",
+      "enabled": true,
+      "interval": 5,
+      "dataRange": {
+        "min": 0,
+        "max": 800
+      },
+      "lightStatus": "off",
+      "controlMode": "auto",
+      "dataTopic": "streetlight/sensor/73679/data",
+      "configJson": "{\"min\":0,\"max\":800}"
     }
   },
   "simulation": {

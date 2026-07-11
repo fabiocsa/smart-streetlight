@@ -159,15 +159,7 @@
     <!-- 各设备最新传感器数据 -->
     <el-card shadow="never" style="margin-top: 16px">
       <template #header>
-        <div class="chart-header">
-          <strong>设备最新传感器数据</strong>
-          <el-select v-model="latestSensorType" size="small" style="width: 130px" @change="loadLatestByType">
-            <el-option label="全部类型" value="" />
-            <el-option label="光照" value="light" />
-            <el-option label="温度" value="temperature" />
-            <el-option label="功率" value="power" />
-          </el-select>
-        </div>
+        <strong>设备最新传感器数据</strong>
       </template>
       <el-table :data="latestSensorData" size="small" max-height="280" style="width: 100%"
         :row-class-name="sensorRowClass">
@@ -175,11 +167,6 @@
         <el-table-column label="设备名称" width="120">
           <template #default="{ row }">
             <span>{{ deviceNameMap[row.deviceId] || row.deviceId }}</span>
-          </template>
-        </el-table-column>
-        <el-table-column label="类型" width="70">
-          <template #default="{ row }">
-            <el-tag :type="sensorTypeTag(row.sensorType)" size="small">{{ sensorTypeLabel(row.sensorType) }}</el-tag>
           </template>
         </el-table-column>
         <el-table-column label="光照强度" width="120">
@@ -194,13 +181,16 @@
               <el-tag v-if="row.data?.temperature != null" size="small" effect="plain">
                 🌡 {{ fmtNum(row.data.temperature) }}°C
               </el-tag>
+              <el-tag v-if="row.data?.humidity != null" size="small" effect="plain" type="info">
+                💧 {{ fmtNum(row.data.humidity) }}%
+              </el-tag>
               <el-tag v-if="row.data?.voltage != null" size="small" effect="plain" type="warning">
                 ⚡ {{ fmtNum(row.data.voltage) }}V
               </el-tag>
               <el-tag v-if="row.data?.power != null" size="small" effect="plain">
                 🔌 {{ fmtNum(row.data.power) }}W
               </el-tag>
-              <span v-if="!row.data?.temperature && !row.data?.voltage && !row.data?.power" style="color: #909399; font-size: 12px">-</span>
+              <span v-if="!row.data?.temperature && !row.data?.humidity && !row.data?.voltage && !row.data?.power" style="color: #909399; font-size: 12px">-</span>
             </div>
           </template>
         </el-table-column>
@@ -468,21 +458,28 @@ function connectWs() {
         const msg = JSON.parse(e.data)
 
         if (msg.type === 'SENSOR_DATA' && msg.deviceId) {
-          // 实时更新"设备最新传感器数据"表：替换或新增该设备+传感器类型的行
+          // 实时更新"设备最新传感器数据"表：按 deviceId 合并，同一设备只保留一行
           const idx = latestSensorData.value.findIndex(
-            d => d.deviceId === msg.deviceId && d.sensorType === msg.sensorType
+            d => d.deviceId === msg.deviceId
           )
-          const newRow = {
-            deviceId: msg.deviceId,
-            sensorType: msg.sensorType,
-            data: msg.data,
-            reportedAt: msg.reportedAt,
-            lightIntensity: msg.data?.illuminance ?? msg.data?.lightIntensity
-          }
           if (idx >= 0) {
-            latestSensorData.value[idx] = newRow
+            // 合并新数据到已有行
+            const existing = latestSensorData.value[idx]
+            if (msg.data) Object.assign(existing.data, msg.data)
+            existing.reportedAt = msg.reportedAt
+            if (msg.sensorType === 'light') {
+              existing.lightIntensity = msg.data?.illuminance ?? msg.data?.lightIntensity
+            }
           } else {
-            latestSensorData.value.unshift(newRow)
+            // 新设备：创建行
+            latestSensorData.value.unshift({
+              deviceId: msg.deviceId,
+              data: msg.data || {},
+              reportedAt: msg.reportedAt,
+              lightIntensity: msg.sensorType === 'light'
+                ? (msg.data?.illuminance ?? msg.data?.lightIntensity)
+                : null
+            })
           }
         }
 

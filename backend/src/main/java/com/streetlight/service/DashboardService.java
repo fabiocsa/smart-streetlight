@@ -76,27 +76,49 @@ public class DashboardService {
     // ==================== 最新传感器数据 ====================
 
     /**
-     * 获取各设备每种传感器类型的最新数据（含完整 data_json）。
-     * 每个设备会为每种传感器类型各返回一行，展示真实的最新上报数据。
-     * 只返回最近 10 分钟内有数据上报的记录，过滤过期垃圾数据。
+     * 获取各设备最新传感器数据（含完整 data_json）。
+     * v5: 合并同一设备多种传感器类型的数据为一行。
+     * 只返回最近 30 分钟内有数据上报的设备，过滤过期垃圾数据。
      */
     public List<Map<String, Object>> getLatestSensorData() {
         List<SensorData> latestList = sensorDataRepository.findLatestPerDeviceAndSensorType();
-        // 放宽到 30 分钟：避免传感器上报间隔稍长就被过滤掉
         LocalDateTime recentThreshold = LocalDateTime.now().minusMinutes(30);
-        return latestList.stream()
+
+        // 先过滤，再按 deviceId 分组合并
+        List<SensorData> filtered = latestList.stream()
             .filter(sd -> sd.getReportedAt() != null && sd.getReportedAt().isAfter(recentThreshold))
             .filter(sd -> sd.getDeviceId() != null && !sd.getDeviceId().startsWith("sensor_"))
-            .map(sd -> {
-                Map<String, Object> map = new LinkedHashMap<>();
-                map.put("deviceId", sd.getDeviceId());
-                map.put("sensorType", sd.getSensorType());
-                map.put("data", sd.getData());         // 完整多维数据
-                map.put("reportedAt", sd.getReportedAt());
-                // 向后兼容：也提供单独字段
-                map.put("lightIntensity", sd.getIlluminance() != null ? sd.getIlluminance() : sd.getLightIntensity());
-                return map;
-            }).collect(Collectors.toList());
+            .collect(Collectors.toList());
+
+        // 按 deviceId 合并：同一设备的多传感器数据融合为一行
+        Map<String, Map<String, Object>> merged = new LinkedHashMap<>();
+        for (SensorData sd : filtered) {
+            String did = sd.getDeviceId();
+            Map<String, Object> row = merged.computeIfAbsent(did, k -> {
+                Map<String, Object> m = new LinkedHashMap<>();
+                m.put("deviceId", did);
+                m.put("data", new LinkedHashMap<String, Object>());
+                m.put("reportedAt", sd.getReportedAt());
+                m.put("lightIntensity", null);
+                return m;
+            });
+            // 合并 data_json 子字段
+            @SuppressWarnings("unchecked")
+            Map<String, Object> rowData = (Map<String, Object>) row.get("data");
+            rowData.putAll(sd.getData());
+            // 取最新上报时间
+            if (sd.getReportedAt() != null && sd.getReportedAt().isAfter(
+                    (LocalDateTime) row.get("reportedAt"))) {
+                row.put("reportedAt", sd.getReportedAt());
+            }
+            // 仅 light 传感器设置光照值
+            if ("light".equals(sd.getSensorType())) {
+                Double li = sd.getIlluminance() != null
+                        ? sd.getIlluminance() : sd.getLightIntensity();
+                if (li != null) row.put("lightIntensity", li);
+            }
+        }
+        return new ArrayList<>(merged.values());
     }
 
     /**
@@ -160,10 +182,8 @@ public class DashboardService {
         }
 
         boolean hasDevice = deviceId != null && !deviceId.isEmpty();
-        // 注：当前所有模拟器传感器类型均为 "light"，多维数据（温湿度等）都存储在
-        // 同一 data_json 列中，因此按 sensorType = "light" 过滤即可查到所有指标。
-        // 后续若引入独立温湿度传感器，需根据 metric 动态映射 sensorType。
-        String sensorType = "light";
+        // v5: 传感器数据已按类型分离，每种指标只存在于对应类型的传感器数据中
+        String sensorType = sensorTypeForMetric(metric);
         List<String> labels = new ArrayList<>();
         List<Double> values = new ArrayList<>();
 
@@ -352,5 +372,22 @@ public class DashboardService {
             map.put("createdAt", c.getCreatedAt());
             return map;
         }).collect(Collectors.toList());
+    }
+
+    // ==================== 工具方法 ====================
+
+    /**
+     * 指标名 → 产生该指标的传感器类型映射（v5: 数据按传感器类型分离）。
+     */
+    private String sensorTypeForMetric(String metric) {
+        switch (metric) {
+            case "lightIntensity": return "light";
+            case "illuminance":    return "light";
+            case "temperature":    return "temperature";
+            case "humidity":       return "humidity";
+            case "power":          return "power";
+            case "voltage":        return "power";
+            default:               return "light";
+        }
     }
 }
