@@ -681,6 +681,18 @@ onBeforeUnmount(() => {
   border-radius: 6px;
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
 }
+.map-toolbar .el-button {
+  width: 30px;
+  height: 30px;
+  padding: 0 !important;
+  display: inline-flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+}
+.map-toolbar .el-button .el-icon {
+  font-size: 16px;
+  line-height: 1;
+}
 
 
 /* 选框 */
