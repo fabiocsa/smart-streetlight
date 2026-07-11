@@ -326,7 +326,11 @@ async function initMap() {
     map = new AMap.Map(mapContainer.value, {
       center: [106.5, 29.5],
       zoom: 13,
-      viewMode: '2D'
+      viewMode: '2D',
+      // 隐藏无关地图元素
+      showBuildingBlock: false,
+      features: ['bg', 'road'],   // 仅显示底图+道路，隐藏 POI/建筑
+      resizeEnable: true
     })
 
     infoWindow = new AMap.InfoWindow({
