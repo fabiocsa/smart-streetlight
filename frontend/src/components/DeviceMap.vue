@@ -7,26 +7,26 @@
       <el-button
         :type="currentTool === 'pan' ? 'primary' : 'default'"
         size="small"
-        title="抓手 — 拖拽移动地图"
         @click="switchTool('pan')"
       >
         <el-icon><Rank /></el-icon>
+        <span class="tool-btn-label">拖拽</span>
       </el-button>
       <el-button
         :type="currentTool === 'select' ? 'primary' : 'default'"
         size="small"
-        title="框选 — 拖拽画框圈选设备"
         @click="switchTool('select')"
       >
-        <el-icon><Grid /></el-icon>
+        <el-icon><Select /></el-icon>
+        <span class="tool-btn-label">框选</span>
       </el-button>
       <el-button
         :type="currentTool === 'add-location' ? 'primary' : 'default'"
         size="small"
-        title="添加设备 — 右键地图快速添加设备"
         @click="switchTool('add-location')"
       >
         <el-icon><Plus /></el-icon>
+        <span class="tool-btn-label">添加</span>
       </el-button>
     </div>
 
@@ -92,7 +92,7 @@
 import { ref, reactive, computed, watch, onMounted, onBeforeUnmount, nextTick } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { Rank, Grid, Plus } from '@element-plus/icons-vue'
+import { Rank, Select, Plus } from '@element-plus/icons-vue'
 import AMapLoader from '@amap/amap-jsapi-loader'
 import { sendControl, sendBatchControl, setControlMode } from '../api/control'
 import { unbindSensor } from '../api/device'
@@ -187,31 +187,45 @@ function getMarkerColor(device) {
   return device.lightStatus === 'on' ? '#faad14' : '#1890ff'
 }
 
-/** 创建标记 DOM 元素（可直接绑定原生事件） */
+/** 创建标记 DOM 元素：圆点 + 半透明设备名 */
 function createMarkerEl(device, selected) {
-  const el = document.createElement('div')
-  applyMarkerStyle(el, device, selected)
-  return el
+  const wrap = document.createElement('div')
+  wrap.style.cssText = 'display:flex; align-items:center; gap:4px; cursor:pointer;'
+
+  const dot = document.createElement('div')
+  applyMarkerStyle(dot, device, selected)
+
+  const label = document.createElement('span')
+  label.textContent = device.name || device.deviceId
+  label.style.cssText = 'font-size:11px; opacity:0.45; color:#333; white-space:nowrap; pointer-events:none; text-shadow:0 1px 2px #fff;'
+
+  wrap.appendChild(dot)
+  wrap.appendChild(label)
+  // 把事件绑定和样式刷新关联到 wrap，内部 dot 存储引用
+  wrap._dot = dot
+  wrap._label = label
+  return wrap
 }
 
-/** 更新标记元素样式 */
-function applyMarkerStyle(el, device, selected) {
+/** 更新标记圆点样式 */
+function applyMarkerStyle(dot, device, selected) {
   const color = getMarkerColor(device)
-  const ring = selected ? '2px solid #ff4d4f' : '3px solid #fff'
+  const ring = selected ? '3px solid #ff4d4f' : '2px solid #fff'
   const shadow = selected
     ? '0 0 0 2px #ff4d4f, 0 2px 6px rgba(0,0,0,0.3)'
     : '0 2px 6px rgba(0,0,0,0.3)'
-  el.style.cssText = `
-    width: 28px; height: 28px; border-radius: 50%; cursor: pointer;
+  dot.style.cssText = `
+    width: 20px; height: 20px; border-radius: 50%;
     background: ${color}; border: ${ring}; box-shadow: ${shadow};
-    transition: all 0.2s;
+    transition: all 0.2s; flex-shrink: 0;
   `
 }
 
 /** 刷新所有标记的选中样式 */
 function refreshMarkerStyles() {
   markers.forEach(({ el, device }) => {
-    applyMarkerStyle(el, device, selectedDeviceIds.has(device.id))
+    const dot = el._dot || el
+    applyMarkerStyle(dot, device, selectedDeviceIds.has(device.id))
   })
 }
 
@@ -371,7 +385,7 @@ function updateMarkers() {
     const marker = new AMap.Marker({
       position: [device.longitude, device.latitude],
       content: el,
-      offset: new AMap.Pixel(-14, -14)
+      offset: new AMap.Pixel(-10, -10)
     })
 
     // 使用原生 DOM 事件（确保能获取 ctrlKey）
@@ -680,22 +694,21 @@ onBeforeUnmount(() => {
 }
 .map-toolbar > * {
   margin: 0 !important;
-  padding: 0 !important;
 }
 .map-toolbar .el-button {
-  width: 32px;
-  height: 32px;
-  min-width: 32px;
-  padding: 0 !important;
-  display: flex !important;
+  height: 28px;
+  padding: 0 6px !important;
+  display: inline-flex !important;
   align-items: center !important;
-  justify-content: center !important;
+  gap: 4px;
 }
 .map-toolbar .el-button .el-icon {
-  font-size: 18px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
+  font-size: 14px;
+}
+.tool-btn-label {
+  font-size: 11px;
+  opacity: 0.55;
+  white-space: nowrap;
 }
 
 
