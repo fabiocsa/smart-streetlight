@@ -238,6 +238,41 @@ def _simulate_temperature(dt: datetime, lat: float) -> float:
 
 
 # ---------------------------------------------------------------------------
+# 湿度模拟
+# ---------------------------------------------------------------------------
+
+def _simulate_humidity(dt: datetime, temperature: float) -> float:
+    """
+    模拟相对湿度 (%)。
+
+    模型:
+      - 夜间湿度高 (露水/辐射冷却), 午后湿度低
+      - 与温度负相关: 温度越高, 相对湿度越低
+      - 基础范围 40% ~ 95%
+
+    参数:
+        dt:          当地时间
+        temperature: 当前温度 (°C), 用于负相关计算
+
+    返回: 相对湿度 (%)
+    """
+    hour_dec = dt.hour + dt.minute / 60.0
+
+    # 日变化: 凌晨 5 点峰值, 下午 14 点谷值
+    daily_phase = 2.0 * math.pi * (hour_dec - 5.0) / 24.0
+    daily_rh = 15.0 * math.cos(daily_phase)  # ±15% 日变化
+
+    # 温度负相关: 每升高 1°C, 湿度降低 ~1.8%
+    temp_correction = (temperature - 20.0) * -1.8
+
+    # 基础湿度 ~75%
+    base_rh = 75.0
+    rh = base_rh + daily_rh + temp_correction + random.uniform(-3.0, 3.0)
+
+    return round(max(30.0, min(98.0, rh)), 1)
+
+
+# ---------------------------------------------------------------------------
 # 主生成函数
 # ---------------------------------------------------------------------------
 
@@ -293,6 +328,7 @@ def generate_sensor_data(
         )
 
     temperature = _simulate_temperature(now_local, lat)
+    humidity = _simulate_humidity(now_local, temperature)
     voltage = round(random.uniform(218.0, 234.0), 1)
     if light_on:
         power = round(random.uniform(62.0, 78.0), 2)
@@ -306,6 +342,7 @@ def generate_sensor_data(
         "illuminance": illuminance,
         "lightIntensity": illuminance,
         "temperature": temperature,
+        "humidity": humidity,
         "voltage": voltage,
         "power": power,
         "cloudCover": round(cloud_opacity, 2),

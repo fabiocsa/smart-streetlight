@@ -1,5 +1,6 @@
 package com.streetlight.service;
 
+import com.streetlight.entity.Device;
 import com.streetlight.entity.SensorData;
 import com.streetlight.repository.AlarmLogRepository;
 import com.streetlight.repository.ControlLogRepository;
@@ -76,35 +77,45 @@ public class DashboardService {
 
     /**
      * 获取各设备最新传感器数据（含完整 data_json）。
+     * 只返回最近 10 分钟内有数据上报的设备，过滤过期垃圾数据。
      */
     public List<Map<String, Object>> getLatestSensorData() {
         List<SensorData> latestList = sensorDataRepository.findLatestPerDevice();
-        return latestList.stream().map(sd -> {
-            Map<String, Object> map = new LinkedHashMap<>();
-            map.put("deviceId", sd.getDeviceId());
-            map.put("sensorType", sd.getSensorType());
-            map.put("data", sd.getData());         // 完整多维数据
-            map.put("reportedAt", sd.getReportedAt());
-            // 向后兼容：也提供单独字段
-            map.put("lightIntensity", sd.getLightIntensity());
-            return map;
-        }).collect(Collectors.toList());
+        LocalDateTime recentThreshold = LocalDateTime.now(java.time.ZoneOffset.UTC).minusMinutes(10);
+        return latestList.stream()
+            .filter(sd -> sd.getReportedAt() != null && sd.getReportedAt().isAfter(recentThreshold))
+            .filter(sd -> sd.getDeviceId() != null && !sd.getDeviceId().startsWith("sensor_"))
+            .map(sd -> {
+                Map<String, Object> map = new LinkedHashMap<>();
+                map.put("deviceId", sd.getDeviceId());
+                map.put("sensorType", sd.getSensorType());
+                map.put("data", sd.getData());         // 完整多维数据
+                map.put("reportedAt", sd.getReportedAt());
+                // 向后兼容：也提供单独字段
+                map.put("lightIntensity", sd.getLightIntensity());
+                return map;
+            }).collect(Collectors.toList());
     }
 
     /**
      * 按传感器类型获取各设备最新数据。
+     * 只返回最近 10 分钟内有数据上报的设备。
      */
     public List<Map<String, Object>> getLatestSensorDataByType(String sensorType) {
         List<SensorData> latestList = sensorDataRepository.findLatestPerDeviceBySensorType(sensorType);
-        return latestList.stream().map(sd -> {
-            Map<String, Object> map = new LinkedHashMap<>();
-            map.put("deviceId", sd.getDeviceId());
-            map.put("sensorType", sd.getSensorType());
-            map.put("data", sd.getData());
-            map.put("reportedAt", sd.getReportedAt());
-            map.put("lightIntensity", sd.getLightIntensity());
-            return map;
-        }).collect(Collectors.toList());
+        LocalDateTime recentThreshold = LocalDateTime.now(java.time.ZoneOffset.UTC).minusMinutes(10);
+        return latestList.stream()
+            .filter(sd -> sd.getReportedAt() != null && sd.getReportedAt().isAfter(recentThreshold))
+            .filter(sd -> sd.getDeviceId() != null && !sd.getDeviceId().startsWith("sensor_"))
+            .map(sd -> {
+                Map<String, Object> map = new LinkedHashMap<>();
+                map.put("deviceId", sd.getDeviceId());
+                map.put("sensorType", sd.getSensorType());
+                map.put("data", sd.getData());
+                map.put("reportedAt", sd.getReportedAt());
+                map.put("lightIntensity", sd.getLightIntensity());
+                return map;
+            }).collect(Collectors.toList());
     }
 
     // ==================== 光照趋势（兼容旧 API） ====================
@@ -147,6 +158,10 @@ public class DashboardService {
         }
 
         boolean hasDevice = deviceId != null && !deviceId.isEmpty();
+        // 注：当前所有模拟器传感器类型均为 "light"，多维数据（温湿度等）都存储在
+        // 同一 data_json 列中，因此按 sensorType = "light" 过滤即可查到所有指标。
+        // 后续若引入独立温湿度传感器，需根据 metric 动态映射 sensorType。
+        String sensorType = "light";
         List<String> labels = new ArrayList<>();
         List<Double> values = new ArrayList<>();
 
@@ -159,15 +174,17 @@ public class DashboardService {
                         : sensorDataRepository.hourlyAvgLightSince(since);
             } else {
                 rows = hasDevice
-                        ? sensorDataRepository.hourlyAvgByDeviceAndSensorType(deviceId, "light", metric, since)
-                        : sensorDataRepository.hourlyAvgBySensorType("light", metric, since);
+                        ? sensorDataRepository.hourlyAvgByDeviceAndSensorType(deviceId, sensorType, metric, since)
+                        : sensorDataRepository.hourlyAvgBySensorType(sensorType, metric, since);
             }
 
             Map<Integer, Double> hourMap = new LinkedHashMap<>();
             for (int h = 0; h < 24; h++) hourMap.put(h, 0.0);
             for (Object[] row : rows) {
                 int hr = ((Number) row[0]).intValue();
-                hourMap.put(hr, Math.round(((Number) row[1]).doubleValue() * 10.0) / 10.0);
+                if (row[1] != null) {
+                    hourMap.put(hr, Math.round(((Number) row[1]).doubleValue() * 10.0) / 10.0);
+                }
             }
             for (Map.Entry<Integer, Double> e : hourMap.entrySet()) {
                 labels.add(String.format("%02d:00", e.getKey()));
@@ -192,8 +209,10 @@ public class DashboardService {
             }
             for (Object[] row : rows) {
                 LocalDate dt = ((java.sql.Date) row[0]).toLocalDate();
-                double val = Math.round(((Number) row[1]).doubleValue() * 10.0) / 10.0;
-                dayMap.put(dt, val);
+                if (row[1] != null) {
+                    double val = Math.round(((Number) row[1]).doubleValue() * 10.0) / 10.0;
+                    dayMap.put(dt, val);
+                }
             }
             for (Map.Entry<LocalDate, Double> e : dayMap.entrySet()) {
                 labels.add(e.getKey().toString().substring(5));
@@ -228,6 +247,31 @@ public class DashboardService {
         result.put("totalPoints", totalPoints);
         result.put("demoMode", demoMode);
         result.put("lastDataTime", lastTime.map(LocalDateTime::toString).orElse(null));
+        return result;
+    }
+
+    // ==================== 传感器趋势对比（多设备） ====================
+
+    /**
+     * 多设备趋势对比。
+     * 对每个 deviceId 调用 getSensorTrend() 获取单设备趋势，同时附加设备名称。
+     */
+    public Map<String, Object> getSensorTrendCompare(List<String> deviceIds, String metric, String range) {
+        List<Map<String, Object>> trends = new ArrayList<>();
+        for (String deviceId : deviceIds) {
+            Map<String, Object> trend = getSensorTrend(deviceId, metric, range);
+            // 附加设备名称
+            String deviceName = deviceService.getDeviceByDeviceId(deviceId)
+                    .map(Device::getName)
+                    .orElse(deviceId);
+            trend.put("deviceName", deviceName);
+            trends.add(trend);
+        }
+
+        Map<String, Object> result = new LinkedHashMap<>();
+        result.put("trends", trends);
+        result.put("metric", metric);
+        result.put("range", range);
         return result;
     }
 

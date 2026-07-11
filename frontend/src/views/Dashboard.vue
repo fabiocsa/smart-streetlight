@@ -165,50 +165,58 @@
             <el-option label="全部类型" value="" />
             <el-option label="光照" value="light" />
             <el-option label="温度" value="temperature" />
-            <el-option label="湿度" value="humidity" />
             <el-option label="功率" value="power" />
           </el-select>
         </div>
       </template>
-      <el-table :data="latestSensorData" size="small" max-height="280" style="width: 100%">
-        <el-table-column prop="deviceId" label="设备ID" width="120" />
-        <el-table-column label="传感器类型" width="100">
+      <el-table :data="latestSensorData" size="small" max-height="280" style="width: 100%"
+        :row-class-name="sensorRowClass">
+        <el-table-column prop="deviceId" label="设备ID" width="100" />
+        <el-table-column label="设备名称" width="120">
+          <template #default="{ row }">
+            <span>{{ deviceNameMap[row.deviceId] || row.deviceId }}</span>
+          </template>
+        </el-table-column>
+        <el-table-column label="类型" width="70">
           <template #default="{ row }">
             <el-tag :type="sensorTypeTag(row.sensorType)" size="small">{{ sensorTypeLabel(row.sensorType) }}</el-tag>
           </template>
         </el-table-column>
-        <el-table-column label="光照强度" width="200">
+        <el-table-column label="光照强度" min-width="200">
           <template #default="{ row }">
             <div style="display: flex; align-items: center; gap: 8px">
               <el-progress
-                :percentage="Math.min((row.lightIntensity || 0) / 8, 100)"
-                :color="lightColor(row.lightIntensity || 0)"
-                :stroke-width="16"
+                :percentage="calcLightPercent(row.lightIntensity)"
+                :color="lightColor(row.lightIntensity)"
+                :stroke-width="18"
                 style="flex: 1"
               />
-              <span style="font-weight: 600; min-width: 60px">{{ row.lightIntensity ?? '-' }} Lux</span>
+              <span style="font-weight: 600; min-width: 64px; text-align: right; white-space: nowrap">
+                {{ fmtNum(row.lightIntensity) }} Lux
+              </span>
             </div>
           </template>
         </el-table-column>
-        <el-table-column label="其他指标" min-width="200">
+        <el-table-column label="其他指标" min-width="260">
           <template #default="{ row }">
-            <div style="display: flex; gap: 12px; flex-wrap: wrap">
-              <span v-if="row.data?.temperature != null" style="font-size: 13px">
-                🌡 {{ row.data.temperature }}°C
-              </span>
-              <span v-if="row.data?.humidity != null" style="font-size: 13px">
-                💧 {{ row.data.humidity }}%
-              </span>
-              <span v-if="row.data?.voltage != null" style="font-size: 13px">
-                ⚡ {{ row.data.voltage }}V
-              </span>
-              <span v-if="row.data?.power != null" style="font-size: 13px">
-                🔌 {{ row.data.power }}W
-              </span>
+            <div style="display: flex; gap: 8px; flex-wrap: wrap">
+              <el-tag v-if="row.data?.temperature != null" size="small" effect="plain">
+                🌡 {{ fmtNum(row.data.temperature) }}°C
+              </el-tag>
+              <el-tag v-if="row.data?.humidity != null" size="small" effect="plain" type="info">
+                💧 {{ fmtNum(row.data.humidity) }}%
+              </el-tag>
+              <el-tag v-if="row.data?.voltage != null" size="small" effect="plain" type="warning">
+                ⚡ {{ fmtNum(row.data.voltage) }}V
+              </el-tag>
+              <el-tag v-if="row.data?.power != null" size="small" effect="plain">
+                🔌 {{ fmtNum(row.data.power) }}W
+              </el-tag>
+              <span v-if="!row.data?.temperature && !row.data?.humidity && !row.data?.voltage && !row.data?.power" style="color: #909399; font-size: 12px">-</span>
             </div>
           </template>
         </el-table-column>
-        <el-table-column label="上报时间" width="170">
+        <el-table-column label="上报时间" width="160">
           <template #default="{ row }">
             {{ formatTime(row.reportedAt) }}
           </template>
@@ -243,14 +251,12 @@ const loading = ref(false)
 const metricOptions = [
   { label: '光照 (Lux)', value: 'lightIntensity' },
   { label: '温度 (°C)', value: 'temperature' },
-  { label: '湿度 (%)', value: 'humidity' },
   { label: '功率 (W)', value: 'power' }
 ]
 
 const metricUnits = {
   lightIntensity: 'Lux',
   temperature: '°C',
-  humidity: '%',
   power: 'W'
 }
 
@@ -266,6 +272,13 @@ const lightTrendDevice = ref('')
 const trendMetric = ref('lightIntensity')
 const trendRange = ref('24h')
 const latestSensorType = ref('')
+
+/** 设备名称映射（用于最新传感器表格） */
+const deviceNameMap = computed(() => {
+  const map = {}
+  devices.value.forEach(d => { map[d.deviceId] = d.name })
+  return map
+})
 
 // 统计卡片（带路由跳转）
 const statCards = computed(() => [
@@ -375,12 +388,37 @@ function severityLabel(sev) {
   const map = { CRITICAL: '严重', WARNING: '警告', INFO: '提示' }
   return map[sev] || sev
 }
+
+/** 光照强度 → 进度条百分比（最大值按 2000 Lux 为 100%） */
+function calcLightPercent(val) {
+  if (val == null || val <= 0) return 0
+  return Math.min(Math.round(val / 2000 * 100), 100)
+}
+
+/** 光照强度 → 进度条颜色 */
 function lightColor(val) {
-  if (val > 150) return '#F56C6C'
-  if (val > 80) return '#E6A23C'
-  if (val > 30) return '#409EFF'
+  if (val == null || val <= 0) return '#909399'
+  if (val > 1500) return '#F56C6C'
+  if (val > 500) return '#E6A23C'
+  if (val > 100) return '#409EFF'
   return '#67C23A'
 }
+
+/** 数值格式化：保留1位小数，空值显示 - */
+function fmtNum(val) {
+  if (val == null || val === '') return '-'
+  const n = Number(val)
+  if (isNaN(n)) return '-'
+  return n.toFixed(1)
+}
+
+/** 传感器表格行样式：离线设备标灰 */
+function sensorRowClass({ row }) {
+  return row.deviceId && !devices.value.find(d => d.deviceId === row.deviceId && d.status === 'online')
+    ? 'offline-row'
+    : ''
+}
+
 function sensorTypeTag(type) {
   const map = { light: '', temperature: 'danger', humidity: 'info', power: 'warning' }
   return map[type] || ''
@@ -476,4 +514,12 @@ onMounted(async () => {
 .stat-label { font-size: 13px; color: #909399; margin-top: 2px; }
 
 .chart-header { display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 8px; }
+
+/* 离线设备行样式 */
+:deep(.offline-row) {
+  opacity: 0.55;
+}
+:deep(.offline-row td) {
+  background-color: #fafafa;
+}
 </style>

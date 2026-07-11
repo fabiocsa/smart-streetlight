@@ -34,6 +34,11 @@ export function getLightTrend(deviceId, range = '24h') {
   return request.get('/dashboard/light-trend', { params })
 }
 
+/** 多设备趋势对比：传入设备ID数组，返回各设备趋势数据 */
+export function getSensorTrendCompare(deviceIds, metric = 'lightIntensity', range = '24h') {
+  return request.post('/dashboard/sensor-trend-compare', { deviceIds, metric, range })
+}
+
 /** 告警统计（近7日趋势 + 严重级别） */
 export function getAlarmStats() {
   return request.get('/dashboard/alarm-stats')
