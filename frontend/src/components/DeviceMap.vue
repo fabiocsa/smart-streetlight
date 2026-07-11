@@ -4,33 +4,36 @@
 
     <!-- 工具栏（左上角） -->
     <div class="map-toolbar">
-      <el-button
-        :type="currentTool === 'pan' ? 'primary' : 'default'"
-        size="small"
-        title="拖拽移动地图"
-        @click="switchTool('pan')"
-      >
-        <el-icon><Rank /></el-icon>
-        <span class="tool-btn-label">拖拽</span>
-      </el-button>
-      <el-button
-        :type="currentTool === 'select' ? 'primary' : 'default'"
-        size="small"
-        title="框选圈选设备 · Ctrl+点击可多选"
-        @click="switchTool('select')"
-      >
-        <el-icon><Select /></el-icon>
-        <span class="tool-btn-label">框选</span>
-      </el-button>
-      <el-button
-        :type="currentTool === 'add-location' ? 'primary' : 'default'"
-        size="small"
-        title="右键点击地图目标位置添加设备"
-        @click="switchTool('add-location')"
-      >
-        <el-icon><Plus /></el-icon>
-        <span class="tool-btn-label">添加</span>
-      </el-button>
+      <el-tooltip content="拖拽移动地图" placement="right" :show-after="150" :hide-after="0">
+        <el-button
+          :type="currentTool === 'pan' ? 'primary' : 'default'"
+          size="small"
+          @click="switchTool('pan')"
+        >
+          <el-icon><Rank /></el-icon>
+          <span class="tool-btn-label">拖拽</span>
+        </el-button>
+      </el-tooltip>
+      <el-tooltip content="框选圈选设备 · Ctrl+点击可多选" placement="right" :show-after="150" :hide-after="0">
+        <el-button
+          :type="currentTool === 'select' ? 'primary' : 'default'"
+          size="small"
+          @click="switchTool('select')"
+        >
+          <el-icon><Select /></el-icon>
+          <span class="tool-btn-label">框选</span>
+        </el-button>
+      </el-tooltip>
+      <el-tooltip content="右键点击地图目标位置添加设备" placement="right" :show-after="150" :hide-after="0">
+        <el-button
+          :type="currentTool === 'add-location' ? 'primary' : 'default'"
+          size="small"
+          @click="switchTool('add-location')"
+        >
+          <el-icon><Plus /></el-icon>
+          <span class="tool-btn-label">添加</span>
+        </el-button>
+      </el-tooltip>
     </div>
 
     <!-- 拖拽选框 -->
