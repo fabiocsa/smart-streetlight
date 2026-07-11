@@ -7,7 +7,7 @@
           <span style="color: #909399; margin-left: 8px">（共 {{ sensors.length }} 个）</span>
         </span>
         <el-button
-          v-if="selectedIds.length > 0 && authStore.isAdmin"
+          v-if="selectedIds.length > 0 && (authStore.isAdmin || authStore.isOperator)"
           type="danger"
           size="small"
           @click="handleBatchUnbind"
@@ -63,7 +63,7 @@
       <el-table-column label="操作" width="140" fixed="right">
         <template #default="{ row }">
           <el-popconfirm
-            v-if="authStore.isAdmin"
+            v-if="authStore.isAdmin || authStore.isOperator"
             title="确定移除该传感器的绑定吗？传感器将保留在数据库中，可重新绑定。"
             confirm-button-text="确定移除"
             @confirm="$emit('unbind', row.id)"

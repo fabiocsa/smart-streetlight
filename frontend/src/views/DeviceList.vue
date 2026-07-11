@@ -57,13 +57,13 @@
           <el-icon><Unlock /></el-icon> 批量解绑传感器 ({{ selectedIds.length }})
         </el-button>
         <el-button
-          v-if="selectedIds.length > 0 && authStore.isAdmin"
+          v-if="selectedIds.length > 0 && (authStore.isAdmin || authStore.isOperator)"
           type="danger"
           @click="handleBatchDelete"
         >
           <el-icon><Delete /></el-icon> 批量删除 ({{ selectedIds.length }})
         </el-button>
-        <el-button v-if="authStore.isAdmin" type="primary" @click="openAddDialog">
+        <el-button v-if="authStore.isAdmin || authStore.isOperator" type="primary" @click="openAddDialog">
             <el-icon><Plus /></el-icon> 添加设备
           </el-button>
       </div>
@@ -157,7 +157,7 @@
               <el-button type="primary" link @click="goDetail(row.id)">详情</el-button>
               <el-button v-if="authStore.isAdmin" type="primary" link @click="openEditDialog(row)">编辑</el-button>
               <el-popconfirm
-                v-if="authStore.isAdmin"
+                v-if="authStore.isAdmin || authStore.isOperator"
                 title="确定删除该设备吗？"
                 confirm-button-text="确定删除"
                 cancel-button-text="取消"

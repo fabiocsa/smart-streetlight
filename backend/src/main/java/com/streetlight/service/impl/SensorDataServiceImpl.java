@@ -9,6 +9,7 @@ import com.streetlight.repository.ControlLogRepository;
 import com.streetlight.repository.DeviceRepository;
 import com.streetlight.repository.SensorDataRepository;
 import com.streetlight.repository.SensorRepository;
+import com.streetlight.repository.SystemConfigRepository;
 import com.streetlight.service.AlarmService;
 import com.streetlight.service.SensorDataService;
 import com.streetlight.service.SensorRegistrationService;
@@ -18,6 +19,8 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.support.TransactionSynchronization;
+import org.springframework.transaction.support.TransactionSynchronizationManager;
 
 import java.time.LocalDateTime;
 import java.util.LinkedHashMap;
@@ -38,6 +41,7 @@ public class SensorDataServiceImpl implements SensorDataService {
     private final EntityManager entityManager;
     private final WebSocketHandler webSocketHandler;
     private final SensorRegistrationService sensorRegistrationService;
+    private final SystemConfigRepository systemConfigRepository;
 
     public SensorDataServiceImpl(SensorDataRepository sensorDataRepository,
                                   DeviceRepository deviceRepository,
@@ -47,7 +51,8 @@ public class SensorDataServiceImpl implements SensorDataService {
                                   MqttPublishService mqttPublishService,
                                   EntityManager entityManager,
                                   WebSocketHandler webSocketHandler,
-                                  SensorRegistrationService sensorRegistrationService) {
+                                  SensorRegistrationService sensorRegistrationService,
+                                  SystemConfigRepository systemConfigRepository) {
         this.sensorDataRepository = sensorDataRepository;
         this.deviceRepository = deviceRepository;
         this.sensorRepository = sensorRepository;
@@ -57,6 +62,7 @@ public class SensorDataServiceImpl implements SensorDataService {
         this.entityManager = entityManager;
         this.webSocketHandler = webSocketHandler;
         this.sensorRegistrationService = sensorRegistrationService;
+        this.systemConfigRepository = systemConfigRepository;
     }
 
     @Override
@@ -78,6 +84,71 @@ public class SensorDataServiceImpl implements SensorDataService {
         if (iAmFirst) {
             log.info("[自动联动诊断] deviceId={}, sensorId={}, sensorType={}, 是否未绑定={}, data字段={}",
                     deviceId, sensorId, sensorType, deviceId.startsWith("sensor_"), data.keySet());
+        }
+
+        // ===== 告警检测（在设备绑定检查之前执行，确保未绑定设备也能触发告警） =====
+        log.info("[告警检测] iAmFirst={}, dataKeys={}, hasVoltage={}, hasTemp={}, hasPower={}",
+                iAmFirst, data.keySet(),
+                data.containsKey("voltage") && data.get("voltage") instanceof Number,
+                data.containsKey("temperature") && data.get("temperature") instanceof Number,
+                data.containsKey("power") && data.get("power") instanceof Number);
+
+        // 电压异常检测
+        if (iAmFirst && data.containsKey("voltage") && data.get("voltage") instanceof Number) {
+            Double voltage = ((Number) data.get("voltage")).doubleValue();
+            Double voltageMin = getConfigDouble("voltage_min", 210.0);
+            Double voltageMax = getConfigDouble("voltage_max", 240.0);
+            log.info("[告警检测] 电压检测: voltage={}, min={}, max={}, 是否异常={}",
+                    voltage, voltageMin, voltageMax, voltage > voltageMax || voltage < voltageMin);
+
+            if (voltage > voltageMax || voltage < voltageMin) {
+                log.warn("[告警检测] 触发电压异常告警! deviceId={}, voltage={}", deviceId, voltage);
+                alarmService.createVoltageAbnormalAlarm(deviceId, voltage, voltageMin, voltageMax);
+            } else {
+                alarmService.autoResolveVoltageAlarm(deviceId);
+            }
+        } else {
+            log.info("[告警检测] 跳过电压检测: iAmFirst={}, hasKey={}, isNumber={}",
+                    iAmFirst, data.containsKey("voltage"),
+                    data.containsKey("voltage") ? data.get("voltage") instanceof Number : "N/A");
+        }
+
+        // 温度过高检测
+        if (iAmFirst && data.containsKey("temperature") && data.get("temperature") instanceof Number) {
+            Double temperature = ((Number) data.get("temperature")).doubleValue();
+            Double tempMax = getConfigDouble("temperature_max", 45.0);
+            log.info("[告警检测] 温度检测: temperature={}, max={}, 是否异常={}",
+                    temperature, tempMax, temperature > tempMax);
+
+            if (temperature > tempMax) {
+                log.warn("[告警检测] 触发温度过高告警! deviceId={}, temperature={}", deviceId, temperature);
+                alarmService.createTemperatureHighAlarm(deviceId, temperature, tempMax);
+            } else {
+                alarmService.autoResolveTemperatureAlarm(deviceId);
+            }
+        } else {
+            log.info("[告警检测] 跳过温度检测: iAmFirst={}, hasKey={}, isNumber={}",
+                    iAmFirst, data.containsKey("temperature"),
+                    data.containsKey("temperature") ? data.get("temperature") instanceof Number : "N/A");
+        }
+
+        // 功率过高检测
+        if (iAmFirst && data.containsKey("power") && data.get("power") instanceof Number) {
+            Double power = ((Number) data.get("power")).doubleValue();
+            Double powerMax = getConfigDouble("power_max", 100.0);
+            log.info("[告警检测] 功率检测: power={}, max={}, 是否异常={}",
+                    power, powerMax, power > powerMax);
+
+            if (power > powerMax) {
+                log.warn("[告警检测] 触发功率过高告警! deviceId={}, power={}", deviceId, power);
+                alarmService.createPowerHighAlarm(deviceId, power, powerMax);
+            } else {
+                alarmService.autoResolvePowerAlarm(deviceId);
+            }
+        } else {
+            log.info("[告警检测] 跳过功率检测: iAmFirst={}, hasKey={}, isNumber={}",
+                    iAmFirst, data.containsKey("power"),
+                    data.containsKey("power") ? data.get("power") instanceof Number : "N/A");
         }
 
         // ===== 第2步：传感器未绑定时，自动注册（仅赢家执行，避免重复注册） =====
@@ -259,5 +330,16 @@ public class SensorDataServiceImpl implements SensorDataService {
         stats.put("min", sensorDataRepository.minByField(deviceId, field, start, end));
         stats.put("count", sensorDataRepository.countByDeviceIdAndTimeRange(deviceId, start, end));
         return stats;
+    }
+
+    // ==================== 电压配置辅助方法 ====================
+
+    private Double getConfigDouble(String key, Double defaultValue) {
+        return systemConfigRepository.findByConfigKey(key)
+                .map(c -> {
+                    try { return Double.parseDouble(c.getConfigValue()); }
+                    catch (NumberFormatException e) { return defaultValue; }
+                })
+                .orElse(defaultValue);
     }
 }

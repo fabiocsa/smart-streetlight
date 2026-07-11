@@ -27,14 +27,14 @@
         </el-menu-item>
         <el-menu-item index="/sensors">
           <el-icon><Connection /></el-icon>
-          <span>传感器管理</span>
+          <span>{{ authStore.isAdmin || authStore.isOperator ? '传感器管理' : '传感器查看' }}</span>
         </el-menu-item>
         <el-menu-item index="/light-trend">
           <el-icon><TrendCharts /></el-icon>
           <span>光照趋势</span>
         </el-menu-item>
-        <!-- ★ 告警管理仅管理员可见 -->
-        <el-menu-item v-if="authStore.isAdmin" index="/alarms">
+        <!-- ★ 告警管理仅管理员或操作员可见 -->
+        <el-menu-item v-if="authStore.isAdmin || authStore.isOperator" index="/alarms">
           <el-icon><Bell /></el-icon>
           <span>告警管理</span>
         </el-menu-item>
@@ -51,8 +51,8 @@
           <el-breadcrumb-item v-if="route.meta?.title">{{ route.meta.title }}</el-breadcrumb-item>
         </el-breadcrumb>
         <div style="display: flex; align-items: center; gap: 12px">
-          <el-tag :type="authStore.isAdmin ? 'danger' : 'success'" size="small">
-            {{ authStore.isAdmin ? '管理员' : '市政人员' }}
+          <el-tag :type="authStore.isAdmin ? 'danger' : (authStore.isOperator ? 'warning' : 'success')" size="small">
+            {{ authStore.isAdmin ? '管理员' : (authStore.isOperator ? '路灯管理员' : '市政人员') }}
           </el-tag>
           <span style="font-size: 13px; color: #606266">{{ authStore.username }}</span>
           <el-button type="danger" link size="small" @click="handleLogout">退出</el-button>

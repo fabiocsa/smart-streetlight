@@ -15,43 +15,43 @@ const routes = [
     path: '/dashboard',
     name: 'Dashboard',
     component: () => import('../views/Dashboard.vue'),
-    meta: { title: '仪表盘', roles: ['admin', 'municipal'] }
+    meta: { title: '仪表盘', roles: ['admin', 'municipal', 'operator'] }
   },
   {
     path: '/devices',
     name: 'DeviceList',
     component: () => import('../views/DeviceList.vue'),
-    meta: { title: '设备管理', roles: ['admin', 'municipal'] }
+    meta: { title: '设备管理', roles: ['admin', 'municipal', 'operator'] }
   },
   {
     path: '/devices/:id',
     name: 'DeviceDetail',
     component: () => import('../views/DeviceDetail.vue'),
-    meta: { title: '设备详情', roles: ['admin', 'municipal'] }
+    meta: { title: '设备详情', roles: ['admin', 'municipal', 'operator'] }
   },
   {
     path: '/sensors',
     name: 'SensorList',
     component: () => import('../views/SensorList.vue'),
-    meta: { title: '传感器管理', roles: ['admin', 'municipal'] }
+    meta: { title: '传感器', roles: ['admin', 'municipal', 'operator'] }
   },
   {
     path: '/chat',
     name: 'ChatView',
     component: () => import('../views/ChatView.vue'),
-    meta: { title: '智能问答', roles: ['admin', 'municipal'] }
+    meta: { title: '智能问答', roles: ['admin', 'municipal', 'operator'] }
   },
   {
     path: '/light-trend',
     name: 'LightTrend',
     component: () => import('../views/LightTrend.vue'),
-    meta: { title: '历史光照趋势', roles: ['admin', 'municipal'] }
+    meta: { title: '历史光照趋势', roles: ['admin', 'municipal', 'operator'] }
   },
   {
     path: '/alarms',
     name: 'AlarmList',
     component: () => import('../views/AlarmList.vue'),
-    meta: { title: '告警管理', roles: ['admin'] }
+    meta: { title: '告警管理', roles: ['admin', 'operator'] }
   }
 ]
 
