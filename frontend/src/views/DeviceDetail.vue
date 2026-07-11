@@ -87,7 +87,7 @@
     </el-card>
 
     <!-- 设备控制面板 -->
-    <ControlPanel :device="form" @updated="loadDevice" />
+    <ControlPanel :device="form" :sensors="sensors" @updated="loadDevice" />
 
     <!-- 已绑定传感器列表 -->
     <SensorTable

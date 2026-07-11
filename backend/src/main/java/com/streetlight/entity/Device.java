@@ -50,6 +50,20 @@ public class Device {
     @Builder.Default
     private String controlMode = "auto";
 
+    /**
+     * 多传感器光照决策策略：single = 以指定传感器为准，average = 所有 light 传感器平均值。
+     */
+    @Column(name = "sensor_strategy", nullable = false, length = 10)
+    @Builder.Default
+    private String sensorStrategy = "single";
+
+    /**
+     * 当 sensorStrategy = single 时，指定作为光照决策依据的传感器 ID（DB 主键）。
+     * 为 null 时使用任意上报的 light 传感器数据（向后兼容）。
+     */
+    @Column(name = "primary_sensor_id")
+    private Long primarySensorId;
+
     @Column(name = "brightness")
     private Integer brightness;
 

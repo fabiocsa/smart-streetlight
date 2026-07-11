@@ -5,6 +5,7 @@ import com.streetlight.dto.BatchControlRequest;
 import com.streetlight.dto.ControlModeRequest;
 import com.streetlight.dto.ControlRequest;
 import com.streetlight.dto.BatchThresholdRequest;
+import com.streetlight.dto.SensorStrategyRequest;
 import com.streetlight.dto.ThresholdRequest;
 import com.streetlight.entity.ControlLog;
 import com.streetlight.service.ControlService;
@@ -108,5 +109,13 @@ public class ControlController {
         data.put("updatedCount", count);
         data.put("total", request.getIds().size());
         return Result.success(data);
+    }
+
+    @PutMapping("/{id}/sensor-strategy")
+    public Result<Void> setSensorStrategy(
+            @PathVariable Long id,
+            @Valid @RequestBody SensorStrategyRequest request) {
+        controlService.setSensorStrategy(id, request.getSensorStrategy(), request.getPrimarySensorId());
+        return Result.success();
     }
 }

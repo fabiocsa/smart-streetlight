@@ -73,13 +73,22 @@ public class WebSocketHandler extends TextWebSocketHandler {
         broadcast(payload);
     }
 
-    /** 推送设备状态变更 */
+    /** 推送设备状态变更（含控制模式，前端可据此实时更新列表/仪表盘） */
     public void pushDeviceStatus(String deviceId, String status, String lightStatus) {
-        broadcast(Map.of(
-                "type", "DEVICE_STATUS",
-                "deviceId", deviceId,
-                "data", Map.of("status", status, "lightStatus", lightStatus)
-        ));
+        pushDeviceStatus(deviceId, status, lightStatus, null);
+    }
+
+    /** 推送设备状态变更（含控制模式） */
+    public void pushDeviceStatus(String deviceId, String status, String lightStatus, String controlMode) {
+        Map<String, Object> data = new LinkedHashMap<>();
+        data.put("status", status);
+        data.put("lightStatus", lightStatus);
+        if (controlMode != null) data.put("controlMode", controlMode);
+        Map<String, Object> payload = new LinkedHashMap<>();
+        payload.put("type", "DEVICE_STATUS");
+        payload.put("deviceId", deviceId);
+        payload.put("data", data);
+        broadcast(payload);
     }
 
     /** 推送新告警 */

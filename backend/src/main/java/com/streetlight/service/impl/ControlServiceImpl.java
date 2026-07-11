@@ -9,6 +9,7 @@ import com.streetlight.repository.ControlLogRepository;
 import com.streetlight.repository.DeviceRepository;
 import com.streetlight.repository.SensorRepository;
 import com.streetlight.service.ControlService;
+import com.streetlight.websocket.WebSocketHandler;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.domain.Page;
@@ -31,6 +32,7 @@ public class ControlServiceImpl implements ControlService {
     private final DeviceRepository deviceRepository;
     private final SensorRepository sensorRepository;
     private final MqttPublishService mqttPublishService;
+    private final WebSocketHandler webSocketHandler;
 
     @Override
     @Transactional
@@ -58,6 +60,8 @@ public class ControlServiceImpl implements ControlService {
                 d.setControlMode("manual");
             }
             deviceRepository.save(d);
+            // ★ 推送设备状态变更（含控制模式），前端实时更新
+            webSocketHandler.pushDeviceStatus(deviceId, d.getStatus(), command, d.getControlMode());
             log.info("控制指令已更新设备状态: deviceId={}, command={}, source={}, lightStatus={}",
                     deviceId, command, source, command);
         });
@@ -136,6 +140,8 @@ public class ControlServiceImpl implements ControlService {
         String newMode = mode.toLowerCase();
         d.setControlMode(newMode);
         deviceRepository.save(d);
+        // ★ 推送设备状态变更（含新模式，前端实时更新）
+        webSocketHandler.pushDeviceStatus(d.getDeviceId(), d.getStatus(), d.getLightStatus(), newMode);
         log.info("切换控制模式: id={}, mode={}", id, newMode);
 
         // ★ 通知传感器模式变更（否则传感器不知道模式切换，manual 模式下不会恢复自动上报）
@@ -167,6 +173,18 @@ public class ControlServiceImpl implements ControlService {
         d.setThresholdOff(thresholdOff);
         deviceRepository.save(d);
         log.info("更新阈值: id={}, thresholdOn={}, thresholdOff={}", id, thresholdOn, thresholdOff);
+    }
+
+    @Override
+    @Transactional
+    public void setSensorStrategy(Long deviceId, String sensorStrategy, Long primarySensorId) {
+        Device d = deviceRepository.findById(deviceId)
+                .orElseThrow(() -> new BusinessException("设备不存在, id=" + deviceId));
+        d.setSensorStrategy(sensorStrategy);
+        d.setPrimarySensorId(primarySensorId);
+        deviceRepository.save(d);
+        log.info("更新传感器决策策略: id={}, strategy={}, primarySensorId={}",
+                deviceId, sensorStrategy, primarySensorId);
     }
 
     @Override

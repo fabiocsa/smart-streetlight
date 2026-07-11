@@ -188,6 +188,11 @@ public class SensorDataServiceImpl implements SensorDataService {
         }
         deviceRepository.save(device);
 
+        // ★ 推送设备状态变更（所有实例都做，确保每个前端都能收到）
+        if (wasOffline) {
+            webSocketHandler.pushDeviceStatus(deviceId, "online", device.getLightStatus());
+        }
+
         // ===== 第4步：WebSocket 推送（所有实例都做，确保每个前端都能收到实时数据） =====
         webSocketHandler.pushSensorData(deviceId, sensorType, data,
                 reportedAt != null ? reportedAt.toString() : LocalDateTime.now().toString());
@@ -227,7 +232,57 @@ public class SensorDataServiceImpl implements SensorDataService {
             return sd;
         }
 
-        // ===== 第9步：迟滞双阈值联动决策（持有行锁） =====
+        // ===== 第9步：多传感器策略 — 重新计算决策光照值 =====
+        String strategy = lockedDevice.getSensorStrategy();
+        Long primarySensorId = lockedDevice.getPrimarySensorId();
+
+        // 策略A：指定主传感器 — 非主传感器上报的数据跳过
+        if ("single".equals(strategy) && primarySensorId != null && sensorId != null) {
+            if (!primarySensorId.equals(sensorId)) {
+                log.info("设备 {} 主传感器为 {}，忽略传感器 {} 的光照数据（策略=single）",
+                        deviceId, primarySensorId, sensorId);
+                return sd;
+            }
+            log.info("设备 {} 使用主传感器 {} 的光照值进行决策: {}",
+                    deviceId, primarySensorId, lightIntensity);
+        }
+
+        // 策略B：平均值 — 取所有已绑定 light 传感器最新数据的平均值
+        if ("average".equals(strategy)) {
+            List<Sensor> boundLightSensors = sensorRepository
+                    .findBoundSensorsByDeviceIdAndType(deviceId, "light");
+            if (boundLightSensors.size() > 1) {
+                double sum = 0;
+                int count = 0;
+                for (Sensor bs : boundLightSensors) {
+                    SensorData latest = sensorDataRepository
+                            .findTopBySensorIdOrderByReportedAtDesc(bs.getId())
+                            .orElse(null);
+                    if (latest != null) {
+                        Double val = latest.getIlluminance();
+                        if (val == null) val = latest.getLightIntensity();
+                        if (val != null) {
+                            sum += val;
+                            count++;
+                        }
+                    }
+                }
+                if (count > 0) {
+                    double avg = sum / count;
+                    log.info("设备 {} 使用 {} 个 light 传感器平均值决策: avg={}, 各传感器数={}",
+                            deviceId, count, avg, count);
+                    lightIntensity = avg;
+                } else {
+                    log.info("设备 {} 策略=average 但无可用光照数据，使用当前上报值: {}",
+                            deviceId, lightIntensity);
+                }
+            } else {
+                log.info("设备 {} 策略=average 但仅有 {} 个 light 传感器，使用当前上报值",
+                        deviceId, boundLightSensors.size());
+            }
+        }
+
+        // ===== 第10步：迟滞双阈值联动决策（持有行锁） =====
         String cmd = null;
         if ("off".equals(lockedDevice.getLightStatus()) && lightIntensity < lockedDevice.getThresholdOn()) {
             cmd = "on";
@@ -271,6 +326,8 @@ public class SensorDataServiceImpl implements SensorDataService {
                 if (allSent) {
                     lockedDevice.setLightStatus(cmd);
                     deviceRepository.save(lockedDevice);
+                    // ★ 推送设备状态变更，前端实时更新灯光状态
+                    webSocketHandler.pushDeviceStatus(deviceId, lockedDevice.getStatus(), cmd);
                     log.info("自动联动指令已发送并更新DB: deviceId={}, cmd={}, sensors={}, controlLogId={}",
                             deviceId, cmd, lightSensors.size(), clog.getId());
                 }

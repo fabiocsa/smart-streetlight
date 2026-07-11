@@ -135,6 +135,56 @@
             开灯阈值必须小于关灯阈值
           </el-text>
         </div>
+
+        <!-- 传感器决策策略（仅自动模式 + 多个 light 传感器时显示） -->
+        <div v-if="controlMode === 'auto' && lightSensors.length > 1" class="section-title" style="margin-top: 20px">
+          传感器决策策略
+        </div>
+        <div v-if="controlMode === 'auto' && lightSensors.length > 1" class="strategy-area">
+          <el-radio-group
+            v-model="sensorStrategy"
+            :disabled="sending"
+            class="strategy-group"
+          >
+            <el-radio value="single">以指定传感器为准</el-radio>
+            <el-radio value="average">取所有传感器平均值</el-radio>
+          </el-radio-group>
+
+          <div v-if="sensorStrategy === 'single'" style="margin-top: 10px">
+            <el-form label-width="100px" size="default">
+              <el-form-item label="主传感器">
+                <el-select
+                  v-model="primarySensorId"
+                  placeholder="选择作为决策依据的传感器"
+                  :disabled="sending"
+                  style="width: 220px"
+                >
+                  <el-option
+                    v-for="s in lightSensors"
+                    :key="s.id"
+                    :label="s.displayName || `传感器 #${s.id}`"
+                    :value="s.id"
+                  />
+                </el-select>
+              </el-form-item>
+            </el-form>
+          </div>
+
+          <p class="strategy-desc">
+            {{ sensorStrategy === 'single'
+              ? '仅使用指定传感器的光照数据判断开关灯'
+              : '取所有已绑定光照传感器最新数据的平均值作为决策依据' }}
+          </p>
+
+          <el-button
+            type="primary"
+            :disabled="sending || (sensorStrategy === 'single' && !primarySensorId)"
+            :loading="sending && pendingCmd === 'strategy'"
+            @click="applySensorStrategy"
+          >
+            保存策略
+          </el-button>
+        </div>
       </el-col>
     </el-row>
 
@@ -182,14 +232,15 @@
 </template>
 
 <script setup>
-import { ref, watch, onMounted } from 'vue'
+import { ref, watch, onMounted, computed } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { Sunny, Moon, Setting, User, Refresh } from '@element-plus/icons-vue'
-import { sendControl, setControlMode, setThreshold, getControlLogs } from '../api/control'
+import { sendControl, setControlMode, setThreshold, getControlLogs, setSensorStrategy } from '../api/control'
 import { formatTime, debounce } from '../utils/common'
 
 const props = defineProps({
-  device: { type: Object, required: true }
+  device: { type: Object, required: true },
+  sensors: { type: Array, default: () => [] }
 })
 
 const emit = defineEmits(['updated'])
@@ -202,6 +253,8 @@ const brightness = ref(50)
 const controlMode = ref('auto')
 const thresholdOn = ref(50)
 const thresholdOff = ref(100)
+const sensorStrategy = ref('single')
+const primarySensorId = ref(null)
 
 // 日志
 const controlLogs = ref([])
@@ -269,6 +322,8 @@ watch(() => props.device, (d) => {
   }
   thresholdOn.value = d.thresholdOn ?? 50
   thresholdOff.value = d.thresholdOff ?? 100
+  sensorStrategy.value = d.sensorStrategy || 'single'
+  primarySensorId.value = d.primarySensorId ?? null
 }, { immediate: true, deep: true })
 
 // =============== 操作函数 ===============
@@ -394,6 +449,32 @@ async function applyThreshold() {
   }
 }
 
+// 已绑定的 light 类型传感器列表
+const lightSensors = computed(() => {
+  return (props.sensors || []).filter(s => s.sensorType === 'light')
+})
+
+async function applySensorStrategy() {
+  if (sending.value) return
+  sending.value = true
+  pendingCmd.value = 'strategy'
+  try {
+    await setSensorStrategy(props.device.id, {
+      sensorStrategy: sensorStrategy.value,
+      primarySensorId: sensorStrategy.value === 'single' ? primarySensorId.value : null
+    })
+    ElMessage.success('传感器决策策略已保存')
+    props.device.sensorStrategy = sensorStrategy.value
+    props.device.primarySensorId = sensorStrategy.value === 'single' ? primarySensorId.value : null
+    emit('updated')
+  } catch {
+    // 错误已拦截
+  } finally {
+    sending.value = false
+    pendingCmd.value = ''
+  }
+}
+
 async function loadLogs() {
   logsLoading.value = true
   try {
@@ -487,5 +568,17 @@ onMounted(() => {
 
 .form-hint {
   font-size: 12px; color: #c0c4cc; margin-left: 8px;
+}
+
+.strategy-area {
+  padding: 8px 0;
+}
+
+.strategy-group {
+  display: flex; flex-direction: column; gap: 8px;
+}
+
+.strategy-desc {
+  font-size: 12px; color: #909399; margin: 8px 0;
 }
 </style>

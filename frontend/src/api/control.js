@@ -29,3 +29,8 @@ export function setThreshold(id, data) {
 export function setBatchThreshold(data) {
   return request.put('/devices/batch/threshold', data)
 }
+
+/** 设置传感器决策策略 */
+export function setSensorStrategy(id, data) {
+  return request.put(`/devices/${id}/sensor-strategy`, data)
+}

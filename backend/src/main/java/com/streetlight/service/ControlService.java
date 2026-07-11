@@ -21,6 +21,8 @@ public interface ControlService {
 
     int batchSetThreshold(List<Long> ids, Double thresholdOn, Double thresholdOff);
 
+    void setSensorStrategy(Long deviceId, String sensorStrategy, Long primarySensorId);
+
     List<Map<String, Object>> sendBatchControlCommand(List<String> deviceIds, String command, Integer brightness);
 
     Page<ControlLog> getControlLogs(String deviceId, Pageable pageable);

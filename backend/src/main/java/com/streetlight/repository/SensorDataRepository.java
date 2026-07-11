@@ -25,6 +25,9 @@ public interface SensorDataRepository extends JpaRepository<SensorData, Long> {
     Optional<SensorData> findTopByDeviceIdAndSensorTypeOrderByReportedAtDesc(
             String deviceId, String sensorType);
 
+    /** 获取指定传感器的最新一条数据 */
+    Optional<SensorData> findTopBySensorIdOrderByReportedAtDesc(Long sensorId);
+
     List<SensorData> findBySensorTypeAndReportedAtBetweenOrderByReportedAtAsc(
             String sensorType, LocalDateTime start, LocalDateTime end);
 
@@ -94,6 +97,18 @@ public interface SensorDataRepository extends JpaRepository<SensorData, Long> {
            "ON sd.device_id = latest.device_id AND sd.reported_at = latest.max_time",
            nativeQuery = true)
     List<SensorData> findLatestPerDevice();
+
+    /**
+     * 获取每个设备每种传感器类型的最新一条数据。
+     * 用于仪表盘"设备最新传感器数据"表格，展示每个设备的各类传感器最新读数。
+     */
+    @Query(value = "SELECT sd.* FROM sensor_data sd " +
+           "INNER JOIN (SELECT device_id, sensor_type, MAX(reported_at) AS max_time " +
+           "FROM sensor_data GROUP BY device_id, sensor_type) latest " +
+           "ON sd.device_id = latest.device_id AND sd.sensor_type = latest.sensor_type " +
+           "AND sd.reported_at = latest.max_time",
+           nativeQuery = true)
+    List<SensorData> findLatestPerDeviceAndSensorType();
 
     @Query("SELECT COUNT(s) FROM SensorData s WHERE s.reportedAt >= :todayStart")
     long countToday(@Param("todayStart") LocalDateTime todayStart);

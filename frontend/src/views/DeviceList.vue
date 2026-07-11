@@ -234,7 +234,7 @@
 </template>
 
 <script setup>
-import { ref, computed, onMounted } from 'vue'
+import { ref, computed, onMounted, onBeforeUnmount } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { Sunny, Moon, Refresh, Grid, MapLocation, MoreFilled, ArrowDown } from '@element-plus/icons-vue'
@@ -576,8 +576,51 @@ async function refreshDevices() {
   ElMessage.success('设备列表已刷新')
 }
 
+// ==================== WebSocket 实时状态更新 ====================
+let ws = null
+
+function connectWs() {
+  if (ws && ws.readyState === WebSocket.OPEN) return
+  const proto = location.protocol === 'https:' ? 'wss:' : 'ws:'
+  const url = `${proto}//${location.host}/ws/monitor`
+  try {
+    ws = new WebSocket(url)
+    ws.onmessage = (e) => {
+      try {
+        const msg = JSON.parse(e.data)
+        if (msg.type === 'DEVICE_STATUS' && msg.deviceId) {
+          // 更新设备列表中对应设备的状态
+          const device = deviceStore.devices.find(d => d.deviceId === msg.deviceId)
+          if (device && msg.data) {
+            if (msg.data.status) device.status = msg.data.status
+            if (msg.data.lightStatus) device.lightStatus = msg.data.lightStatus
+            if (msg.data.controlMode) device.controlMode = msg.data.controlMode
+          }
+        }
+        if (msg.type === 'CONTROL_RESULT' && msg.deviceId) {
+          const device = deviceStore.devices.find(d => d.deviceId === msg.deviceId)
+          if (device && msg.data) {
+            if (msg.data.result === 'success') {
+              device.lightStatus = msg.data.command
+              device.controlMode = 'manual'
+            }
+          }
+        }
+      } catch { /* ignore */ }
+    }
+    ws.onclose = () => { ws = null; setTimeout(connectWs, 5000) }
+    ws.onerror = () => { ws?.close() }
+  } catch { /* ignore */ }
+}
+
 onMounted(() => {
   deviceStore.fetchAll()
+  connectWs()
+})
+
+onBeforeUnmount(() => {
+  ws?.close()
+  ws = null
 })
 </script>
 

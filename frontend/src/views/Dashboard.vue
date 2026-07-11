@@ -182,19 +182,10 @@
             <el-tag :type="sensorTypeTag(row.sensorType)" size="small">{{ sensorTypeLabel(row.sensorType) }}</el-tag>
           </template>
         </el-table-column>
-        <el-table-column label="光照强度" min-width="200">
+        <el-table-column label="光照强度" width="120">
           <template #default="{ row }">
-            <div style="display: flex; align-items: center; gap: 8px">
-              <el-progress
-                :percentage="calcLightPercent(row.lightIntensity)"
-                :color="lightColor(row.lightIntensity)"
-                :stroke-width="18"
-                style="flex: 1"
-              />
-              <span style="font-weight: 600; min-width: 64px; text-align: right; white-space: nowrap">
-                {{ fmtNum(row.lightIntensity) }} Lux
-              </span>
-            </div>
+            <span v-if="row.lightIntensity != null" style="font-weight: 600">{{ fmtNum(row.lightIntensity) }} Lux</span>
+            <span v-else style="color: #909399; font-size: 12px">-</span>
           </template>
         </el-table-column>
         <el-table-column label="其他指标" min-width="260">
@@ -203,16 +194,13 @@
               <el-tag v-if="row.data?.temperature != null" size="small" effect="plain">
                 🌡 {{ fmtNum(row.data.temperature) }}°C
               </el-tag>
-              <el-tag v-if="row.data?.humidity != null" size="small" effect="plain" type="info">
-                💧 {{ fmtNum(row.data.humidity) }}%
-              </el-tag>
               <el-tag v-if="row.data?.voltage != null" size="small" effect="plain" type="warning">
                 ⚡ {{ fmtNum(row.data.voltage) }}V
               </el-tag>
               <el-tag v-if="row.data?.power != null" size="small" effect="plain">
                 🔌 {{ fmtNum(row.data.power) }}W
               </el-tag>
-              <span v-if="!row.data?.temperature && !row.data?.humidity && !row.data?.voltage && !row.data?.power" style="color: #909399; font-size: 12px">-</span>
+              <span v-if="!row.data?.temperature && !row.data?.voltage && !row.data?.power" style="color: #909399; font-size: 12px">-</span>
             </div>
           </template>
         </el-table-column>
@@ -227,7 +215,7 @@
 </template>
 
 <script setup>
-import { ref, computed, onMounted } from 'vue'
+import { ref, computed, onMounted, onBeforeUnmount } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import { use } from 'echarts/core'
@@ -391,21 +379,6 @@ function severityLabel(sev) {
   return map[sev] || sev
 }
 
-/** 光照强度 → 进度条百分比（最大值按 2000 Lux 为 100%） */
-function calcLightPercent(val) {
-  if (val == null || val <= 0) return 0
-  return Math.min(Math.round(val / 2000 * 100), 100)
-}
-
-/** 光照强度 → 进度条颜色 */
-function lightColor(val) {
-  if (val == null || val <= 0) return '#909399'
-  if (val > 1500) return '#F56C6C'
-  if (val > 500) return '#E6A23C'
-  if (val > 100) return '#409EFF'
-  return '#67C23A'
-}
-
 /** 数值格式化：保留1位小数，空值显示 - */
 function fmtNum(val) {
   if (val == null || val === '') return '-'
@@ -481,6 +454,64 @@ async function refreshAll() {
   }
 }
 
+// ==================== WebSocket 实时数据更新 ====================
+let ws = null
+
+function connectWs() {
+  if (ws && ws.readyState === WebSocket.OPEN) return
+  const proto = location.protocol === 'https:' ? 'wss:' : 'ws:'
+  const url = `${proto}//${location.host}/ws/monitor`
+  try {
+    ws = new WebSocket(url)
+    ws.onmessage = (e) => {
+      try {
+        const msg = JSON.parse(e.data)
+
+        if (msg.type === 'SENSOR_DATA' && msg.deviceId) {
+          // 实时更新"设备最新传感器数据"表：替换或新增该设备+传感器类型的行
+          const idx = latestSensorData.value.findIndex(
+            d => d.deviceId === msg.deviceId && d.sensorType === msg.sensorType
+          )
+          const newRow = {
+            deviceId: msg.deviceId,
+            sensorType: msg.sensorType,
+            data: msg.data,
+            reportedAt: msg.reportedAt,
+            lightIntensity: msg.data?.illuminance ?? msg.data?.lightIntensity
+          }
+          if (idx >= 0) {
+            latestSensorData.value[idx] = newRow
+          } else {
+            latestSensorData.value.unshift(newRow)
+          }
+        }
+
+        if (msg.type === 'DEVICE_STATUS' && msg.deviceId) {
+          // 更新设备状态统计
+          const device = devices.value.find(d => d.deviceId === msg.deviceId)
+          if (device && msg.data) {
+            if (msg.data.status) device.status = msg.data.status
+            if (msg.data.lightStatus) device.lightStatus = msg.data.lightStatus
+          }
+          // 重新计算统计卡片
+          loadStats()
+        }
+
+        if (msg.type === 'NEW_ALARM') {
+          loadRecentAlarms()
+          loadAlarmStats()
+        }
+
+        if (msg.type === 'CONTROL_RESULT') {
+          loadRecentControls()
+        }
+      } catch { /* ignore */ }
+    }
+    ws.onclose = () => { ws = null; setTimeout(connectWs, 5000) }
+    ws.onerror = () => { ws?.close() }
+  } catch { /* ignore */ }
+}
+
 onMounted(async () => {
   await deviceStore.fetchAll()
   devices.value = deviceStore.devices
@@ -489,6 +520,12 @@ onMounted(async () => {
     loadSensorTrend(), loadAlarmStats(),
     loadRecentAlarms(), loadRecentControls()
   ])
+  connectWs()
+})
+
+onBeforeUnmount(() => {
+  ws?.close()
+  ws = null
 })
 </script>
 

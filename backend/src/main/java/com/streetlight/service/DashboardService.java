@@ -76,12 +76,14 @@ public class DashboardService {
     // ==================== 最新传感器数据 ====================
 
     /**
-     * 获取各设备最新传感器数据（含完整 data_json）。
-     * 只返回最近 10 分钟内有数据上报的设备，过滤过期垃圾数据。
+     * 获取各设备每种传感器类型的最新数据（含完整 data_json）。
+     * 每个设备会为每种传感器类型各返回一行，展示真实的最新上报数据。
+     * 只返回最近 10 分钟内有数据上报的记录，过滤过期垃圾数据。
      */
     public List<Map<String, Object>> getLatestSensorData() {
-        List<SensorData> latestList = sensorDataRepository.findLatestPerDevice();
-        LocalDateTime recentThreshold = LocalDateTime.now().minusMinutes(10);
+        List<SensorData> latestList = sensorDataRepository.findLatestPerDeviceAndSensorType();
+        // 放宽到 30 分钟：避免传感器上报间隔稍长就被过滤掉
+        LocalDateTime recentThreshold = LocalDateTime.now().minusMinutes(30);
         return latestList.stream()
             .filter(sd -> sd.getReportedAt() != null && sd.getReportedAt().isAfter(recentThreshold))
             .filter(sd -> sd.getDeviceId() != null && !sd.getDeviceId().startsWith("sensor_"))
@@ -92,7 +94,7 @@ public class DashboardService {
                 map.put("data", sd.getData());         // 完整多维数据
                 map.put("reportedAt", sd.getReportedAt());
                 // 向后兼容：也提供单独字段
-                map.put("lightIntensity", sd.getLightIntensity());
+                map.put("lightIntensity", sd.getIlluminance() != null ? sd.getIlluminance() : sd.getLightIntensity());
                 return map;
             }).collect(Collectors.toList());
     }
@@ -103,7 +105,7 @@ public class DashboardService {
      */
     public List<Map<String, Object>> getLatestSensorDataByType(String sensorType) {
         List<SensorData> latestList = sensorDataRepository.findLatestPerDeviceBySensorType(sensorType);
-        LocalDateTime recentThreshold = LocalDateTime.now().minusMinutes(10);
+        LocalDateTime recentThreshold = LocalDateTime.now().minusMinutes(30);
         return latestList.stream()
             .filter(sd -> sd.getReportedAt() != null && sd.getReportedAt().isAfter(recentThreshold))
             .filter(sd -> sd.getDeviceId() != null && !sd.getDeviceId().startsWith("sensor_"))
