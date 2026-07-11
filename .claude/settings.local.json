@@ -77,7 +77,9 @@
       "Bash(echo \"后端启动中... PID=$!\")",
       "Bash(nohup npm run dev)",
       "Bash(echo \"前端启动中... PID=$!\")",
-      "Read(//c/Users/FANLIY~1/AppData/Local/Temp/claude/C--Users-fanliyang-Desktop-shixun/896ee9ce-6a43-4bad-95cd-63243a9f382b/tasks/**)"
+      "Read(//c/Users/FANLIY~1/AppData/Local/Temp/claude/C--Users-fanliyang-Desktop-shixun/896ee9ce-6a43-4bad-95cd-63243a9f382b/tasks/**)",
+      "Bash(npx vue-tsc *)",
+      "Bash(node -e \"const fs = require\\('fs'\\); const c = fs.readFileSync\\('src/views/LightTrend.vue','utf8'\\); try { new Function\\(c\\); } catch\\(e\\) {} console.log\\('Syntax check passed'\\);\")"
     ]
   }
 }
