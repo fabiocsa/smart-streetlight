@@ -60,6 +60,21 @@ public class DashboardController {
         return ResponseEntity.ok(dashboardService.getLightTrend(deviceId, range));
     }
 
+    /**
+     * 多设备趋势对比。
+     * POST /api/dashboard/sensor-trend-compare
+     * Body: { "deviceIds": ["SL-001","SL-002"], "metric": "lightIntensity", "range": "24h" }
+     */
+    @PostMapping("/sensor-trend-compare")
+    public ResponseEntity<Map<String, Object>> getSensorTrendCompare(
+            @RequestBody Map<String, Object> body) {
+        @SuppressWarnings("unchecked")
+        List<String> deviceIds = (List<String>) body.get("deviceIds");
+        String metric = (String) body.getOrDefault("metric", "lightIntensity");
+        String range = (String) body.getOrDefault("range", "24h");
+        return ResponseEntity.ok(dashboardService.getSensorTrendCompare(deviceIds, metric, range));
+    }
+
     @GetMapping("/alarm-stats")
     public ResponseEntity<Map<String, Object>> getAlarmStats() {
         return ResponseEntity.ok(dashboardService.getAlarmStats());
