@@ -8,6 +8,7 @@
         <el-button
           :type="currentTool === 'pan' ? 'primary' : 'default'"
           size="small"
+          circle
           @click="switchTool('pan')"
           :icon="Rank"
         />
@@ -16,6 +17,7 @@
         <el-button
           :type="currentTool === 'select' ? 'primary' : 'default'"
           size="small"
+          circle
           @click="switchTool('select')"
           :icon="Select"
         />
@@ -25,6 +27,7 @@
         <el-button
           :type="currentTool === 'add-location' ? 'primary' : 'default'"
           size="small"
+          circle
           @click="switchTool('add-location')"
           :icon="Plus"
         />
@@ -679,10 +682,6 @@ onBeforeUnmount(() => {
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
 }
 
-/* 工具栏按钮一致化 */
-.map-toolbar .el-button {
-  width: 32px;
-}
 
 /* 选框 */
 .selection-box {
