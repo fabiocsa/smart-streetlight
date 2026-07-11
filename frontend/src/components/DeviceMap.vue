@@ -8,7 +8,6 @@
         <el-button
           :type="currentTool === 'pan' ? 'primary' : 'default'"
           size="small"
-          circle
           @click="switchTool('pan')"
           :icon="Rank"
         />
@@ -17,7 +16,6 @@
         <el-button
           :type="currentTool === 'select' ? 'primary' : 'default'"
           size="small"
-          circle
           @click="switchTool('select')"
           :icon="Grid"
         />
@@ -27,7 +25,6 @@
         <el-button
           :type="currentTool === 'add-location' ? 'primary' : 'default'"
           size="small"
-          circle
           @click="switchTool('add-location')"
           :icon="Plus"
         />
@@ -675,12 +672,20 @@ onBeforeUnmount(() => {
   z-index: 10;
   display: flex;
   flex-direction: column;
-  align-items: center;
   gap: 4px;
   background: rgba(255, 255, 255, 0.95);
   padding: 4px;
   border-radius: 6px;
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
+}
+.map-toolbar .el-button {
+  width: 28px;
+  height: 28px;
+  min-width: 28px;
+  padding: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
 }
 
 
