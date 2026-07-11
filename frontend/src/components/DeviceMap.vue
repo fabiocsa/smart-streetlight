@@ -22,7 +22,6 @@
           <el-icon><Grid /></el-icon>
         </el-button>
       </el-tooltip>
-      <el-divider direction="horizontal" style="margin: 4px 0; border-color: #e8e8e8" />
       <el-tooltip content="添加设备 — 右键地图快速添加设备" placement="right">
         <el-button
           :type="currentTool === 'add-location' ? 'primary' : 'default'"
