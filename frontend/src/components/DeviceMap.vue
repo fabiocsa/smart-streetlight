@@ -9,7 +9,7 @@
           :type="currentTool === 'pan' ? 'primary' : 'default'"
           size="small"
           @click="switchTool('pan')"
-          :icon="Rank"
+          :icon="Aim"
         />
       </el-tooltip>
       <el-tooltip content="框选 — 拖拽画框圈选设备" placement="right">
@@ -17,7 +17,7 @@
           :type="currentTool === 'select' ? 'primary' : 'default'"
           size="small"
           @click="switchTool('select')"
-          :icon="Select"
+          :icon="Pointer"
         />
       </el-tooltip>
       <el-divider direction="horizontal" style="margin: 4px 0; border-color: #e8e8e8" />
@@ -93,7 +93,7 @@
 import { ref, reactive, computed, watch, onMounted, onBeforeUnmount, nextTick } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { Rank, Select, Plus } from '@element-plus/icons-vue'
+import { Aim, Pointer, Plus } from '@element-plus/icons-vue'
 import AMapLoader from '@amap/amap-jsapi-loader'
 import { sendControl, sendBatchControl, setControlMode } from '../api/control'
 import { unbindSensor } from '../api/device'
