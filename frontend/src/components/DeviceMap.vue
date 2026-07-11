@@ -19,7 +19,7 @@
           size="small"
           circle
           @click="switchTool('select')"
-          :icon="Select"
+          :icon="Grid"
         />
       </el-tooltip>
       <el-divider direction="horizontal" style="margin: 4px 0; border-color: #e8e8e8" />
@@ -96,7 +96,7 @@
 import { ref, reactive, computed, watch, onMounted, onBeforeUnmount, nextTick } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { Rank, Select, Plus } from '@element-plus/icons-vue'
+import { Rank, Grid, Plus } from '@element-plus/icons-vue'
 import AMapLoader from '@amap/amap-jsapi-loader'
 import { sendControl, sendBatchControl, setControlMode } from '../api/control'
 import { unbindSensor } from '../api/device'
