@@ -36,40 +36,22 @@
         <el-dropdown
           v-if="selectedIds.length > 0"
           trigger="click"
-          @command="handleBatchModeChange"
-          style="margin-left: 8px"
+          @command="handleBatchMenuCommand"
         >
-          <el-button type="primary">
-            <el-icon><Setting /></el-icon> 批量切换模式
+          <el-button>
+            <el-icon><MoreFilled /></el-icon> 更多操作
+            <el-icon class="el-icon--right"><ArrowDown /></el-icon>
           </el-button>
           <template #dropdown>
             <el-dropdown-menu>
-              <el-dropdown-item command="auto">切换为自动模式</el-dropdown-item>
-              <el-dropdown-item command="manual">切换为手动模式</el-dropdown-item>
+              <el-dropdown-item command="mode-auto">切换为自动模式</el-dropdown-item>
+              <el-dropdown-item command="mode-manual">切换为手动模式</el-dropdown-item>
+              <el-dropdown-item v-if="authStore.isAdmin || authStore.isOperator" command="threshold" divided>批量设置阈值</el-dropdown-item>
+              <el-dropdown-item v-if="authStore.isAdmin" command="unbind">批量解绑传感器</el-dropdown-item>
+              <el-dropdown-item v-if="authStore.isAdmin || authStore.isOperator" command="delete" divided style="color:#F56C6C">批量删除</el-dropdown-item>
             </el-dropdown-menu>
           </template>
         </el-dropdown>
-        <el-button
-          v-if="selectedIds.length > 0 && (authStore.isAdmin || authStore.isOperator)"
-          type="warning"
-          @click="openBatchThresholdDialog"
-        >
-          <el-icon><Setting /></el-icon> 批量设置阈值 ({{ selectedIds.length }})
-        </el-button>
-        <el-button
-          v-if="selectedIds.length > 0 && authStore.isAdmin"
-          type="info"
-          @click="handleBatchUnbind"
-        >
-          <el-icon><Unlock /></el-icon> 批量解绑传感器 ({{ selectedIds.length }})
-        </el-button>
-        <el-button
-          v-if="selectedIds.length > 0 && (authStore.isAdmin || authStore.isOperator)"
-          type="danger"
-          @click="handleBatchDelete"
-        >
-          <el-icon><Delete /></el-icon> 批量删除 ({{ selectedIds.length }})
-        </el-button>
         <el-button v-if="authStore.isAdmin || authStore.isOperator" type="primary" @click="openAddDialog">
             <el-icon><Plus /></el-icon> 添加设备
           </el-button>
@@ -255,7 +237,7 @@
 import { ref, computed, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { Sunny, Moon, Refresh, Grid, MapLocation, Setting, Unlock } from '@element-plus/icons-vue'
+import { Sunny, Moon, Refresh, Grid, MapLocation, MoreFilled, ArrowDown } from '@element-plus/icons-vue'
 import { useAuthStore } from '../stores/authStore'
 import { useDeviceStore } from '../store/device'
 import DeviceForm from '../components/DeviceForm.vue'
@@ -473,6 +455,17 @@ async function handleBatchControl(command) {
     selectedIds.value = []
   } catch {
     // 错误已拦截
+  }
+}
+
+/** 更多操作菜单分发 */
+function handleBatchMenuCommand(cmd) {
+  switch (cmd) {
+    case 'mode-auto': return handleBatchModeChange('auto')
+    case 'mode-manual': return handleBatchModeChange('manual')
+    case 'threshold': return openBatchThresholdDialog()
+    case 'unbind': return handleBatchUnbind()
+    case 'delete': return handleBatchDelete()
   }
 }
 
