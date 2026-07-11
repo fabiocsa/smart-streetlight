@@ -264,7 +264,7 @@ const metricUnits = {
 const stats = ref({})
 const devices = ref([])
 const latestSensorData = ref([])
-const sensorTrend = ref({ hours: [], values: [] })
+const sensorTrend = ref({ labels: [], values: [] })
 const alarmStats = ref({ days: [], dailyCounts: [], criticalCount: 0, warningCount: 0, infoCount: 0 })
 const recentAlarms = ref([])
 const recentControls = ref([])
@@ -321,19 +321,21 @@ const lightTrendOption = computed(() => ({
     trigger: 'axis',
     formatter: (params) => {
       const p = params[0]
+      if (p.value == null) return `${p.name}<br/>${trendMetric.value}: <b>无数据</b>`
       return `${p.name}<br/>${trendMetric.value}: <b>${p.value} ${unit.value}</b>`
     }
   },
   grid: { left: 55, right: 20, top: 10, bottom: 30 },
   xAxis: {
-    type: 'category', data: sensorTrend.value.hours || [],
-    axisLabel: { rotate: 45, fontSize: 11 }
+    type: 'category', data: sensorTrend.value.labels || [],
+    axisLabel: { rotate: trendRange.value === '24h' ? 45 : 0, fontSize: 11 }
   },
   yAxis: { type: 'value', name: unit.value },
   series: [{
     type: 'line',
     data: sensorTrend.value.values || [],
     smooth: true,
+    connectNulls: false,
     areaStyle: {
       color: {
         type: 'linear', x: 0, y: 0, x2: 0, y2: 1,
