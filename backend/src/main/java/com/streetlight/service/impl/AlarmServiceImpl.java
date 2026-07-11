@@ -1,11 +1,14 @@
 package com.streetlight.service.impl;
 
+import com.streetlight.common.BusinessException;
 import com.streetlight.entity.AlarmLog;
 import com.streetlight.enums.AlarmSeverity;
 import com.streetlight.enums.AlarmStatus;
 import com.streetlight.enums.AlarmType;
+import com.streetlight.enums.AssignmentMode;
 import com.streetlight.repository.AlarmLogRepository;
 import com.streetlight.service.AlarmService;
+import com.streetlight.service.HandlerService;
 import com.streetlight.websocket.WebSocketHandler;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -27,6 +30,7 @@ public class AlarmServiceImpl implements AlarmService {
 
     private final AlarmLogRepository alarmLogRepository;
     private final WebSocketHandler webSocketHandler;
+    private final HandlerService handlerService;
 
     @Override
     @Transactional
@@ -38,24 +42,49 @@ public class AlarmServiceImpl implements AlarmService {
         if (hasOfflinePending) {
             return;
         }
-        AlarmLog alarm = AlarmLog.builder()
-                .deviceId(deviceId)
-                .alarmType(AlarmType.OFFLINE)
-                .content("设备 " + deviceId + " 已离线超过30秒")
-                .severity(AlarmSeverity.WARNING)
-                .status(AlarmStatus.PENDING)
-                .build();
-        alarmLogRepository.save(alarm);
-        log.warn("创建离线告警: deviceId={}", deviceId);
 
-        // 通过 WebSocket 推送新告警通知到前端
-        webSocketHandler.pushNewAlarm(
-                alarm.getId(),
-                deviceId,
-                "offline",
-                alarm.getContent(),
-                "warning"
-        );
+        AssignmentMode currentMode = handlerService.getAssignmentMode();
+
+        if (currentMode == AssignmentMode.AUTO) {
+            // 自动模式：创建告警 → 自动分配处理人 → 直接标记为已解决
+            AlarmLog alarm = AlarmLog.builder()
+                    .deviceId(deviceId)
+                    .alarmType(AlarmType.OFFLINE)
+                    .content("设备 " + deviceId + " 已离线超过30秒")
+                    .severity(AlarmSeverity.WARNING)
+                    .status(AlarmStatus.PENDING)
+                    .assignmentMode(currentMode)
+                    .build();
+            alarmLogRepository.save(alarm);
+            log.warn("创建离线告警: deviceId={}, mode=AUTO", deviceId);
+
+            try {
+                handlerService.autoAssignHandler(alarm);
+                log.info("自动模式: 告警已分配处理人并解决, alarmId={}", alarm.getId());
+            } catch (BusinessException e) {
+                log.warn("自动分配失败（告警保持 PENDING）: alarmId={}, error={}", alarm.getId(), e.getMessage());
+            }
+        } else {
+            // 手动模式：创建告警保持 PENDING, 推送到前端等待手动分配
+            AlarmLog alarm = AlarmLog.builder()
+                    .deviceId(deviceId)
+                    .alarmType(AlarmType.OFFLINE)
+                    .content("设备 " + deviceId + " 已离线超过30秒")
+                    .severity(AlarmSeverity.WARNING)
+                    .status(AlarmStatus.PENDING)
+                    .assignmentMode(currentMode)
+                    .build();
+            alarmLogRepository.save(alarm);
+            log.warn("创建离线告警: deviceId={}, mode=MANUAL", deviceId);
+
+            webSocketHandler.pushNewAlarm(
+                    alarm.getId(),
+                    deviceId,
+                    "offline",
+                    alarm.getContent(),
+                    "warning"
+            );
+        }
     }
 
     @Override
@@ -63,8 +92,10 @@ public class AlarmServiceImpl implements AlarmService {
     public void autoResolveOfflineAlarm(String deviceId) {
         List<AlarmLog> pending = alarmLogRepository.findByDeviceIdAndStatus(deviceId, AlarmStatus.PENDING);
         // 仅自动解决 OFFLINE 类型告警，不误关其他类型的待处理告警（如 ABNORMAL_DATA）
+        // 同时只解除自动模式创建的告警，手动模式的告警需管理员手动处理
         List<AlarmLog> offlineAlarms = pending.stream()
                 .filter(a -> a.getAlarmType() == AlarmType.OFFLINE)
+                .filter(a -> a.getAssignmentMode() == AssignmentMode.AUTO || a.getAssignmentMode() == null)
                 .toList();
         if (offlineAlarms.isEmpty()) {
             return;
@@ -72,8 +103,12 @@ public class AlarmServiceImpl implements AlarmService {
         for (AlarmLog alarm : offlineAlarms) {
             alarm.setStatus(AlarmStatus.RESOLVED);
             alarm.setResolvedAt(LocalDateTime.now());
-            alarm.setResolvedBy("system");
             alarm.setNotes("设备恢复在线，自动解决");
+
+            // 释放分配的处理人（若有）
+            if (alarm.getAssignedHandlerId() != null) {
+                handlerService.releaseHandler(alarm.getAssignedHandlerId());
+            }
         }
         alarmLogRepository.saveAll(offlineAlarms);
         log.info("自动解决离线告警: deviceId={}, count={}", deviceId, offlineAlarms.size());
@@ -156,6 +191,26 @@ public class AlarmServiceImpl implements AlarmService {
 
     @Override
     @Transactional
+    public Map<String, Object> batchUpdateResolvedBy(List<Long> alarmIds, String resolvedBy) {
+        int success = 0, fail = 0;
+        for (Long id : alarmIds) {
+            try {
+                updateResolvedBy(id, resolvedBy);
+                success++;
+            } catch (Exception e) {
+                fail++;
+                log.warn("批量修改处理人失败: id={}, {}", id, e.getMessage());
+            }
+        }
+        Map<String, Object> result = new LinkedHashMap<>();
+        result.put("total", alarmIds.size());
+        result.put("success", success);
+        result.put("fail", fail);
+        return result;
+    }
+
+    @Override
+    @Transactional
     public Map<String, Object> batchResolve(List<Long> alarmIds, String resolvedBy, String notes) {
         int success = 0, fail = 0;
         for (Long id : alarmIds) {
@@ -184,5 +239,239 @@ public class AlarmServiceImpl implements AlarmService {
         LocalDateTime start = LocalDate.now().atStartOfDay();
         LocalDateTime end = LocalDate.now().atTime(LocalTime.MAX);
         return alarmLogRepository.countByCreatedAtBetween(start, end);
+    }
+
+    @Override
+    @Transactional
+    public void assignHandler(Long alarmId, Long handlerId) {
+        handlerService.manualAssignHandler(alarmId, handlerId);
+    }
+
+    @Override
+    @Transactional
+    public Map<String, Object> batchAutoAssignPending() {
+        List<AlarmLog> pendingAlarms = alarmLogRepository.findByStatus(AlarmStatus.PENDING);
+        if (pendingAlarms.isEmpty()) {
+            Map<String, Object> empty = new LinkedHashMap<>();
+            empty.put("total", 0);
+            empty.put("success", 0);
+            empty.put("fail", 0);
+            return empty;
+        }
+        int success = 0, fail = 0;
+        for (AlarmLog alarm : pendingAlarms) {
+            try {
+                handlerService.autoAssignHandler(alarm);
+                success++;
+            } catch (BusinessException e) {
+                fail++;
+                log.warn("自动分配失败: alarmId={}, error={}", alarm.getId(), e.getMessage());
+            }
+        }
+        log.info("批量自动分配完成: 总数={}, 成功={}, 失败={}", pendingAlarms.size(), success, fail);
+        Map<String, Object> result = new LinkedHashMap<>();
+        result.put("total", pendingAlarms.size());
+        result.put("success", success);
+        result.put("fail", fail);
+        return result;
+    }
+
+    // ==================== 电压异常告警 ====================
+
+    @Override
+    @Transactional
+    public void createVoltageAbnormalAlarm(String deviceId, Double voltage, Double min, Double max) {
+        // 防重复：已有未处理的电压异常告警则不重复创建
+        List<AlarmLog> existing = alarmLogRepository.findByDeviceIdAndStatus(deviceId, AlarmStatus.PENDING);
+        boolean hasVoltagePending = existing.stream()
+                .anyMatch(a -> a.getAlarmType() == AlarmType.VOLTAGE_ABNORMAL);
+        if (hasVoltagePending) {
+            log.info("[告警创建] 电压异常告警已存在(去重跳过): deviceId={}, pendingTypes={}",
+                    deviceId, existing.stream().map(a -> a.getAlarmType().name()).toList());
+            return;
+        }
+        log.info("[告警创建] 开始创建电压异常告警: deviceId={}, voltage={}, min={}, max={}", deviceId, voltage, min, max);
+
+        String content;
+        if (voltage > max) {
+            content = "设备 " + deviceId + " 电压过高: " + String.format("%.1f", voltage) + "V (正常范围: " + min + "V ~ " + max + "V)";
+        } else {
+            content = "设备 " + deviceId + " 电压过低: " + String.format("%.1f", voltage) + "V (正常范围: " + min + "V ~ " + max + "V)";
+        }
+
+        AssignmentMode currentMode = handlerService.getAssignmentMode();
+
+        AlarmLog alarm = AlarmLog.builder()
+                .deviceId(deviceId)
+                .alarmType(AlarmType.VOLTAGE_ABNORMAL)
+                .content(content)
+                .severity(AlarmSeverity.WARNING)
+                .status(AlarmStatus.PENDING)
+                .assignmentMode(currentMode)
+                .build();
+        alarmLogRepository.save(alarm);
+        log.warn("创建电压异常告警: deviceId={}, voltage={}, range=[{}~{}]", deviceId, voltage, min, max);
+
+        if (currentMode == AssignmentMode.AUTO) {
+            try {
+                handlerService.autoAssignHandler(alarm);
+                log.info("自动模式: 电压告警已分配处理人并解决, alarmId={}", alarm.getId());
+            } catch (BusinessException e) {
+                log.warn("自动分配失败（告警保持 PENDING）: alarmId={}, error={}", alarm.getId(), e.getMessage());
+            }
+        } else {
+            webSocketHandler.pushNewAlarm(alarm.getId(), deviceId, "voltage_abnormal", alarm.getContent(), "warning");
+        }
+    }
+
+    @Override
+    @Transactional
+    public void autoResolveVoltageAlarm(String deviceId) {
+        List<AlarmLog> pending = alarmLogRepository.findByDeviceIdAndStatus(deviceId, AlarmStatus.PENDING);
+        List<AlarmLog> voltageAlarms = pending.stream()
+                .filter(a -> a.getAlarmType() == AlarmType.VOLTAGE_ABNORMAL)
+                .filter(a -> a.getAssignmentMode() == null || a.getAssignmentMode() == AssignmentMode.AUTO)
+                .toList();
+        if (voltageAlarms.isEmpty()) {
+            return;
+        }
+        for (AlarmLog alarm : voltageAlarms) {
+            alarm.setStatus(AlarmStatus.RESOLVED);
+            alarm.setResolvedAt(LocalDateTime.now());
+            alarm.setNotes("电压恢复正常，自动解决");
+            if (alarm.getAssignedHandlerId() != null) {
+                handlerService.releaseHandler(alarm.getAssignedHandlerId());
+            }
+        }
+        alarmLogRepository.saveAll(voltageAlarms);
+        log.info("自动解决电压告警: deviceId={}, count={}", deviceId, voltageAlarms.size());
+    }
+
+    // ==================== 温度过高告警 ====================
+
+    @Override
+    @Transactional
+    public void createTemperatureHighAlarm(String deviceId, Double temperature, Double max) {
+        // 防重复：已有未处理的温度过高告警则不重复创建
+        List<AlarmLog> existing = alarmLogRepository.findByDeviceIdAndStatus(deviceId, AlarmStatus.PENDING);
+        boolean hasTempPending = existing.stream()
+                .anyMatch(a -> a.getAlarmType() == AlarmType.TEMPERATURE_HIGH);
+        if (hasTempPending) {
+            return;
+        }
+
+        String content = "设备 " + deviceId + " 温度过高: " + String.format("%.1f", temperature)
+                + "°C (正常上限: " + String.format("%.1f", max) + "°C)";
+
+        AssignmentMode currentMode = handlerService.getAssignmentMode();
+
+        AlarmLog alarm = AlarmLog.builder()
+                .deviceId(deviceId)
+                .alarmType(AlarmType.TEMPERATURE_HIGH)
+                .content(content)
+                .severity(AlarmSeverity.WARNING)
+                .status(AlarmStatus.PENDING)
+                .assignmentMode(currentMode)
+                .build();
+        alarmLogRepository.save(alarm);
+        log.warn("创建温度过高告警: deviceId={}, temperature={}, max={}", deviceId, temperature, max);
+
+        if (currentMode == AssignmentMode.AUTO) {
+            try {
+                handlerService.autoAssignHandler(alarm);
+                log.info("自动模式: 温度告警已分配处理人并解决, alarmId={}", alarm.getId());
+            } catch (BusinessException e) {
+                log.warn("自动分配失败（告警保持 PENDING）: alarmId={}, error={}", alarm.getId(), e.getMessage());
+            }
+        } else {
+            webSocketHandler.pushNewAlarm(alarm.getId(), deviceId, "temperature_high", alarm.getContent(), "warning");
+        }
+    }
+
+    @Override
+    @Transactional
+    public void autoResolveTemperatureAlarm(String deviceId) {
+        List<AlarmLog> pending = alarmLogRepository.findByDeviceIdAndStatus(deviceId, AlarmStatus.PENDING);
+        List<AlarmLog> tempAlarms = pending.stream()
+                .filter(a -> a.getAlarmType() == AlarmType.TEMPERATURE_HIGH)
+                .filter(a -> a.getAssignmentMode() == null || a.getAssignmentMode() == AssignmentMode.AUTO)
+                .toList();
+        if (tempAlarms.isEmpty()) {
+            return;
+        }
+        for (AlarmLog alarm : tempAlarms) {
+            alarm.setStatus(AlarmStatus.RESOLVED);
+            alarm.setResolvedAt(LocalDateTime.now());
+            alarm.setNotes("温度恢复正常，自动解决");
+            if (alarm.getAssignedHandlerId() != null) {
+                handlerService.releaseHandler(alarm.getAssignedHandlerId());
+            }
+        }
+        alarmLogRepository.saveAll(tempAlarms);
+        log.info("自动解决温度告警: deviceId={}, count={}", deviceId, tempAlarms.size());
+    }
+
+    // ==================== 功率过高告警 ====================
+
+    @Override
+    @Transactional
+    public void createPowerHighAlarm(String deviceId, Double power, Double max) {
+        // 防重复：已有未处理的功率过高告警则不重复创建
+        List<AlarmLog> existing = alarmLogRepository.findByDeviceIdAndStatus(deviceId, AlarmStatus.PENDING);
+        boolean hasPowerPending = existing.stream()
+                .anyMatch(a -> a.getAlarmType() == AlarmType.POWER_HIGH);
+        if (hasPowerPending) {
+            return;
+        }
+
+        String content = "设备 " + deviceId + " 功率过高: " + String.format("%.1f", power)
+                + "W (正常上限: " + String.format("%.1f", max) + "W)";
+
+        AssignmentMode currentMode = handlerService.getAssignmentMode();
+
+        AlarmLog alarm = AlarmLog.builder()
+                .deviceId(deviceId)
+                .alarmType(AlarmType.POWER_HIGH)
+                .content(content)
+                .severity(AlarmSeverity.WARNING)
+                .status(AlarmStatus.PENDING)
+                .assignmentMode(currentMode)
+                .build();
+        alarmLogRepository.save(alarm);
+        log.warn("创建功率过高告警: deviceId={}, power={}, max={}", deviceId, power, max);
+
+        if (currentMode == AssignmentMode.AUTO) {
+            try {
+                handlerService.autoAssignHandler(alarm);
+                log.info("自动模式: 功率告警已分配处理人并解决, alarmId={}", alarm.getId());
+            } catch (BusinessException e) {
+                log.warn("自动分配失败（告警保持 PENDING）: alarmId={}, error={}", alarm.getId(), e.getMessage());
+            }
+        } else {
+            webSocketHandler.pushNewAlarm(alarm.getId(), deviceId, "power_high", alarm.getContent(), "warning");
+        }
+    }
+
+    @Override
+    @Transactional
+    public void autoResolvePowerAlarm(String deviceId) {
+        List<AlarmLog> pending = alarmLogRepository.findByDeviceIdAndStatus(deviceId, AlarmStatus.PENDING);
+        List<AlarmLog> powerAlarms = pending.stream()
+                .filter(a -> a.getAlarmType() == AlarmType.POWER_HIGH)
+                .filter(a -> a.getAssignmentMode() == null || a.getAssignmentMode() == AssignmentMode.AUTO)
+                .toList();
+        if (powerAlarms.isEmpty()) {
+            return;
+        }
+        for (AlarmLog alarm : powerAlarms) {
+            alarm.setStatus(AlarmStatus.RESOLVED);
+            alarm.setResolvedAt(LocalDateTime.now());
+            alarm.setNotes("功率恢复正常，自动解决");
+            if (alarm.getAssignedHandlerId() != null) {
+                handlerService.releaseHandler(alarm.getAssignedHandlerId());
+            }
+        }
+        alarmLogRepository.saveAll(powerAlarms);
+        log.info("自动解决功率告警: deviceId={}, count={}", deviceId, powerAlarms.size());
     }
 }

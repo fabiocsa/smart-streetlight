@@ -83,22 +83,59 @@ public class AuthInterceptor implements HandlerInterceptor {
 
         // --- 告警管理 ---
         if (path.startsWith("/api/alarms")) {
-            // 查看告警列表 & 待处理数量 → admin + operator（市政人员不可见）
+            // 查看告警列表 & 待处理数量 → admin + operator
             if ("GET".equalsIgnoreCase(request.getMethod())) {
                 if (!isAdmin && !isOperator) {
                     sendError(response, 403, "权限不足，仅管理员和操作员可查看告警");
                     return false;
                 }
-            } else if (path.matches(".*/alarms/\\d+/resolvedBy$") && "PUT".equalsIgnoreCase(request.getMethod())) {
-                // 修改处理人 → admin + operator
+            } else if ((path.matches(".*/alarms/\\d+/resolvedBy$") || path.matches(".*/alarms/batch-resolvedBy$")) && "PUT".equalsIgnoreCase(request.getMethod())) {
+                // 修改处理人（单个/批量）→ admin + operator
                 if (!isAdmin && !isOperator) {
                     sendError(response, 403, "权限不足，仅管理员和操作员可修改处理人");
                     return false;
                 }
+            } else if (path.matches(".*/alarms/\\d+/assign/\\d+$")) {
+                // 手动分配处理人（assign）→ admin + operator
+                if (!isAdmin && !isOperator) {
+                    sendError(response, 403, "权限不足，仅管理员和操作员可分配处理人");
+                    return false;
+                }
+            } else if ((path.equals("/api/alarms/voltage-config") || path.equals("/api/alarms/temperature-config")
+                    || path.equals("/api/alarms/power-config"))
+                    && "PUT".equalsIgnoreCase(request.getMethod())) {
+                // 设置电压/温度/功率区间 → admin + operator
+                if (!isAdmin && !isOperator) {
+                    sendError(response, 403, "权限不足，仅管理员和操作员可设置区间");
+                    return false;
+                }
             } else {
-                // 告警处理（resolve / batch-resolve）→ 仅 admin
+                // 告警处理（resolve / batch-resolve）→ admin + operator
+                if (!isAdmin && !isOperator) {
+                    sendError(response, 403, "权限不足，仅管理员和操作员可处理告警");
+                    return false;
+                }
+            }
+        }
+
+        // --- 处理人管理 ---
+        if (path.startsWith("/api/handlers")) {
+            if ("GET".equalsIgnoreCase(request.getMethod())) {
+                // 查看处理人列表 & 分配模式 → admin + operator
+                if (!isAdmin && !isOperator) {
+                    sendError(response, 403, "权限不足，仅管理员和操作员可查看处理人");
+                    return false;
+                }
+            } else if (path.equals("/api/handlers/mode") && "PUT".equalsIgnoreCase(request.getMethod())) {
+                // 切换分配模式 → admin + operator
+                if (!isAdmin && !isOperator) {
+                    sendError(response, 403, "权限不足，仅管理员和操作员可切换分配模式");
+                    return false;
+                }
+            } else {
+                // 处理人增删改、释放 → 仅 admin
                 if (!isAdmin) {
-                    sendError(response, 403, "权限不足，仅管理员可处理告警");
+                    sendError(response, 403, "权限不足，仅管理员可管理处理人");
                     return false;
                 }
             }

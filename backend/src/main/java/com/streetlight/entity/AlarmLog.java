@@ -3,6 +3,7 @@ package com.streetlight.entity;
 import com.streetlight.enums.AlarmType;
 import com.streetlight.enums.AlarmSeverity;
 import com.streetlight.enums.AlarmStatus;
+import com.streetlight.enums.AssignmentMode;
 import jakarta.persistence.*;
 import lombok.*;
 import org.hibernate.annotations.CreationTimestamp;
@@ -61,4 +62,13 @@ public class AlarmLog {
     /** 关联的告警规则ID */
     @Column(name = "rule_id")
     private Long ruleId;
+
+    /** 分配的处理人ID（FK → handler_list.id），NULL 表示尚未分配 */
+    @Column(name = "assigned_handler_id")
+    private Long assignedHandlerId;
+
+    /** 处理人分配模式：AUTO / MANUAL */
+    @Enumerated(EnumType.STRING)
+    @Column(name = "assignment_mode", length = 10)
+    private AssignmentMode assignmentMode;
 }
