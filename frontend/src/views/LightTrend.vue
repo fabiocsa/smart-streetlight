@@ -66,18 +66,19 @@
       </div>
     </div>
 
-    <!-- Demo 模式提示条 -->
+    <!-- 数据提示条 -->
     <el-alert
       v-if="demoMode"
-      title="演示数据提示"
+      title="数据覆盖提示"
       type="info"
       :closable="false"
       show-icon
       style="margin-bottom: 16px"
     >
       <template #default>
-        当前时间范围内实际数据量较少（仅 {{ totalPoints }} 条），图表中大部分值为 0 属于正常现象。
-        随着模拟器持续运行，数据将逐渐丰富。
+        当前时间范围内有效数据仅覆盖 {{ nonNullSlots }} 个时段（共 {{ totalSlots }} 个），
+        无数据的时段在图表中显示为断点而非 0 值。
+        {{ totalPoints > 0 ? `共有 ${totalPoints} 条原始数据点。` : '' }}
       </template>
     </el-alert>
 
@@ -204,6 +205,8 @@ const trendData = ref({})
 const compareTrends = ref([])
 const demoMode = ref(false)
 const totalPoints = ref(0)
+const nonNullSlots = ref(0)
+const totalSlots = computed(() => selectedRange.value === '24h' ? 24 : selectedRange.value === '7d' ? 7 : 30)
 
 // 对比颜色表（最多6种颜色循环）
 const COMPARE_COLORS = ['#409EFF', '#F56C6C', '#67C23A', '#E6A23C', '#9B59B6', '#1ABC9C']
@@ -257,13 +260,19 @@ const chartOption = computed(() => {
 function buildSingleOption() {
   const labels = trendData.value.labels || []
   const values = trendData.value.values || []
-  const avg = trendData.value.avg || 0
+  const avg = trendData.value.avg
+
+  const markLineData = []
+  if (avg != null) {
+    markLineData.push({ yAxis: avg, label: { formatter: `均值 ${avg}`, fontSize: 11 } })
+  }
 
   return {
     tooltip: {
       trigger: 'axis',
       formatter: (params) => {
         const p = params[0]
+        if (p.value == null) return `${p.name}<br/>${metricLabel.value}: <b>无数据</b>`
         return `${p.name}<br/>${metricLabel.value}: <b>${p.value} ${unit.value}</b>`
       }
     },
@@ -279,8 +288,7 @@ function buildSingleOption() {
     },
     yAxis: {
       type: 'value',
-      name: unit.value,
-      min: 0
+      name: unit.value
     },
     dataZoom: selectedRange.value === '30d'
       ? [{ type: 'slider', start: 0, end: 100, height: 20, bottom: 0 }]
@@ -291,6 +299,7 @@ function buildSingleOption() {
         type: 'line',
         data: values,
         smooth: true,
+        connectNulls: false,
         symbol: selectedRange.value === '7d' || selectedRange.value === '30d' ? 'circle' : 'none',
         symbolSize: 4,
         areaStyle: {
@@ -308,7 +317,7 @@ function buildSingleOption() {
           silent: true,
           symbol: 'none',
           lineStyle: { type: 'dashed', color: '#909399' },
-          data: [{ yAxis: avg, label: { formatter: `均值 ${avg}`, fontSize: 11 } }],
+          data: markLineData,
           precision: 1
         }
       }
@@ -325,6 +334,7 @@ function buildCompareOption() {
       type: 'line',
       data: t.values || [],
       smooth: true,
+      connectNulls: false,
       symbol: selectedRange.value === '7d' || selectedRange.value === '30d' ? 'circle' : 'none',
       symbolSize: 4,
       lineStyle: { color, width: 2 },
@@ -373,8 +383,7 @@ function buildCompareOption() {
     },
     yAxis: {
       type: 'value',
-      name: unit.value,
-      min: 0
+      name: unit.value
     },
     dataZoom: selectedRange.value === '30d'
       ? [{ type: 'slider', start: 0, end: 100, height: 20, bottom: 30 }]
@@ -423,6 +432,7 @@ async function loadData() {
       trendData.value = data
       demoMode.value = data.demoMode || false
       totalPoints.value = data.totalPoints || 0
+      nonNullSlots.value = (data.values || []).filter(v => v != null).length
     }
   } catch {
     // 错误已在拦截器统一提示

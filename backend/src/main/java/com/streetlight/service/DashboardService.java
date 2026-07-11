@@ -81,7 +81,7 @@ public class DashboardService {
      */
     public List<Map<String, Object>> getLatestSensorData() {
         List<SensorData> latestList = sensorDataRepository.findLatestPerDevice();
-        LocalDateTime recentThreshold = LocalDateTime.now(java.time.ZoneOffset.UTC).minusMinutes(10);
+        LocalDateTime recentThreshold = LocalDateTime.now().minusMinutes(10);
         return latestList.stream()
             .filter(sd -> sd.getReportedAt() != null && sd.getReportedAt().isAfter(recentThreshold))
             .filter(sd -> sd.getDeviceId() != null && !sd.getDeviceId().startsWith("sensor_"))
@@ -103,7 +103,7 @@ public class DashboardService {
      */
     public List<Map<String, Object>> getLatestSensorDataByType(String sensorType) {
         List<SensorData> latestList = sensorDataRepository.findLatestPerDeviceBySensorType(sensorType);
-        LocalDateTime recentThreshold = LocalDateTime.now(java.time.ZoneOffset.UTC).minusMinutes(10);
+        LocalDateTime recentThreshold = LocalDateTime.now().minusMinutes(10);
         return latestList.stream()
             .filter(sd -> sd.getReportedAt() != null && sd.getReportedAt().isAfter(recentThreshold))
             .filter(sd -> sd.getDeviceId() != null && !sd.getDeviceId().startsWith("sensor_"))
@@ -179,7 +179,7 @@ public class DashboardService {
             }
 
             Map<Integer, Double> hourMap = new LinkedHashMap<>();
-            for (int h = 0; h < 24; h++) hourMap.put(h, 0.0);
+            for (int h = 0; h < 24; h++) hourMap.put(h, null);
             for (Object[] row : rows) {
                 int hr = ((Number) row[0]).intValue();
                 if (row[1] != null) {
@@ -205,7 +205,7 @@ public class DashboardService {
 
             Map<LocalDate, Double> dayMap = new LinkedHashMap<>();
             for (int i = slots - 1; i >= 0; i--) {
-                dayMap.put(LocalDate.now().minusDays(i), 0.0);
+                dayMap.put(LocalDate.now().minusDays(i), null);
             }
             for (Object[] row : rows) {
                 LocalDate dt = ((java.sql.Date) row[0]).toLocalDate();
@@ -220,15 +220,18 @@ public class DashboardService {
             }
         }
 
-        double sum = values.stream().mapToDouble(Double::doubleValue).sum();
-        double avg = values.isEmpty() ? 0 : Math.round(sum / values.size() * 10.0) / 10.0;
-        double max = values.stream().mapToDouble(Double::doubleValue).max().orElse(0);
-        double min = values.stream().mapToDouble(Double::doubleValue).filter(v -> v > 0).min().orElse(0);
+        // 排除 null 值（无数据的时段），计算有效统计
+        List<Double> validValues = values.stream().filter(Objects::nonNull).collect(Collectors.toList());
+        Double avg = validValues.isEmpty() ? null
+                : Math.round(validValues.stream().mapToDouble(Double::doubleValue).average().orElse(0) * 10.0) / 10.0;
+        Double max = validValues.stream().max(Double::compare).orElse(null);
+        Double min = validValues.stream().filter(v -> v > 0).min(Double::compare).orElse(null);
 
         long totalPoints = hasDevice
                 ? sensorDataRepository.countByDeviceIdAndTimeRange(deviceId, since, LocalDateTime.now())
                 : sensorDataRepository.countSince(since);
-        boolean demoMode = isHourly ? totalPoints < 10 : totalPoints < slots * 3L;
+        int nonNullSlots = (int) values.stream().filter(Objects::nonNull).count();
+        boolean demoMode = isHourly ? nonNullSlots < 3 : nonNullSlots < Math.max(2, slots / 3);
 
         Optional<LocalDateTime> lastTime = hasDevice
                 ? sensorDataRepository.maxReportedAtByDevice(deviceId)
