@@ -1,294 +1,271 @@
-# 智慧路灯系统 - API接口文档 (v2)
+# 智慧路灯系统 - API接口文档 (v5)
 
 > 基础URL: `http://localhost:8080/api`
 > 数据格式: JSON
+> 鉴权: JWT Bearer Token (Authorization header)
 
 ---
 
-## 1. 设备管理
+## 1. 认证
 
-### 1.1 获取所有设备列表
+### 1.1 登录
 ```
-GET /devices
+POST /api/auth/login
+```
+**请求体：**
+```json
+{ "username": "admin", "password": "admin123" }
 ```
 **响应：**
 ```json
-[
-  {
-    "id": 1,
-    "name": "路灯A-01",
-    "deviceId": "SL-001",
-    "status": "online",
-    "thresholdOn": 50.0,
-    "thresholdOff": 100.0,
-    "lightStatus": "on",
-    "controlMode": "auto",
-    "location": "校门口",
-    "lastHeartbeat": "2026-07-01T10:00:00",
-    "createdAt": "2026-07-01T09:00:00"
-  }
-]
-```
-
-### 1.2 添加设备
-```
-POST /devices
-```
-**请求体：**
-```json
-{
-  "name": "路灯A-01",
-  "deviceId": "SL-001",
-  "location": "校门口"
-}
-```
-**响应：** 201 Created + 设备对象
-
-### 1.3 获取单个设备
-```
-GET /devices/{id}
-```
-
-### 1.4 删除设备
-```
-DELETE /devices/{id}
-```
-**响应：** 204 No Content
-
-### 1.5 更新设备
-```
-PUT /devices/{id}
-```
-
-### 1.6 获取设备已绑定传感器 (v3)
-```
-GET /devices/{id}/sensors
-```
-
-### 1.7 设备绑定传感器 (v3)
-```
-POST /devices/{id}/bind-sensor
-```
-**请求体：**
-```json
-{ "sensorId": 1 }
-```
-
-### 1.8 设备解绑传感器 (v3)
-```
-POST /devices/{id}/unbind-sensor/{sensorId}
+{ "code": 200, "data": { "token": "xxx", "user": { "username": "admin", "role": "admin" } } }
 ```
 
 ---
 
-## 2. 传感器管理 (v3 — 独立路由)
+## 2. 设备管理
 
-> v3 变更: 传感器不再嵌套在设备路径下，改为独立路由。
-> 设备与传感器的绑定通过 1.6-1.8 节的新接口管理。
+### 2.1 获取所有设备列表
+```
+GET /api/devices
+```
+**响应：**
+```json
+[{
+  "id": 1, "name": "路灯A-01", "deviceId": "SL-001",
+  "status": "online", "thresholdOn": 50.0, "thresholdOff": 100.0,
+  "lightStatus": "on", "controlMode": "auto",
+  "sensorStrategy": "single", "primarySensorId": 1,
+  "location": "校门口", "lastHeartbeat": "2026-07-01T10:00:00"
+}]
+```
 
-### 2.1 获取所有传感器
+### 2.2 添加设备
+```
+POST /api/devices
+```
+```json
+{ "name": "路灯A-01", "deviceId": "SL-001", "location": "校门口" }
+```
+
+### 2.3 获取/更新/删除单个设备
+```
+GET    /api/devices/{id}
+PUT    /api/devices/{id}
+DELETE /api/devices/{id}
+```
+
+### 2.4 批量删除设备
+```
+POST /api/devices/batch-delete
+```
+```json
+{ "ids": [1, 2, 3] }
+```
+
+### 2.5 设备绑定/解绑传感器
+```
+POST /api/devices/{id}/bind-sensor
+POST /api/devices/{id}/unbind-sensor/{sensorId}
+```
+
+### 2.6 获取设备已绑定传感器
+```
+GET /api/devices/{id}/sensors
+```
+
+### 2.7 批量设置阈值
+```
+PUT /api/devices/batch-threshold
+```
+```json
+{ "deviceIds": ["SL-001", "SL-002"], "thresholdOn": 50, "thresholdOff": 100 }
+```
+
+---
+
+## 3. 传感器管理
+
+### 3.1 获取所有传感器
 ```
 GET /api/sensors
 ```
 
-### 2.2 获取未绑定传感器
+### 3.2 获取未绑定传感器
 ```
 GET /api/sensors/unbound
 ```
 
-### 2.3 获取单个传感器
+### 3.3 获取/创建/更新/删除传感器
 ```
-GET /api/sensors/{id}
-```
-
-### 2.4 创建传感器
-```
-POST /api/sensors
-```
-**请求体：**
-```json
-{
-  "sensorType": "light",
-  "displayName": "光照传感器A",
-  "dataTopic": "streetlight/sensor/1/data",
-  "reportFrequency": 5,
-  "configJson": "{\"min\": 0, \"max\": 800}"
-}
-```
-**响应：** 201 Created + 传感器对象
-
-### 2.5 更新传感器配置
-```
-PUT /api/sensors/{id}
-```
-
-### 2.6 删除传感器
-```
+GET    /api/sensors/{id}
+POST   /api/sensors
+PUT    /api/sensors/{id}
 DELETE /api/sensors/{id}
 ```
-**响应：** 204 No Content
 
-### 2.7 调整传感器上报频率
+### 3.4 调整传感器上报频率
 ```
 PUT /api/sensors/{id}/frequency
 ```
-
-### 2.8 同步传感器配置到模拟器
-```
-POST /api/sensors/{id}/sync-to-mock
+```json
+{ "frequency": 10 }
 ```
 
 ---
 
-## 3. 传感器数据 (v2 — JSON 多维数据)
+## 4. 传感器数据 (v5 — 按类型分离)
 
-> v3: 传感器数据主题改为 `streetlight/sensor/{sensorId}/data`，后端通过 device_sensor 表反查设备。
-
-### 3.1 获取设备最新传感器数据
+### 4.1 获取设备最新传感器数据
 ```
-GET /devices/{deviceId}/sensor-data/latest
-GET /devices/{deviceId}/sensor-data/latest/{sensorType}
+GET /api/devices/{deviceId}/sensor-data/latest
+GET /api/devices/{deviceId}/sensor-data/latest/{sensorType}
 ```
-**响应 (v2)：**
+**响应 (v5)：**
 ```json
 {
-  "id": 1,
-  "deviceId": "SL-001",
-  "sensorId": 1,
+  "id": 1, "deviceId": "SL-001", "sensorId": 1,
   "sensorType": "light",
-  "dataJson": "{\"lightIntensity\":125.5,\"temperature\":28.3,\"humidity\":65.0,\"voltage\":226.0,\"power\":65.0,\"cloudCover\":0.3}",
-  "reportedAt": "2026-07-01T10:00:00",
-  "createdAt": "2026-07-01T10:00:01"
+  "dataJson": "{\"illuminance\":125.5,\"lightIntensity\":125.5,\"cloudCover\":0.3,\"status\":\"OFF\"}",
+  "reportedAt": "2026-07-01T10:00:00"
 }
 ```
-`dataJson` 字段包含所有传感器指标。前端可通过 `JSON.parse(dataJson)` 获取完整 Map。
+每种类型的 `dataJson` 字段只包含该类型的字段（详见系统设计.md §3）。
 
-### 3.2 获取历史传感器数据
+### 4.2 获取历史传感器数据
 ```
-GET /devices/{deviceId}/sensor-data?start=...&end=...&sensorType=light
+GET /api/devices/{deviceId}/sensor-data?start=...&end=...&sensorType=light
 ```
-- `sensorType` (可选): 筛选特定传感器类型
-- 响应为 SensorData 数组，每条记录包含完整 `dataJson`
 
-### 3.3 获取聚合统计（支持任意指标）
+### 4.3 获取聚合统计（支持任意指标）
 ```
-GET /devices/{deviceId}/sensor-data/stats?metric=temperature&start=...&end=...
+GET /api/devices/{deviceId}/sensor-data/stats?metric=temperature&start=...&end=...
 ```
-**参数：**
-- `metric` (默认 `lightIntensity`): 指标名，如 `temperature`, `humidity`, `power`, `voltage`
+| 参数 | 默认值 | 说明 |
+|------|--------|------|
+| `metric` | `lightIntensity` | 指标名: lightIntensity / temperature / humidity / power / voltage |
 
 **响应：**
 ```json
+{ "field": "temperature", "avg": 28.5, "max": 35.2, "min": 22.1, "count": 1440 }
+```
+
+---
+
+## 5. 设备控制
+
+### 5.1 下发控制指令
+```
+POST /api/devices/{deviceId}/control
+```
+```json
+{ "command": "on" }
+```
+后端查找设备绑定的 sensor，通过 `streetlight/sensor/{sensorId}/cmd` 下发。
+
+### 5.2 设置控制模式
+```
+PUT /api/devices/{id}/control-mode
+```
+```json
+{ "controlMode": "auto" }
+```
+
+### 5.3 设置光照阈值
+```
+PUT /api/devices/{id}/threshold
+```
+```json
+{ "thresholdOn": 50, "thresholdOff": 100 }
+```
+
+### 5.4 设置传感器策略
+```
+PUT /api/devices/{id}/sensor-strategy
+```
+```json
+{ "sensorStrategy": "average" }
+```
+可选值: `single`（指定主传感器）、`average`（取所有 bound sensor 平均值）。
+
+---
+
+## 6. 告警管理
+
+### 6.1 获取告警列表
+```
+GET /api/alarms?status=pending&type=offline&page=0&size=20
+```
+| 参数 | 说明 |
+|------|------|
+| `status` | PENDING / RESOLVED |
+| `type` | OFFLINE / SENSOR_ABNORMAL / VOLTAGE_ABNORMAL / TEMPERATURE_HIGH / POWER_HIGH |
+| `severity` | INFO / WARNING / CRITICAL |
+
+### 6.2 处理告警
+```
+PUT /api/alarms/{id}/resolve
+```
+
+### 6.3 告警规则管理（仅 admin）
+```
+GET    /api/alarm-rules
+PUT    /api/alarm-rules/{id}
+```
+
+---
+
+## 7. Dashboard统计
+
+### 7.1 获取总览统计
+```
+GET /api/dashboard/stats
+```
+```json
 {
-  "field": "temperature",
-  "avg": 28.5,
-  "max": 35.2,
-  "min": 22.1,
-  "count": 1440
+  "totalDevices": 10, "onlineDevices": 8, "offlineDevices": 2,
+  "lightsOn": 3, "lightsOff": 7,
+  "pendingAlarms": 2, "todayControls": 15
 }
 ```
 
----
-
-## 4. 设备控制
-
-### 4.1 下发控制指令
+### 7.2 获取设备状态分布
 ```
-POST /devices/{deviceId}/control
+GET /api/dashboard/device-status-distribution
 ```
 
-### 4.2 设置控制模式
+### 7.3 获取各设备最新传感器数据（多传感器合并）
 ```
-PUT /devices/{id}/control-mode
+GET /api/dashboard/latest-sensor-data
 ```
+按 deviceId 分组，合并 light/temperature/humidity/power 多种传感器数据为一行。
 
-### 4.3 设置光照阈值
+### 7.4 传感器趋势（多指标）
 ```
-PUT /devices/{id}/threshold
+GET /api/dashboard/sensor-trend?deviceId=SL-001&metric=temperature&range=24h
 ```
-
----
-
-## 5. 告警管理
-
-### 5.1 获取告警列表
-```
-GET /alarms?status=pending&type=offline&page=0&size=20
-```
-
-### 5.2 处理告警
-```
-PUT /alarms/{id}/resolve
-```
-
----
-
-## 6. Dashboard统计
-
-### 6.1 获取总览统计
-```
-GET /dashboard/stats
-```
-
-### 6.2 获取设备状态分布
-```
-GET /dashboard/device-status-distribution
-```
-
-### 6.3 获取各设备最新传感器数据
-```
-GET /dashboard/latest-sensor-data
-GET /dashboard/latest-sensor-data/{sensorType}
-```
-响应中每条记录包含 `data` (Map 格式) 和 `lightIntensity` (兼容字段)。
-
-### 6.4 传感器趋势（新接口）
-```
-GET /dashboard/sensor-trend?deviceId=SL-001&metric=temperature&range=24h
-```
-**参数：**
 | 参数 | 默认值 | 说明 |
 |------|--------|------|
 | `deviceId` | 全部设备 | 可选，指定单个设备 |
-| `metric` | `lightIntensity` | 指标名: lightIntensity / temperature / humidity / power |
-| `range` | `24h` | 时间范围: 24h / 7d / 30d |
+| `metric` | `lightIntensity` | 指标名 |
+| `range` | `24h` | 24h / 7d / 30d |
 
-**响应：**
-```json
-{
-  "labels": ["00:00", "01:00", ...],
-  "values": [0, 0, ..., 125.5, ...],
-  "metric": "temperature",
-  "range": "24h",
-  "granularity": "hour",
-  "deviceId": "SL-001",
-  "avg": 28.5, "max": 35.2, "min": 22.1,
-  "totalPoints": 288,
-  "demoMode": false,
-  "lastDataTime": "2026-07-01T10:00:00"
-}
-```
+后端通过 `sensorTypeForMetric()` 动态映射指标到传感器类型：
+- `lightIntensity` / `illuminance` → light
+- `temperature` → temperature
+- `humidity` → humidity
+- `power` / `voltage` → power
 
-### 6.5 光照趋势（旧接口，保留兼容）
+### 7.5 告警统计 & 近期数据
 ```
-GET /dashboard/light-trend?deviceId=SL-001&range=24h
-```
-内部重定向到 `/sensor-trend?metric=lightIntensity`，行为不变。
-
-### 6.6 告警统计
-```
-GET /dashboard/alarm-stats
-```
-
-### 6.7 近期数据
-```
-GET /dashboard/recent-alarms
-GET /dashboard/recent-controls
+GET /api/dashboard/alarm-stats
+GET /api/dashboard/recent-alarms
+GET /api/dashboard/recent-controls
 ```
 
 ---
 
-## 7. WebSocket接口
+## 8. WebSocket接口
 
 ### 连接地址
 ```
@@ -297,27 +274,18 @@ ws://localhost:8080/ws/monitor
 
 ### 推送消息格式
 
-**传感器实时数据 (v2 — 多字段版)：**
+**传感器实时数据 (SENSOR_DATA) — v5 按类型分离：**
 ```json
 {
   "type": "SENSOR_DATA",
   "deviceId": "SL-001",
   "sensorType": "light",
-  "data": {
-    "lightIntensity": 125.5,
-    "illuminance": 125.5,
-    "temperature": 28.3,
-    "humidity": 65.0,
-    "voltage": 226.0,
-    "power": 65.0,
-    "cloudCover": 0.3,
-    "status": "OFF"
-  },
+  "data": { "illuminance": 125.5, "lightIntensity": 125.5, "cloudCover": 0.3, "status": "OFF" },
   "reportedAt": "2026-07-01T10:00:00"
 }
 ```
 
-**设备状态变更：**
+**设备状态变更 (DEVICE_STATUS)：**
 ```json
 {
   "type": "DEVICE_STATUS",
@@ -326,23 +294,46 @@ ws://localhost:8080/ws/monitor
 }
 ```
 
-**新告警推送：**
+**新告警推送 (NEW_ALARM)：**
 ```json
 {
   "type": "NEW_ALARM",
   "data": {
     "id": 1, "deviceId": "SL-001",
-    "alarmType": "offline", "content": "设备 SL-001 已离线超过30秒",
-    "severity": "warning"
+    "alarmType": "OFFLINE", "content": "设备 SL-001 已离线超过30秒",
+    "severity": "WARNING"
   }
 }
 ```
 
-**控制结果反馈：**
+**控制结果反馈 (CONTROL_RESULT)：**
 ```json
 {
   "type": "CONTROL_RESULT",
   "deviceId": "SL-001",
-  "data": { "command": "on", "result": "success" }
+  "data": { "command": "on", "result": "success", "sensorId": 1 }
 }
+```
+
+---
+
+## 9. AI 智能问答
+
+### 9.1 发送消息
+```
+POST /api/chat/send
+```
+```json
+{ "message": "路灯不亮怎么办？", "sessionId": "xxx" }
+```
+
+### 9.2 获取会话历史
+```
+GET /api/chat/history?sessionId=xxx
+```
+
+### 9.3 新建会话 / 会话列表
+```
+POST /api/chat/session
+GET  /api/chat/sessions
 ```

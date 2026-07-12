@@ -1,5 +1,5 @@
 -- ============================================================================
--- 智慧路灯系统 - 数据库初始化脚本 (v4 — 传感器独立，去设备化)
+-- 智慧路灯系统 - 数据库初始化脚本 (v5 — 传感器数据按类型分离)
 -- Smart Streetlight System - Database Initialization Script
 -- 技术栈: MySQL 8.x
 -- 字符集: utf8mb4 (支持emoji和特殊字符)
@@ -29,6 +29,8 @@ CREATE TABLE device (
     light_status    VARCHAR(10)     NOT NULL DEFAULT 'off'   COMMENT '当前灯光状态: on / off',
     control_mode    VARCHAR(10)     NOT NULL DEFAULT 'auto'  COMMENT '控制模式: auto(自动) / manual(手动)',
     brightness      INT             DEFAULT NULL             COMMENT '手动亮度百分比 0-100',
+    sensor_strategy VARCHAR(20)     NOT NULL DEFAULT 'single' COMMENT '多传感器决策策略: single(指定主传感器) / average(取平均值)',
+    primary_sensor_id BIGINT        DEFAULT NULL             COMMENT '主传感器ID(single策略时使用)',
     location        VARCHAR(200)    DEFAULT NULL             COMMENT '安装位置(如: 校门口、图书馆前)',
     last_heartbeat  DATETIME        DEFAULT NULL             COMMENT '最后心跳时间',
     created_at      DATETIME        NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
@@ -112,7 +114,7 @@ DROP TABLE IF EXISTS alarm_log;
 CREATE TABLE alarm_log (
     id              BIGINT       NOT NULL AUTO_INCREMENT  COMMENT '主键',
     device_id       VARCHAR(50)  NOT NULL                 COMMENT '设备标识(FK → device.device_id)',
-    alarm_type      VARCHAR(30)  NOT NULL                 COMMENT '告警类型: offline(离线) / sensor_abnormal(传感器异常)',
+    alarm_type      VARCHAR(30)  NOT NULL                 COMMENT '告警类型: OFFLINE / SENSOR_ABNORMAL / VOLTAGE_ABNORMAL / TEMPERATURE_HIGH / POWER_HIGH',
     content         VARCHAR(500) DEFAULT NULL             COMMENT '告警内容描述',
     severity        VARCHAR(10)  NOT NULL DEFAULT 'warning' COMMENT '严重级别: info(提示) / warning(警告) / critical(严重)',
     status          VARCHAR(20)  NOT NULL DEFAULT 'pending' COMMENT '处理状态: pending(待处理) / resolved(已处理)',
@@ -180,22 +182,23 @@ INSERT INTO device_sensor (device_id, sensor_id) VALUES
     (2, 4),
     (4, 5);  -- SL-004 绑定光照传感器
 
--- 插入传感器数据示例（v4: JSON 不含 deviceId）
+-- 插入传感器数据示例（v5: 每种类型只含自己的字段，不再跨类型混发）
 INSERT INTO sensor_data (device_id, sensor_id, sensor_type, data_json, reported_at) VALUES
-    -- SL-001 光照数据
-    ('SL-001', 1, 'light', '{"illuminance": 120.5, "lightIntensity": 120.5, "temperature": 25.3, "voltage": 226.0, "power": 0.5, "cloudCover": 0.3, "status": "OFF"}', DATE_SUB(NOW(), INTERVAL 120 MINUTE)),
-    ('SL-001', 1, 'light', '{"illuminance": 95.0,  "lightIntensity": 95.0,  "temperature": 25.8, "voltage": 225.5, "power": 0.4, "cloudCover": 0.3, "status": "OFF"}', DATE_SUB(NOW(), INTERVAL 115 MINUTE)),
-    ('SL-001', 1, 'light', '{"illuminance": 80.2,  "lightIntensity": 80.2,  "temperature": 26.1, "voltage": 227.2, "power": 0.5, "cloudCover": 0.2, "status": "OFF"}', DATE_SUB(NOW(), INTERVAL 110 MINUTE)),
-    ('SL-001', 1, 'light', '{"illuminance": 60.5,  "lightIntensity": 60.5,  "temperature": 27.0, "voltage": 226.8, "power": 0.4, "cloudCover": 0.1, "status": "OFF"}', DATE_SUB(NOW(), INTERVAL 105 MINUTE)),
-    ('SL-001', 1, 'light', '{"illuminance": 45.0,  "lightIntensity": 45.0,  "temperature": 27.5, "voltage": 225.0, "power": 65.0, "cloudCover": 0.1, "status": "ON"}',  DATE_SUB(NOW(), INTERVAL 100 MINUTE)),
-    ('SL-001', 1, 'light', '{"illuminance": 35.2,  "lightIntensity": 35.2,  "temperature": 27.8, "voltage": 223.5, "power": 68.2, "cloudCover": 0.2, "status": "ON"}',  DATE_SUB(NOW(), INTERVAL 95 MINUTE)),
-    ('SL-001', 1, 'light', '{"illuminance": 28.5,  "lightIntensity": 28.5,  "temperature": 28.1, "voltage": 224.0, "power": 70.1, "cloudCover": 0.3, "status": "ON"}',  DATE_SUB(NOW(), INTERVAL 90 MINUTE)),
-    ('SL-001', 1, 'light', '{"illuminance": 25.0,  "lightIntensity": 25.0,  "temperature": 28.3, "voltage": 222.8, "power": 72.5, "cloudCover": 0.4, "status": "ON"}',  DATE_SUB(NOW(), INTERVAL 85 MINUTE)),
-    -- SL-001 功率数据
-    ('SL-001', 2, 'power', '{"power": 72.5, "voltage": 222.8, "current": 0.33, "energy": 1.15}', DATE_SUB(NOW(), INTERVAL 85 MINUTE)),
-    -- SL-002 多类型数据
-    ('SL-002', 3, 'light',       '{"illuminance": 200.5, "lightIntensity": 200.5, "temperature": 29.0, "voltage": 228.0, "power": 0.3, "cloudCover": 0.5, "status": "OFF"}', DATE_SUB(NOW(), INTERVAL 30 MINUTE)),
-    ('SL-002', 4, 'temperature', '{"temperature": 29.0, "humidity": 62.0}', DATE_SUB(NOW(), INTERVAL 30 MINUTE));
+    -- SL-001 光照数据（light 类型: 只含 illuminance/lightIntensity/cloudCover/status）
+    ('SL-001', 1, 'light', '{"illuminance": 120.5, "lightIntensity": 120.5, "cloudCover": 0.3, "status": "OFF"}', DATE_SUB(NOW(), INTERVAL 120 MINUTE)),
+    ('SL-001', 1, 'light', '{"illuminance": 95.0,  "lightIntensity": 95.0,  "cloudCover": 0.3, "status": "OFF"}', DATE_SUB(NOW(), INTERVAL 115 MINUTE)),
+    ('SL-001', 1, 'light', '{"illuminance": 80.2,  "lightIntensity": 80.2,  "cloudCover": 0.2, "status": "OFF"}', DATE_SUB(NOW(), INTERVAL 110 MINUTE)),
+    ('SL-001', 1, 'light', '{"illuminance": 60.5,  "lightIntensity": 60.5,  "cloudCover": 0.1, "status": "OFF"}', DATE_SUB(NOW(), INTERVAL 105 MINUTE)),
+    ('SL-001', 1, 'light', '{"illuminance": 45.0,  "lightIntensity": 45.0,  "cloudCover": 0.1, "status": "ON"}',  DATE_SUB(NOW(), INTERVAL 100 MINUTE)),
+    ('SL-001', 1, 'light', '{"illuminance": 35.2,  "lightIntensity": 35.2,  "cloudCover": 0.2, "status": "ON"}',  DATE_SUB(NOW(), INTERVAL 95 MINUTE)),
+    ('SL-001', 1, 'light', '{"illuminance": 28.5,  "lightIntensity": 28.5,  "cloudCover": 0.3, "status": "ON"}',  DATE_SUB(NOW(), INTERVAL 90 MINUTE)),
+    ('SL-001', 1, 'light', '{"illuminance": 25.0,  "lightIntensity": 25.0,  "cloudCover": 0.4, "status": "ON"}',  DATE_SUB(NOW(), INTERVAL 85 MINUTE)),
+    -- SL-001 功率数据（power 类型: 只含 voltage/power）
+    ('SL-001', 2, 'power', '{"voltage": 222.8, "power": 72.5}', DATE_SUB(NOW(), INTERVAL 85 MINUTE)),
+    -- SL-002 光照数据
+    ('SL-002', 3, 'light',       '{"illuminance": 200.5, "lightIntensity": 200.5, "cloudCover": 0.5, "status": "OFF"}', DATE_SUB(NOW(), INTERVAL 30 MINUTE)),
+    -- SL-002 温度数据（temperature 类型: 只含 temperature）
+    ('SL-002', 4, 'temperature', '{"temperature": 29.0}', DATE_SUB(NOW(), INTERVAL 30 MINUTE));
 
 -- 插入告警示例数据
 INSERT INTO alarm_log (device_id, alarm_type, content, severity, status, created_at) VALUES
