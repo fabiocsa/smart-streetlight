@@ -1,26 +1,34 @@
 <template>
   <div class="chat-layout">
-    <!-- 左侧历史会话栏 -->
+    <!-- 左侧栏：对话 / 知识库 -->
     <div class="chat-sidebar">
       <Sidebar
         :sessions="store.sessions"
         :currentId="store.currentSessionId"
+        :activeTab="activeTab"
         @new="handleNew"
         @select="handleSelect"
         @delete="handleDelete"
+        @update:activeTab="activeTab = $event"
       />
     </div>
 
     <!-- 右侧主区域 -->
     <div class="chat-main">
-      <!-- 无会话时显示占位 -->
-      <div v-if="!store.currentSessionId" class="chat-placeholder">
+      <!-- 知识库模式提示 -->
+      <div v-if="activeTab === 'knowledge' && !store.currentSessionId" class="chat-placeholder">
+        <el-icon :size="48" color="#c0c4cc"><FolderOpened /></el-icon>
+        <p>在左侧上传知识文档后，切换到「对话」进行问答</p>
+      </div>
+
+      <!-- 无会话时占位 -->
+      <div v-else-if="!store.currentSessionId" class="chat-placeholder">
         <el-icon :size="56" color="#c0c4cc"><ChatDotRound /></el-icon>
         <p>选择或新建一个对话</p>
         <el-button type="primary" @click="handleNew">新建对话</el-button>
       </div>
 
-      <!-- 有会话时显示聊天区 -->
+      <!-- 有会话时聊天区 -->
       <template v-else>
         <div class="chat-topbar">
           <span class="session-label">{{ store.currentSession?.title || '对话' }}</span>
@@ -40,14 +48,15 @@
 </template>
 
 <script setup>
-import { onMounted } from 'vue'
-import { ChatDotRound } from '@element-plus/icons-vue'
+import { ref, onMounted } from 'vue'
+import { ChatDotRound, FolderOpened } from '@element-plus/icons-vue'
 import { useChatStore } from '../stores/chatStore'
 import Sidebar from '../components/chat/Sidebar.vue'
 import MessageList from '../components/chat/MessageList.vue'
 import MessageInput from '../components/chat/MessageInput.vue'
 
 const store = useChatStore()
+const activeTab = ref('chat')
 
 onMounted(async () => {
   await store.loadSessions()
@@ -61,6 +70,7 @@ async function handleNew() {
 }
 
 async function handleSelect(id) {
+  activeTab.value = 'chat'
   await store.selectSession(id)
 }
 

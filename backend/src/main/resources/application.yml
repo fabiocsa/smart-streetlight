@@ -2,11 +2,20 @@ server:
   port: 8080
 
 spring:
+  autoconfigure:
+    exclude:
+      - org.springframework.ai.autoconfigure.openai.OpenAiAutoConfiguration
+
   datasource:
     url: jdbc:mysql://8.130.102.89:3306/streetlight?useSSL=false&serverTimezone=Asia/Shanghai&useUnicode=true&characterEncoding=utf8&characterSetResults=utf8
     username: remote_user
     password: 123456
     driver-class-name: com.mysql.cj.jdbc.Driver
+
+  servlet:
+    multipart:
+      max-file-size: 50MB
+      max-request-size: 100MB
 
   jpa:
     hibernate:
@@ -38,3 +47,20 @@ deepseek:
   system-prompt: 你是一个智慧路灯管理系统的智能助手，可以回答关于路灯设备管理、传感器数据、告警处理等方面的问题。请用中文简洁回答。
   max-tokens: 2000
   temperature: 0.7
+
+# ==================== RAG 知识库 / 嵌入模型配置 ====================
+# 嵌入服务使用智谱 embedding-2（OpenAI 兼容接口）。
+# 通过环境变量配置（优先级高于默认值）：
+#   export EMBEDDING_API_KEY=你的智谱APIKey
+#
+# 其他兼容服务：
+#   阿里百炼: base-url=https://dashscope.aliyuncs.com/compatible-mode/v1  model=text-embedding-v2  dimension=1536
+#   Ollama:   base-url=http://localhost:11434/v1  api-key=ollama  model=nomic-embed-text  dimension=768
+embedding:
+  enabled: true
+  base-url: ${EMBEDDING_API_BASE:https://open.bigmodel.cn/api/paas/v4}
+  api-key: ${EMBEDDING_API_KEY:88d57918d13f4ed49a400cd78bb56d7f.qNx2J8WsiUAnHkWg}
+  model: ${EMBEDDING_MODEL:embedding-2}
+  dimension: 1024
+  # 向量存储持久化路径（相对于工作目录，启动时自动加载）
+  vector-store-path: data/knowledge-vector-store.json

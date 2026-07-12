@@ -8,7 +8,10 @@ import com.streetlight.entity.ChatSession;
 import com.streetlight.repository.ChatMessageRepository;
 import com.streetlight.repository.ChatSessionRepository;
 import com.streetlight.service.ChatService;
+import com.streetlight.service.EmbeddingService;
 import com.streetlight.service.ToolExecutor;
+import com.streetlight.service.VectorStore;
+import com.streetlight.service.VectorStore.SearchResult;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.*;
 import org.springframework.stereotype.Service;
@@ -26,16 +29,22 @@ public class ChatServiceImpl implements ChatService {
     private final RestTemplate restTemplate;
     private final DeepSeekConfig config;
     private final ToolExecutor toolExecutor;
+    private final VectorStore vectorStore;
+    private final EmbeddingService embeddingService;
     private final ObjectMapper objectMapper;
     private final ChatSessionRepository sessionRepo;
     private final ChatMessageRepository messageRepo;
 
     public ChatServiceImpl(RestTemplate restTemplate, DeepSeekConfig config,
-                           ToolExecutor toolExecutor, ObjectMapper objectMapper,
+                           ToolExecutor toolExecutor, VectorStore vectorStore,
+                           EmbeddingService embeddingService,
+                           ObjectMapper objectMapper,
                            ChatSessionRepository sessionRepo, ChatMessageRepository messageRepo) {
         this.restTemplate = restTemplate;
         this.config = config;
         this.toolExecutor = toolExecutor;
+        this.vectorStore = vectorStore;
+        this.embeddingService = embeddingService;
         this.objectMapper = objectMapper;
         this.sessionRepo = sessionRepo;
         this.messageRepo = messageRepo;
@@ -187,12 +196,41 @@ public class ChatServiceImpl implements ChatService {
     }
 
     private String answerDirect(String question, List<Map<String, String>> context) {
+        // 优先从知识库检索相关知识
+        String knowledgeCtx = searchKnowledge(question);
+
         List<Map<String, String>> messages = new ArrayList<>();
-        messages.add(Map.of("role", "system", "content", config.getSystemPrompt()));
+        if (!knowledgeCtx.isEmpty()) {
+            messages.add(Map.of("role", "system", "content", config.getSystemPrompt()
+                    + "\n\n以下是从知识库中检索到的相关内容，请优先基于这些内容回答问题：\n"
+                    + knowledgeCtx));
+        } else {
+            messages.add(Map.of("role", "system", "content", config.getSystemPrompt()));
+        }
         messages.addAll(context);
         messages.add(Map.of("role", "user", "content", question));
 
         return callLLM(messages);
+    }
+
+    /** 从向量知识库检索相关内容，最多返回 3 条 */
+    private String searchKnowledge(String question) {
+        if (vectorStore.size() == 0) return "";
+        try {
+            float[] qe = embeddingService.embed(question);
+            List<SearchResult> results = vectorStore.search(qe, 3);
+            if (results.isEmpty() || results.get(0).score() < 0.5) return "";
+            StringBuilder sb = new StringBuilder();
+            for (int i = 0; i < results.size(); i++) {
+                var r = results.get(i);
+                sb.append("【来源：").append(r.fileName()).append("】\n")
+                        .append(r.content()).append("\n\n");
+            }
+            return sb.toString();
+        } catch (Exception e) {
+            log.warn("知识库检索失败", e);
+            return "";
+        }
     }
 
     @SuppressWarnings("unchecked")
