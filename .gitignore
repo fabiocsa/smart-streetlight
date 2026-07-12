@@ -9,6 +9,9 @@ backend/target/
 __pycache__/
 *.pyc
 
+# Simulator state
+tools/mock-sender/state.db
+
 # Frontend build
 frontend/dist/
 

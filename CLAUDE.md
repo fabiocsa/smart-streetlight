@@ -19,18 +19,27 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 3. 实时数据通过 `WebSocketHandler.pushSensorData()` 推送到前端 `/ws/monitor`
 4. 控制指令（开关灯、模式切换）通过 MQTT 下行到传感器 cmd 主题 → 传感器响应 `streetlight/sensor/{sensorId}/cmd/response`
 
-**关键设计决策 (v4)：**
+**关键设计决策 (v5 — 传感器数据按类型分离)：**
+- **每种传感器只发送自己类型的字段**：light → illuminance/cloudCover/status，temperature → temperature，humidity → humidity，power → voltage/power。不再跨类型混发
+- 模拟器 `data_generator.py` 通过 `SENSOR_TYPE_FIELDS` 字典控制每种类型的字段集
+- 后端告警检测按 sensorType 分流：电压告警仅 light/power 触发，温度告警仅 temperature 触发，功率告警仅 light/power 触发
+- 趋势查询 `DashboardService.sensorTypeForMetric()` 按指标名动态映射传感器类型（不再硬编码 light）
+- 设备支持**多传感器决策策略**（`Device.sensorStrategy` 字段）：`single`（指定主传感器）+ `primarySensorId`，或 `average`（取所有 bound light 传感器平均值）
+- 仪表盘"设备最新传感器数据"表：后端 `getLatestSensorData()` 按 deviceId 分组合并多种传感器数据为一行；前端 `dedupSensorRows()` 去重
+
+**关键设计决策 (v4 — 传感器独立，去设备化)：**
 - 模拟器端**完全不接触 deviceId**，只认 sensorId。后端通过 `device_sensor` 关联表解析绑定关系
 - 传感器（`Sensor`）与设备（`Device`）是独立实体，通过 `device_sensor` 关联表 N:M 绑定。传感器上报数据时可能未绑定设备，`deviceId` 会以 `sensor_{id}` 作为临时标识
 - 控制指令通过传感器 cmd 主题下发：`streetlight/sensor/{sensorId}/cmd`。后端查找设备绑定的 light 传感器，逐传感器发送
-- 传感器数据统一存 JSON 列（`sensor_data.data_json`），支持异构多维数据（光照、温度、湿度、功率等），无需 ALTER TABLE
+- 传感器数据统一存 JSON 列（`sensor_data.data_json`），支持异构多维数据，无需 ALTER TABLE
 - JPA `ddl-auto: update`，Hibernate 自动同步表结构；`application.yml` 连接远程 MySQL
 - MQTT 使用 Eclipse Paho v5，订阅通配符 topic `streetlight/sensor/+/data`、`streetlight/sensor/+/status`、`streetlight/sensor/+/cmd/response`
-- **多实例部署**：所有实例完全相同（同一份代码、同一份配置）。数据主题使用 EMQX 共享订阅 `$share/backend/` 前缀，EMQX 轮询分发给组内一个实例；控制响应使用普通订阅，所有实例都收到（确保发令实例能收到回应）。DB 唯一约束 `UNIQUE(sensor_id, reported_at)` 作为兜底。Client ID 使用 UUID 后缀确保唯一（`MqttConfig` 第 37 行）
+- **多实例部署**：所有实例完全相同。数据主题使用 EMQX 共享订阅 `$share/backend/` 前缀，EMQX 轮询分发；控制响应使用普通订阅，所有实例都收到。DB 唯一约束 `UNIQUE(sensor_id, reported_at)` 作为兜底。Client ID 使用 UUID 后缀确保唯一
 - 自动联动仅对 `sensorType=light` 且在 `auto` 模式的设备生效：光照 < `thresholdOn` 开灯，光照 > `thresholdOff` 关灯
 - 自动联动使用 `SELECT ... FOR UPDATE` 悲观行锁防止并发重复触发
 - 告警由 `HeartbeatChecker`（`@Scheduled` 定时任务）检测设备心跳超时自动生成，设备恢复上线时**仅**自动解除 OFFLINE 类型告警
-- 前端为纯 REST 通信，MQTT 主题对前端透明；WebSocket 用于实时推送控制结果与设备状态
+- **WebSocket 状态推送**：不仅在心跳超时时推送，还在开关灯、模式切换、设备恢复上线时主动推送 `DEVICE_STATUS`，确保前端实时刷新
+- **MQTT 时间戳**：模拟器发送 UTC 时间（带 Z 后缀），后端 `MqttMessageHandler` 检测 Z 后缀后 +8 小时转为北京时间存入 DB
 
 ## 常用命令
 
@@ -83,20 +92,22 @@ mysql -h 8.130.102.89 -u remote_user -p streetlight < docs/init.sql
 
 ### RBAC 权限模型
 
-系统有两个角色：`admin`（管理员）和 `municipal`（市政人员）。
+系统有三个角色：`admin`（管理员）、`operator`（操作员）和 `municipal`（市政人员）。
 
-| 模块 | admin | municipal |
-|---|---|---|
-| 设备管理（查看） | ✅ | ✅ |
-| 设备管理（增删改） | ✅ | ❌ |
-| 传感器管理（查看） | ✅ | ✅ |
-| 传感器管理（增删改/绑定） | ✅ | ❌ |
-| 设备控制（开关灯/模式切换） | ✅ | ✅ |
-| 告警管理 & 告警规则 | ✅ | ❌ |
-| AI 智能问答 | ✅ | ✅ |
-| 历史趋势 | ✅ | ✅ |
+| 模块 | admin | operator | municipal |
+|---|---|---|---|
+| 设备管理（查看） | ✅ | ✅ | ✅ |
+| 设备管理（增删改/批量删除） | ✅ | ✅ | ❌ |
+| 传感器管理（查看） | ✅ | ✅ | ✅ |
+| 传感器管理（增删改/绑定） | ✅ | ✅ | ❌ |
+| 设备控制（开关灯/模式切换） | ✅ | ✅ | ✅ |
+| 批量阈值设置 | ✅ | ✅ | ❌ |
+| 告警管理 & 告警规则 | ✅ | ❌ | ❌ |
+| AI 智能问答 | ✅ | ✅ | ✅ |
+| 历史趋势 | ✅ | ✅ | ✅ |
 
 权限在 `AuthInterceptor.preHandle()` 中按 URI 路径匹配校验。前端路由通过 `meta.roles` 字段控制菜单可见性，`router.beforeEach` 做二次校验。
+前端 store：`authStore.isAdmin`、`authStore.isOperator`、`authStore.isMunicipal`。
 
 ### 关键枚举
 
@@ -105,20 +116,21 @@ mysql -h 8.130.102.89 -u remote_user -p streetlight < docs/init.sql
 | `ControlMode` | `enums/` | `auto`（自动联动）, `manual`（手动控制） |
 | `LightStatus` | `enums/` | `on`（开灯）, `off`（关灯） |
 | `DeviceStatus` | `enums/` | `online`, `offline` |
-| `AlarmType` | `enums/` | `OFFLINE`, `ABNORMAL_DATA` 等 |
+| `AlarmType` | `enums/` | `OFFLINE`, `SENSOR_ABNORMAL`, `VOLTAGE_ABNORMAL`, `TEMPERATURE_HIGH`, `POWER_HIGH` |
 | `AlarmSeverity` | `enums/` | `INFO`, `WARNING`, `CRITICAL` |
 | `AlarmStatus` | `enums/` | `PENDING`（待处理）, `RESOLVED`（已解除） |
 
-### 速查：关键 Service (v4)
+### 速查：关键 Service (v5)
 
 | Service | 职责 |
 |---|---|
-| `SensorDataServiceImpl.saveAndAutoControl()` | **核心方法**：保存传感器数据 → 更新心跳 → `SELECT ... FOR UPDATE` 悲观锁读设备 → 判断光照阈值自动开关灯 → 查绑定的 light 传感器 → 下发 MQTT cmd → 推送 WebSocket |
-| `ControlServiceImpl` | 执行设备控制指令（开/关灯、模式切换），通过查找设备绑定的 light 传感器，经 `streetlight/sensor/{sensorId}/cmd` 下发 |
-| `SensorRegistrationService` | 处理模拟器传感器自动注册/注销、从数据报文恢复传感器记录。`autoRegisterFromData()` 使用 `REQUIRES_NEW` 事务 |
-| `HeartbeatChecker.checkHeartbeats()` | `@Scheduled(fixedRate=5000)` 每 5 秒检查心跳超时，标记离线并委托 `AlarmService.createOfflineAlarm()` 生成告警 |
-| `ChatServiceImpl` | 调用 DeepSeek API，注入系统角色上下文（路灯数量/传感器数据等），支持多轮对话 |
-| `AlarmServiceImpl.autoResolveOfflineAlarm()` | 设备恢复上线时**仅**将 OFFLINE 类型的 PENDING 告警标记为 RESOLVED（不误关其他类型告警） |
+| `SensorDataServiceImpl.saveAndAutoControl()` | **核心方法**：保存数据 → 更新心跳 → 告警检测（按 sensorType 分流） → `SELECT ... FOR UPDATE` 悲观锁读设备 → 多传感器策略（single/average） → 光照阈值判定 → 下发 MQTT cmd → WebSocket 推送状态 |
+| `ControlServiceImpl` | 设备控制（开关灯/模式切换/阈值/传感器策略），通过 light 传感器 cmd 主题下发 |
+| `DashboardService` | 仪表盘数据聚合。`getLatestSensorData()` 按 deviceId 合并多种传感器数据；`getSensorTrend()` 通过 `sensorTypeForMetric()` 动态映射 sensorType |
+| `AlarmServiceImpl` | 5 种告警类型（OFFLINE/VOLTAGE_ABNORMAL/TEMPERATURE_HIGH/POWER_HIGH/SENSOR_ABNORMAL），自动创建/解除。电压/温度/功率告警仅对相应的 sensorType 触发 |
+| `SensorRegistrationService` | 传感器自动注册/注销，`autoRegisterFromData()` 使用 `REQUIRES_NEW` 事务 |
+| `HeartbeatChecker.checkHeartbeats()` | `@Scheduled(fixedRate=5000)` 每 5 秒检查心跳超时，标记离线并生成告警 |
+| `ChatServiceImpl` | DeepSeek API 多轮对话 |
 
 ### 循环依赖处理
 
@@ -162,18 +174,19 @@ mysql -h 8.130.102.89 -u remote_user -p streetlight < docs/init.sql
 - 支持多轮对话：`ChatMessage` 表存储历史消息，按 `ChatSession` 分组
 - 前端 `/chat` 页面实现流式打字机效果（非真实 SSE 流，前端模拟逐字显示）
 
-## Mock 数据发生器 (v4)
+## Mock 数据发生器 (v5)
 
 `tools/mock-sender/` 是基于真实时钟 + 太阳位置模型的 Python 模拟器：
-- `data_generator.py`：使用 Spencer(1971) 太阳赤纬公式 + Beer-Lambert 大气光程模型生成符合物理规律的光照数据，包含昼夜变化、云量随机游走、温度季节联动
+- `data_generator.py`：使用 Spencer(1971) 太阳赤纬公式 + Beer-Lambert 大气光程模型。**v5: `SENSOR_TYPE_FIELDS` 字典控制每种传感器类型只发送自己的字段**（light 不发温湿度，temperature 只发温度等）
 - 重庆默认坐标：lat=29.5, lon=106.5, UTC+8
-- `app.py`：Flask Web 管理界面（端口 5050），可动态增删传感器、调整上报间隔
-- `config.json`：传感器配置持久化文件（**v4: 不含 deviceId**）
-- **v4 关键变更**：模拟器只认 sensorId，订阅 `streetlight/sensor/{sensorId}/cmd` 接收控制指令，响应到 `streetlight/sensor/{sensorId}/cmd/response`
-- `mqtt_client.py`：封装 paho-mqtt，提供传感器 cmd 订阅/发布
-- `sensor_manager.py`：`SensorWorker.on_cmd()` 处理控制指令，`SensorManager.on_sensor_cmd()` 分发
+- `app.py`：Flask Web 管理界面（端口 **5050**），可动态增删传感器、调整上报间隔
+- `config.json`：传感器配置持久化文件（不含 deviceId）
+- `sender/db.py`：**SQLite 状态持久化**（`state.db`），保存每个传感器的 running/enabled/controlMode，**模拟器重启后自动恢复关闭前的状态**（上次停止的传感器保持停止）
+- `mqtt_client.py`：封装 paho-mqtt
+- `sensor_manager.py`：`SensorWorker.on_cmd()` 处理控制指令，`SensorManager.on_sensor_cmd()` 分发。`load_from_config()` 会合并 SQLite 中保存的状态
+- **UI 功能**：传感器卡片网格 + 模糊搜索 + 类型筛选 chips + SortableJS 拖拽排序（带弹簧动画）
 
-## MQTT Topic 设计 (v4)
+## MQTT Topic 设计 (v5)
 
 | Topic | 方向 | 说明 |
 |---|---|---|
@@ -186,26 +199,18 @@ mysql -h 8.130.102.89 -u remote_user -p streetlight < docs/init.sql
 
 **已删除的旧 topic：** `streetlight/{deviceId}/control`、`streetlight/{deviceId}/control/response`、`streetlight/mock-sender/config`
 
-## SensorData JSON 列设计 (v4)
+## SensorData JSON 列设计 (v5)
 
-`sensor_data` 表的 `data_json` 列存储 JSON 数据，支持异构多维传感器数据，无需 ALTER TABLE。
-**v4: payload 不再含 `deviceId` 字段**，`device_id` 列由后端通过 `device_sensor` 关联表解析后填充。
+`sensor_data` 表的 `data_json` 列存储 JSON 数据。**v5: 每种传感器类型只含自己的字段**：
 
-```java
-// SensorData.from() 静态工厂 — 将 Map 序列化到 dataJson 列
-SensorData sd = SensorData.from(deviceId, sensorId, sensorType, data, reportedAt);
-// data 示例 (v4 — 无 deviceId): {"illuminance": 320.5, "temperature": 28.3, "humidity": 65.0, "voltage": 220.1, "power": 45.0}
-```
+| 传感器类型 | data_json 字段 |
+|-----------|---------------|
+| light | `illuminance`, `lightIntensity`, `cloudCover`, `status` |
+| temperature | `temperature` |
+| humidity | `humidity` |
+| power | `voltage`, `power` |
 
-Repository 使用 MySQL `JSON_EXTRACT` 函数在 SQL 层直接查询 JSON 字段：
-
-```java
-@Query(value = "SELECT AVG(CAST(JSON_UNQUOTE(JSON_EXTRACT(data_json, CONCAT('$.', :field))) AS DOUBLE)) " +
-       "FROM sensor_data WHERE device_id = :deviceId AND ...")
-Double avgByField(@Param("deviceId") String deviceId, @Param("field") String field, ...);
-```
-
-添加新的传感器指标只需模拟器端在 JSON 中多传一个字段，无需修改表结构或实体类。
+Repository 使用 MySQL `JSON_EXTRACT` 函数查询 JSON 字段。趋势查询中 `sensorTypeForMetric()` 将指标名映射到传感器类型（`lightIntensity`→light, `temperature`→temperature 等），按正确类型聚合。
 
 ## 配置要点
 

@@ -6,13 +6,18 @@
 // ============================ 全局状态 ============================
 let sensorList = [];
 let historyList = [];
-let historyPaused = false;  // 用户手动暂停自动滚动
-let historyUserScrolled = false;  // 用户主动滚动了历史区域
+let historyPaused = false;
+let historyUserScrolled = false;
 let uptimeSeconds = 0;
 let uptimeInterval = null;
 let pollInterval = null;
 let newHistoryCount = 0;
 let currentAutoSendMode = 'algorithm';
+let currentFilter = 'all';
+let currentSearch = '';
+let sortableInstance = null;
+let isDragging = false;
+let lastRenderFingerprint = '';   // 用于检测传感器结构是否变化，避免不必要的全量重渲染
 
 const TYPE_ICONS = { light: '☀️', temperature: '🌡️', humidity: '💧', power: '⚡' };
 const TYPE_LABELS = { light: '光照', temperature: '温度', humidity: '湿度', power: '功率' };
@@ -58,24 +63,169 @@ function renderSensorCards(sensors) {
     const noCard = document.getElementById('noSensorsCard');
     if (!grid) return;
 
+    // 拖拽进行中时跳过重渲染，避免打断操作
+    if (isDragging) return;
+
+    // 应用筛选和搜索
+    let filtered = sensors;
+    if (currentFilter !== 'all') {
+        filtered = filtered.filter(s => s.sensorType === currentFilter);
+    }
+    if (currentSearch) {
+        const kw = currentSearch.toLowerCase();
+        filtered = filtered.filter(s =>
+            (s.displayName || '').toLowerCase().includes(kw) ||
+            (s.sensorKey || '').toLowerCase().includes(kw) ||
+            (s.groupTag || '').toLowerCase().includes(kw)
+        );
+    }
+
+    // 空传感器列表 → 清空
     if (!sensors || sensors.length === 0) {
         grid.innerHTML = '';
+        lastRenderFingerprint = '';
         if (noCard) noCard.style.display = '';
+        updateHistoryFilter(sensors);
         return;
     }
     if (noCard) noCard.style.display = 'none';
 
-    grid.innerHTML = sensors.map(s => buildCard(s)).join('');
+    // 搜索无结果
+    if (filtered.length === 0 && sensors.length > 0) {
+        grid.innerHTML = `<div class="no-search-results">
+            <i class="bi bi-search"></i>
+            <span>没有匹配的传感器</span>
+            <div class="hint">试试其他关键词或清除筛选</div>
+        </div>`;
+        lastRenderFingerprint = '';
+        updateHistoryFilter(sensors);
+        return;
+    }
+
+    // 计算当前渲染指纹（传感器 key + 顺序）
+    const fingerprint = filtered.map(s => s.sensorKey).join(',');
+
+    if (fingerprint === lastRenderFingerprint && grid.children.length === filtered.length) {
+        // ★ 结构未变 → 原地更新卡片动态数据，不重建 DOM，避免动画闪烁
+        updateCardsInPlace(grid, filtered);
+    } else {
+        // ★ 结构变化（增/删/排序/筛选）→ 全量重建
+        grid.innerHTML = filtered.map((s, i) => buildCard(s, i)).join('');
+        lastRenderFingerprint = fingerprint;
+        // 初始化拖拽
+        initSortable();
+    }
+
     updateHistoryFilter(sensors);
 }
 
-function buildCard(s) {
+/**
+ * 原地更新卡片中的动态数据（不触发 CSS cardIn 动画）
+ */
+function updateCardsInPlace(grid, sensors) {
+    const now = Date.now();
+    sensors.forEach((s, i) => {
+        const card = document.getElementById('card-' + escAttr(s.sensorKey));
+        if (!card) {
+            // 卡片缺失（罕见）→ 回退到全量渲染
+            grid.innerHTML = sensors.map((s2, j) => buildCard(s2, j)).join('');
+            lastRenderFingerprint = sensors.map(x => x.sensorKey).join(',');
+            initSortable();
+            return;
+        }
+
+        // 1. 更新卡片状态类
+        const isRunning = s.running;
+        const autoMode = s.autoSendMode || 'algorithm';
+        card.classList.remove('running-algorithm', 'running-fixed', 'stopped');
+        if (isRunning && autoMode === 'fixed') card.classList.add('running-fixed');
+        else if (isRunning) card.classList.add('running-algorithm');
+        else card.classList.add('stopped');
+
+        // 2. 更新状态圆点
+        const dot = card.querySelector('.card-status-dot');
+        if (dot) {
+            dot.classList.remove('running', 'stopped');
+            dot.classList.add(isRunning ? 'running' : 'stopped');
+        }
+
+        // 3. 更新状态文本
+        const statusSpan = card.querySelector('.card-row .value .card-status-dot');
+        if (statusSpan) {
+            const parent = statusSpan.parentElement;
+            const newDotClass = isRunning ? 'running' : 'stopped';
+            const newText = isRunning ? `运行中 (${s.publishCount || 0}次)` : '已停止';
+            parent.innerHTML = `<span class="card-status-dot ${newDotClass}"></span>${newText}`;
+        }
+
+        // 4. 更新最后发送时间
+        const rows = card.querySelectorAll('.card-row');
+        rows.forEach(row => {
+            const label = row.querySelector('.label');
+            if (label && label.textContent === '最后发送') {
+                const value = row.querySelector('.value');
+                if (value) {
+                    let text = '-';
+                    if (s.lastPublish) {
+                        const sec = Math.floor(now / 1000 - s.lastPublish);
+                        if (sec < 60) text = `${sec} 秒前`;
+                        else if (sec < 3600) text = `${Math.floor(sec / 60)} 分钟前`;
+                        else text = `${Math.floor(sec / 3600)} 小时前`;
+                    }
+                    value.textContent = text;
+                }
+            }
+        });
+
+        // 5. 更新模式 badge
+        const modeBadge = card.querySelector('.mode-badge');
+        if (modeBadge) {
+            modeBadge.classList.remove('algorithm', 'fixed');
+            modeBadge.classList.add(autoMode === 'fixed' ? 'fixed' : 'algorithm');
+            modeBadge.textContent = autoMode === 'fixed' ? '📌 固定内容' : '🔵 算法动态';
+        }
+
+        // 6. 更新控制模式下拉框
+        const modeSelect = card.querySelector('.sensor-card-footer select');
+        if (modeSelect && s.controlMode) {
+            modeSelect.value = s.controlMode;
+        }
+
+        // 7. 更新启动/停止按钮（仅当运行状态变化时替换）
+        const footerBtns = card.querySelector('.sensor-card-footer');
+        const existingBtn = card.querySelector('.sensor-card-footer .btn:first-child');
+        if (footerBtns && existingBtn) {
+            const btnIsStop = existingBtn.classList.contains('btn-outline-secondary');
+            if (isRunning && !btnIsStop) {
+                // 需要显示「停止」按钮
+                const safeKey = escAttr(s.sensorKey);
+                existingBtn.outerHTML = `<button class="btn btn-sm btn-outline-secondary flex-fill" onclick="stopSensor('${safeKey}')"><i class="bi bi-stop-fill"></i> 停止</button>`;
+            } else if (!isRunning && btnIsStop) {
+                // 需要显示「启动」按钮
+                const safeKey = escAttr(s.sensorKey);
+                existingBtn.outerHTML = `<button class="btn btn-sm btn-outline-success flex-fill" onclick="startSensor('${safeKey}')"><i class="bi bi-play-fill"></i> 启动</button>`;
+            }
+        }
+
+        // 8. 更新频率显示
+        rows.forEach(row => {
+            const label = row.querySelector('.label');
+            if (label && label.textContent === '频率') {
+                const value = row.querySelector('.value');
+                if (value) value.textContent = `每 ${s.interval || 5} 秒`;
+            }
+        });
+    });
+}
+
+function buildCard(s, index) {
     const typeIcon = TYPE_ICONS[s.sensorType] || '';
     const typeLabel = TYPE_LABELS[s.sensorType] || s.sensorType;
     const isRunning = s.running;
     const autoMode = s.autoSendMode || 'algorithm';
     const groupTag = s.groupTag || '';
     const safeKey = escAttr(s.sensorKey);
+    const idx = index != null ? index : 0;
 
     let cardStateClass = 'stopped';
     if (isRunning && autoMode === 'fixed') cardStateClass = 'running-fixed';
@@ -95,8 +245,9 @@ function buildCard(s) {
     }
 
     return `
-    <div class="sensor-card ${cardStateClass}" id="card-${safeKey}">
+    <div class="sensor-card ${cardStateClass}" id="card-${safeKey}" style="--card-index:${idx}" data-sensor-key="${safeKey}">
         <div class="sensor-card-header">
+            <span class="drag-handle" title="拖动排序"><i class="bi bi-grip-vertical"></i></span>
             <span class="sensor-card-icon">${typeIcon}</span>
             <span class="sensor-card-name" title="${escHtml(s.sensorKey)}">${escHtml(s.displayName || s.sensorKey)}</span>
             <div style="position:relative">
@@ -186,6 +337,7 @@ function changeSensorMode(sensorKey, newMode) {
         if (resp.error) { alert(resp.error); return; }
         const s = sensorList.find(x => x.sensorKey === sensorKey);
         if (s) s.controlMode = newMode;
+        lastRenderFingerprint = ''; // 模式切换可能改变卡片类 → 强制渲染
         renderSensorCards(sensorList);
     })
     .catch(err => alert('切换失败: ' + err.message));
@@ -202,6 +354,96 @@ function publishOnce(sensorKey) {
     fetch(`/api/sensors/${encodeURIComponent(sensorKey)}/publish-once`, { method: 'POST' })
         .then(r => r.json()).then(resp => { if (resp.error) alert(resp.error); })
         .catch(err => alert('发送失败: ' + err.message));
+}
+
+// ============================ 筛选 & 搜索 ============================
+
+function setSensorFilter(filter) {
+    currentFilter = filter;
+    lastRenderFingerprint = ''; // 筛选变化 → 强制全量渲染
+    // 更新 chip 样式
+    document.querySelectorAll('.filter-chip').forEach(chip => {
+        chip.classList.toggle('active', chip.dataset.filter === filter);
+    });
+    renderSensorCards(sensorList);
+}
+
+function onSensorSearch() {
+    const input = document.getElementById('sensorSearch');
+    const clearBtn = document.getElementById('searchClearBtn');
+    if (!input) return;
+    currentSearch = input.value.trim();
+    lastRenderFingerprint = ''; // 搜索词变化 → 强制全量渲染
+    if (clearBtn) clearBtn.style.display = currentSearch ? '' : 'none';
+    renderSensorCards(sensorList);
+}
+
+function clearSensorSearch() {
+    const input = document.getElementById('sensorSearch');
+    const clearBtn = document.getElementById('searchClearBtn');
+    if (input) { input.value = ''; input.focus(); }
+    if (clearBtn) clearBtn.style.display = 'none';
+    currentSearch = '';
+    lastRenderFingerprint = ''; // 清除搜索 → 强制全量渲染
+    renderSensorCards(sensorList);
+}
+
+// ============================ 拖拽排序 (SortableJS) ============================
+
+function initSortable() {
+    const grid = document.getElementById('sensorCardGrid');
+    if (!grid) return;
+
+    // 销毁旧实例
+    if (sortableInstance) {
+        sortableInstance.destroy();
+        sortableInstance = null;
+    }
+
+    // 添加拖拽手柄样式
+    grid.classList.add('drag-enabled');
+
+    sortableInstance = new Sortable(grid, {
+        animation: 200,
+        easing: 'cubic-bezier(0.34, 1.56, 0.64, 1)',
+        handle: '.drag-handle',
+        ghostClass: 'sortable-ghost',
+        chosenClass: 'sortable-chosen',
+        dragClass: 'sortable-drag',
+        delay: 80,
+        delayOnTouchOnly: true,
+        onStart: function() {
+            isDragging = true;
+        },
+        onEnd: function(evt) {
+            isDragging = false;
+            lastRenderFingerprint = ''; // 拖拽重排后重置指纹
+            // 更新 sensorList 顺序以匹配 DOM
+            const orderedKeys = [];
+            grid.querySelectorAll('.sensor-card').forEach(card => {
+                const key = card.dataset.sensorKey;
+                if (key) orderedKeys.push(key);
+            });
+            // 按新顺序重排 sensorList
+            const map = {};
+            sensorList.forEach(s => { map[s.sensorKey] = s; });
+            const newList = orderedKeys.map(k => map[k]).filter(Boolean);
+            // 保留不在 grid 中的传感器（可能被筛选隐藏）
+            const hiddenCards = sensorList.filter(s => !orderedKeys.includes(s.sensorKey));
+            sensorList = [...newList, ...hiddenCards];
+            // 延迟重算指纹（等 DOM 稳定）
+            setTimeout(() => {
+                const grid2 = document.getElementById('sensorCardGrid');
+                if (grid2) {
+                    const keys = [];
+                    grid2.querySelectorAll('.sensor-card').forEach(c => {
+                        if (c.dataset.sensorKey) keys.push(c.dataset.sensorKey);
+                    });
+                    lastRenderFingerprint = keys.join(',');
+                }
+            }, 250);
+        }
+    });
 }
 
 function startAllSensors() {

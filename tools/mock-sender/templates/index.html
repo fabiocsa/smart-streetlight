@@ -51,6 +51,35 @@
                 </div>
             </div>
 
+            <!-- 搜索 & 筛选栏 -->
+            <div class="sensor-filter-bar">
+                <div class="search-box">
+                    <i class="bi bi-search search-icon"></i>
+                    <input type="text" id="sensorSearch" class="search-input"
+                           placeholder="搜索传感器名称、分组或 ID..." oninput="onSensorSearch()">
+                    <button class="search-clear" id="searchClearBtn" onclick="clearSensorSearch()" style="display:none">
+                        <i class="bi bi-x-lg"></i>
+                    </button>
+                </div>
+                <div class="filter-chips" id="filterChips">
+                    <button class="filter-chip active" data-filter="all" onclick="setSensorFilter('all')">
+                        <i class="bi bi-grid"></i> 全部
+                    </button>
+                    <button class="filter-chip" data-filter="light" onclick="setSensorFilter('light')">
+                        ☀️ 光照
+                    </button>
+                    <button class="filter-chip" data-filter="temperature" onclick="setSensorFilter('temperature')">
+                        🌡️ 温度
+                    </button>
+                    <button class="filter-chip" data-filter="humidity" onclick="setSensorFilter('humidity')">
+                        💧 湿度
+                    </button>
+                    <button class="filter-chip" data-filter="power" onclick="setSensorFilter('power')">
+                        ⚡ 功率
+                    </button>
+                </div>
+            </div>
+
             <!-- 传感器卡片网格 -->
             <div id="sensorCardGrid" class="sensor-card-grid">
                 <div id="noSensorsCard" class="text-center text-muted py-5 w-100">
@@ -425,6 +454,7 @@
 
 <!-- ==================== 脚本 ==================== -->
 <script src="https://cdn.bootcdn.net/ajax/libs/twitter-bootstrap/5.3.3/js/bootstrap.bundle.min.js"></script>
+<script src="https://cdn.bootcdn.net/ajax/libs/Sortable/1.15.0/Sortable.min.js"></script>
 <script src="/static/js/app.js"></script>
 </body>
 </html>

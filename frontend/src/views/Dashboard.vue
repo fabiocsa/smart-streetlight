@@ -398,7 +398,33 @@ async function loadStats() {
   try { stats.value = await dashboardApi.getStats() } catch { /* */ }
 }
 async function loadLatestSensorData() {
-  try { latestSensorData.value = await dashboardApi.getLatestSensorData() } catch { /* */ }
+  try {
+    latestSensorData.value = await dashboardApi.getLatestSensorData()
+    dedupSensorRows()
+  } catch { /* */ }
+}
+
+/** 去重：同 deviceId 只保留最新一行，合并其他行数据 */
+function dedupSensorRows() {
+  const seen = {}
+  const merged = []
+  for (const row of latestSensorData.value) {
+    if (seen[row.deviceId]) {
+      // 合并到已有行
+      const existing = seen[row.deviceId]
+      if (row.data) Object.assign(existing.data, row.data)
+      if (row.lightIntensity != null && existing.lightIntensity == null) {
+        existing.lightIntensity = row.lightIntensity
+      }
+      if (row.reportedAt > existing.reportedAt) {
+        existing.reportedAt = row.reportedAt
+      }
+    } else {
+      seen[row.deviceId] = row
+      merged.push(row)
+    }
+  }
+  latestSensorData.value = merged
 }
 async function loadLatestByType() {
   try {
@@ -481,6 +507,7 @@ function connectWs() {
                 : null
             })
           }
+          dedupSensorRows()  // 清理可能的重复行
         }
 
         if (msg.type === 'DEVICE_STATUS' && msg.deviceId) {

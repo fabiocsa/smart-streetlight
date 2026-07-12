@@ -586,3 +586,235 @@ th.sortable:hover {
 
 .mode-badge.algorithm { background: #d4edda; color: #155724; }
 .mode-badge.fixed { background: #fff3cd; color: #856404; }
+
+/* ============================
+   搜索 & 筛选栏
+   ============================ */
+.sensor-filter-bar {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    margin-bottom: 14px;
+    flex-wrap: wrap;
+}
+
+.search-box {
+    position: relative;
+    flex: 1;
+    min-width: 200px;
+    max-width: 360px;
+}
+
+.search-icon {
+    position: absolute;
+    left: 12px;
+    top: 50%;
+    transform: translateY(-50%);
+    color: #adb5bd;
+    font-size: 0.9rem;
+    pointer-events: none;
+    transition: color 0.2s;
+}
+
+.search-box:focus-within .search-icon {
+    color: #0d6efd;
+}
+
+.search-input {
+    width: 100%;
+    border: 1.5px solid #e0e0e0;
+    border-radius: 20px;
+    padding: 8px 36px 8px 36px;
+    font-size: 0.85rem;
+    background: #fff;
+    transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+    outline: none;
+}
+
+.search-input:focus {
+    border-color: #0d6efd;
+    box-shadow: 0 0 0 3px rgba(13, 110, 253, 0.12);
+}
+
+.search-clear {
+    position: absolute;
+    right: 8px;
+    top: 50%;
+    transform: translateY(-50%);
+    background: none;
+    border: none;
+    color: #adb5bd;
+    cursor: pointer;
+    font-size: 0.7rem;
+    padding: 4px;
+    border-radius: 50%;
+    transition: all 0.15s;
+}
+
+.search-clear:hover {
+    color: #dc3545;
+    background: #f8f9fa;
+}
+
+.filter-chips {
+    display: flex;
+    gap: 6px;
+    flex-wrap: wrap;
+}
+
+.filter-chip {
+    border: 1.5px solid #e0e0e0;
+    background: #fff;
+    color: #495057;
+    border-radius: 20px;
+    padding: 6px 14px;
+    font-size: 0.8rem;
+    cursor: pointer;
+    transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+    white-space: nowrap;
+    user-select: none;
+}
+
+.filter-chip:hover {
+    border-color: #0d6efd;
+    color: #0d6efd;
+    background: #f0f4ff;
+    transform: translateY(-1px);
+    box-shadow: 0 2px 8px rgba(13, 110, 253, 0.1);
+}
+
+.filter-chip.active {
+    background: #0d6efd;
+    color: #fff;
+    border-color: #0d6efd;
+    box-shadow: 0 2px 12px rgba(13, 110, 253, 0.25);
+    font-weight: 600;
+}
+
+/* ============================
+   卡片出入场动画
+   ============================ */
+@keyframes cardIn {
+    from {
+        opacity: 0;
+        transform: translateY(16px) scale(0.96);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0) scale(1);
+    }
+}
+
+@keyframes cardOut {
+    from {
+        opacity: 1;
+        transform: scale(1);
+    }
+    to {
+        opacity: 0;
+        transform: scale(0.92);
+    }
+}
+
+.sensor-card {
+    animation: cardIn 0.35s cubic-bezier(0.34, 1.56, 0.64, 1) both;
+    animation-delay: calc(var(--card-index, 0) * 0.04s);
+}
+
+.sensor-card.removing {
+    animation: cardOut 0.2s ease-in forwards;
+}
+
+/* 搜索无结果时的抖动动画 */
+@keyframes searchShake {
+    0%, 100% { transform: translateX(0); }
+    20% { transform: translateX(-4px); }
+    40% { transform: translateX(4px); }
+    60% { transform: translateX(-3px); }
+    80% { transform: translateX(2px); }
+}
+
+.search-shake {
+    animation: searchShake 0.4s ease-out;
+}
+
+/* ============================
+   拖拽排序 (SortableJS)
+   ============================ */
+.sensor-card.sortable-ghost {
+    opacity: 0.4;
+    background: #e8f4fd;
+    border: 2px dashed #0d6efd;
+    border-left: 4px dashed #0d6efd;
+    box-shadow: none;
+    transform: scale(0.98);
+}
+
+.sensor-card.sortable-chosen {
+    box-shadow: 0 12px 32px rgba(0, 0, 0, 0.18);
+    transform: scale(1.03) rotate(0.5deg);
+    z-index: 1060;
+    transition: box-shadow 0.15s, transform 0.15s;
+}
+
+.sensor-card.sortable-drag {
+    opacity: 0.92;
+    box-shadow: 0 16px 40px rgba(0, 0, 0, 0.22);
+    transform: rotate(1.5deg) scale(1.04);
+}
+
+/* 拖拽手柄指示 */
+.sensor-card-grid.drag-enabled .sensor-card {
+    cursor: grab;
+}
+
+.sensor-card-grid.drag-enabled .sensor-card:active {
+    cursor: grabbing;
+}
+
+.sensor-card .drag-handle {
+    display: none;
+    color: #adb5bd;
+    cursor: grab;
+    font-size: 1rem;
+    padding: 0 4px;
+    transition: color 0.15s;
+}
+
+.sensor-card-grid.drag-enabled .drag-handle {
+    display: inline-block;
+}
+
+.drag-handle:hover {
+    color: #495057;
+}
+
+.drag-handle:active {
+    cursor: grabbing;
+}
+
+/* 筛选过渡 */
+.sensor-card.filtered-out {
+    display: none;
+}
+
+/* 空搜索结果 */
+.no-search-results {
+    grid-column: 1 / -1;
+    text-align: center;
+    padding: 36px 16px;
+    color: #adb5bd;
+    animation: cardIn 0.3s ease-out;
+}
+
+.no-search-results i {
+    font-size: 2.5rem;
+    display: block;
+    margin-bottom: 8px;
+}
+
+.no-search-results .hint {
+    font-size: 0.8rem;
+    color: #ced4da;
+    margin-top: 4px;
+}

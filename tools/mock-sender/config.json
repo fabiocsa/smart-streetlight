@@ -64,7 +64,7 @@
       "displayName": "雷霆大光线传感器",
       "sensorType": "light",
       "groupTag": "",
-      "enabled": true,
+      "enabled": false,
       "interval": 5,
       "dataRange": {
         "min": 0,
@@ -83,7 +83,7 @@
       "displayName": "究极黑暗",
       "sensorType": "light",
       "groupTag": "",
-      "enabled": true,
+      "enabled": false,
       "interval": 5,
       "dataRange": {
         "min": 0,
@@ -143,6 +143,102 @@
       "lightStatus": "off",
       "controlMode": "auto",
       "dataTopic": "streetlight/sensor/73679/data",
+      "configJson": "{\"min\":0,\"max\":800}"
+    },
+    "sensor_87098": {
+      "sensorId": 87098,
+      "displayName": "A02温度",
+      "sensorType": "temperature",
+      "groupTag": "",
+      "enabled": true,
+      "interval": 5,
+      "dataRange": {
+        "min": 0,
+        "max": 800
+      },
+      "lightStatus": "off",
+      "controlMode": "auto",
+      "dataTopic": "streetlight/sensor/87098/data",
+      "configJson": "{\"min\":0,\"max\":800}"
+    },
+    "sensor_96938": {
+      "sensorId": 96938,
+      "displayName": "A02湿度",
+      "sensorType": "humidity",
+      "groupTag": "",
+      "enabled": true,
+      "interval": 5,
+      "dataRange": {
+        "min": 0,
+        "max": 800
+      },
+      "lightStatus": "off",
+      "controlMode": "auto",
+      "dataTopic": "streetlight/sensor/96938/data",
+      "configJson": "{\"min\":0,\"max\":800}"
+    },
+    "sensor_11352": {
+      "sensorId": 11352,
+      "displayName": "A02功率",
+      "sensorType": "power",
+      "groupTag": "",
+      "enabled": true,
+      "interval": 5,
+      "dataRange": {
+        "min": 0,
+        "max": 800
+      },
+      "lightStatus": "off",
+      "controlMode": "auto",
+      "dataTopic": "streetlight/sensor/11352/data",
+      "configJson": "{\"min\":0,\"max\":800}"
+    },
+    "sensor_68374": {
+      "sensorId": 68374,
+      "displayName": "B01温度",
+      "sensorType": "temperature",
+      "groupTag": "",
+      "enabled": true,
+      "interval": 5,
+      "dataRange": {
+        "min": 0,
+        "max": 800
+      },
+      "lightStatus": "off",
+      "controlMode": "auto",
+      "dataTopic": "streetlight/sensor/68374/data",
+      "configJson": "{\"min\":0,\"max\":800}"
+    },
+    "sensor_76185": {
+      "sensorId": 76185,
+      "displayName": "B01湿度",
+      "sensorType": "humidity",
+      "groupTag": "",
+      "enabled": true,
+      "interval": 5,
+      "dataRange": {
+        "min": 0,
+        "max": 800
+      },
+      "lightStatus": "off",
+      "controlMode": "auto",
+      "dataTopic": "streetlight/sensor/76185/data",
+      "configJson": "{\"min\":0,\"max\":800}"
+    },
+    "sensor_95267": {
+      "sensorId": 95267,
+      "displayName": "B01功率",
+      "sensorType": "power",
+      "groupTag": "",
+      "enabled": true,
+      "interval": 5,
+      "dataRange": {
+        "min": 0,
+        "max": 800
+      },
+      "lightStatus": "off",
+      "controlMode": "auto",
+      "dataTopic": "streetlight/sensor/95267/data",
       "configJson": "{\"min\":0,\"max\":800}"
     }
   },

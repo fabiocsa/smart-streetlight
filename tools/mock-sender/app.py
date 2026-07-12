@@ -18,6 +18,7 @@ from typing import Any, Dict
 from flask import Flask, jsonify, render_template, request, Response, stream_with_context
 
 from sender.config_manager import ConfigManager, _make_sensor_key
+from sender.db import init_db, save_sensor_state
 from sender.mqtt_client import MqttClientManager
 from sender.sensor_manager import SensorManager, _sensor_label
 
@@ -382,6 +383,7 @@ def main():
     _start_time = time.time()
 
     # 初始化组件
+    init_db()  # SQLite 状态持久化
     config_mgr = ConfigManager()
     mqtt_mgr = MqttClientManager()
     sensor_mgr = SensorManager(config_mgr, mqtt_mgr)
@@ -413,6 +415,23 @@ def main():
         pass
     finally:
         logger.info("正在关闭...")
+        # 保存所有传感器状态到 SQLite
+        for s in sensor_mgr.list_sensors():
+            try:
+                save_sensor_state(s["sensorKey"], {
+                    "sensorId": s.get("sensorId", 0),
+                    "displayName": s.get("displayName", ""),
+                    "sensorType": s.get("sensorType", "light"),
+                    "enabled": s.get("enabled", True),       # ★ 保留实际的 enabled 状态
+                    "running": s.get("running", False),
+                    "interval": s.get("interval", 5),
+                    "controlMode": s.get("controlMode", "auto"),
+                    "lightStatus": s.get("lightStatus", "off"),
+                    "dataTopic": s.get("dataTopic", ""),
+                    "configJson": s.get("configJson", ""),
+                })
+            except Exception as e:
+                logger.warning(f"保存传感器 {s['sensorKey']} 状态失败: {e}")
         sensor_mgr.shutdown()
         mqtt_mgr.disconnect()
         logger.info("已安全退出")

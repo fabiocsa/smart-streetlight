@@ -23,6 +23,14 @@ from sender.data_generator import (
     generate_heartbeat,
     generate_sensor_data,
 )
+from sender.db import (
+    save_sensor_state,
+    set_sensor_running,
+    set_sensor_enabled,
+    set_sensor_mode,
+    remove_sensor_state,
+    load_all_states,
+)
 from sender.mqtt_client import MqttClientManager
 
 logger = logging.getLogger("mock-sender.sensor")
@@ -361,6 +369,7 @@ class SensorManager:
                     "groupTag": cfg.get("groupTag", ""),
                     "dataTopic": cfg.get("dataTopic", ""),
                     "running": worker.is_running,
+                    "enabled": cfg.get("enabled", True),
                     "interval": worker.interval,
                     "lightStatus": worker.light_status,
                     "controlMode": worker.control_mode,
@@ -387,6 +396,7 @@ class SensorManager:
                 "groupTag": cfg.get("groupTag", ""),
                 "dataTopic": cfg.get("dataTopic", ""),
                 "running": worker.is_running,
+                "enabled": cfg.get("enabled", True),
                 "interval": worker.interval,
                 "lightStatus": worker.light_status,
                 "controlMode": worker.control_mode,
@@ -425,6 +435,23 @@ class SensorManager:
         worker.start()
         logger.info(f"已添加传感器: {_sensor_label(cfg)} (key={saved_key})")
 
+        # 持久化到 SQLite
+        try:
+            save_sensor_state(saved_key, {
+                "sensorId": sensor_id,
+                "displayName": cfg.get("displayName", ""),
+                "sensorType": cfg.get("sensorType", "light"),
+                "enabled": True,
+                "running": True,
+                "interval": cfg.get("interval", 5),
+                "controlMode": cfg.get("controlMode", "auto"),
+                "lightStatus": cfg.get("lightStatus", "off"),
+                "dataTopic": cfg.get("dataTopic", ""),
+                "configJson": cfg.get("configJson", ""),
+            })
+        except Exception as e:
+            logger.warning(f"保存传感器状态到 SQLite 失败: {e}")
+
         # MQTT 注册（v4: 不携带 deviceId）
         sensor_info = {
             "sensorId": sensor_id,
@@ -446,6 +473,10 @@ class SensorManager:
                 return False
         worker.stop()
         self._config_mgr.remove_sensor(sensor_key)
+        try:
+            remove_sensor_state(sensor_key)
+        except Exception as e:
+            logger.warning(f"删除传感器 SQLite 状态失败: {e}")
         logger.info(f"已移除传感器: {_sensor_label(worker.config)} (key={sensor_key})")
         self._mqtt_mgr.publish_sensor_unregister(worker.sensor_id)
         return True
@@ -473,7 +504,19 @@ class SensorManager:
             worker = self._workers.get(sensor_key)
             if not worker:
                 return False
-            return worker.start()
+            ok = worker.start()
+            if ok:
+                try:
+                    set_sensor_running(sensor_key, True)
+                    set_sensor_enabled(sensor_key, True)  # 同步：启动 = 启用，重启后自动启动
+                except Exception as e:
+                    logger.warning(f"更新 SQLite 启停状态失败: {e}")
+                # 同步到 config.json
+                try:
+                    self._config_mgr.update_sensor(sensor_key, {"enabled": True})
+                except Exception:
+                    pass
+            return ok
 
     def stop_sensor(self, sensor_key: str) -> bool:
         with self._lock:
@@ -481,6 +524,16 @@ class SensorManager:
             if not worker:
                 return False
             worker.stop()
+            try:
+                set_sensor_running(sensor_key, False)
+                set_sensor_enabled(sensor_key, False)  # 同步：停止 = 禁用，重启后不自动启动
+            except Exception as e:
+                logger.warning(f"更新 SQLite 启停状态失败: {e}")
+            # 同步到 config.json
+            try:
+                self._config_mgr.update_sensor(sensor_key, {"enabled": False})
+            except Exception:
+                pass
             return True
 
     # ------------------------------------------------------------------
@@ -494,6 +547,12 @@ class SensorManager:
                 return False
             worker.update_config(updates)
             self._config_mgr.update_sensor(sensor_key, updates)
+            # 持久化控制模式
+            if "controlMode" in updates:
+                try:
+                    set_sensor_mode(sensor_key, updates["controlMode"])
+                except Exception as e:
+                    logger.warning(f"更新 SQLite 控制模式失败: {e}")
             logger.info(f"传感器 {_sensor_label(worker.config)} 配置已更新")
             return True
 
@@ -502,19 +561,58 @@ class SensorManager:
     # ------------------------------------------------------------------
 
     def load_from_config(self) -> int:
+        """从 config.json 加载传感器，并合并 SQLite 中保存的运行状态。
+        上次关闭前被停止的传感器不会自动启动。
+        """
         sensors = self._config_mgr.get_all_sensors()
+        # 加载持久化状态
+        try:
+            saved_states = load_all_states()
+        except Exception as e:
+            logger.warning(f"加载 SQLite 状态失败，将使用默认配置: {e}")
+            saved_states = {}
+
         count = 0
         for sensor_key, cfg in sensors.items():
-            if cfg.get("enabled", True) and sensor_key not in self._workers:
-                worker = SensorWorker(sensor_key, cfg, self._mqtt_mgr,
-                                      sim_config=self._config_mgr.get_simulation_config(),
-                                      on_publish=self._record_publish)
-                with self._lock:
-                    self._workers[sensor_key] = worker
+            if sensor_key in self._workers:
+                continue
+
+            # 合并持久化状态：DB 中的 running/enabled/controlMode 覆盖 config.json 默认值
+            saved = saved_states.get(sensor_key, {})
+            if saved:
+                if "enabled" in saved:
+                    cfg["enabled"] = saved["enabled"]
+                if "running" in saved:
+                    cfg["_was_running"] = saved["running"]
+                if "controlMode" in saved:
+                    cfg["controlMode"] = saved.get("controlMode", cfg.get("controlMode", "auto"))
+                logger.info(f"[本地加载] {_sensor_label(cfg)} (key={sensor_key})"
+                            f" — DB状态: enabled={saved.get('enabled')}, running={saved.get('running')}")
+
+            worker = SensorWorker(sensor_key, cfg, self._mqtt_mgr,
+                                  sim_config=self._config_mgr.get_simulation_config(),
+                                  on_publish=self._record_publish)
+            with self._lock:
+                self._workers[sensor_key] = worker
+
+            # 仅启动 enabled=True 且上次运行中的传感器
+            should_start = cfg.get("enabled", True)
+            if saved:
+                saved_enabled = saved.get("enabled", True)
+                saved_running = saved.get("running", False)
+                # enabled 优先：如果用户明确禁用了传感器，绝不启动
+                if not saved_enabled:
+                    should_start = False
+                elif "running" in saved:
+                    should_start = saved_running
+
+            if should_start:
                 worker.start()
                 count += 1
-                logger.info(f"[本地加载] {_sensor_label(cfg)} (key={sensor_key})")
-        logger.info(f"从本地配置加载了 {count} 个传感器")
+            else:
+                logger.info(f"[本地加载] {_sensor_label(cfg)} 保持停止状态（上次关闭前已停止）")
+
+        logger.info(f"从本地配置加载了 {len(sensors)} 个传感器，启动了 {count} 个")
         return count
 
     # ------------------------------------------------------------------
@@ -556,9 +654,13 @@ class SensorManager:
     def stop_all_sending(self) -> int:
         count = 0
         with self._lock:
-            for worker in self._workers.values():
+            for key, worker in self._workers.items():
                 if worker.is_running:
                     worker.stop()
+                    try:
+                        set_sensor_running(key, False)
+                    except Exception:
+                        pass
                     count += 1
         logger.info(f"已停止 {count} 个传感器的发送")
         return count
@@ -566,9 +668,13 @@ class SensorManager:
     def start_all(self) -> int:
         count = 0
         with self._lock:
-            for worker in self._workers.values():
+            for key, worker in self._workers.items():
                 if not worker.is_running:
                     if worker.start():
+                        try:
+                            set_sensor_running(key, True)
+                        except Exception:
+                            pass
                         count += 1
         logger.info(f"已启动 {count} 个传感器")
         return count
