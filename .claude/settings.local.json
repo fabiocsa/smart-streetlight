@@ -81,7 +81,19 @@
       "Bash(npx vue-tsc *)",
       "Bash(node -e \"const fs = require\\('fs'\\); const c = fs.readFileSync\\('src/views/LightTrend.vue','utf8'\\); try { new Function\\(c\\); } catch\\(e\\) {} console.log\\('Syntax check passed'\\);\")",
       "Bash(node -e \"const p = require\\('./node_modules/@element-plus/icons-vue/package.json'\\); console.log\\('icons-vue version:', p.version\\)\")",
-      "Bash(node -e \"const icons = require\\('@element-plus/icons-vue'\\); console.log\\('Grid:', !!icons.Grid\\); console.log\\('Select:', !!icons.Select\\); console.log\\('Rank:', !!icons.Rank\\); console.log\\('Plus:', !!icons.Plus\\); console.log\\('Aim:', !!icons.Aim\\); console.log\\('Pointer:', !!icons.Pointer\\);\")"
+      "Bash(node -e \"const icons = require\\('@element-plus/icons-vue'\\); console.log\\('Grid:', !!icons.Grid\\); console.log\\('Select:', !!icons.Select\\); console.log\\('Rank:', !!icons.Rank\\); console.log\\('Plus:', !!icons.Plus\\); console.log\\('Aim:', !!icons.Aim\\); console.log\\('Pointer:', !!icons.Pointer\\);\")",
+      "Bash(taskkill //PID 41532 //F)",
+      "Bash(node -e ' *)",
+      "Bash(ls data/)",
+      "Bash(ls src/main/resources/)",
+      "Bash(jps -l)",
+      "Bash(taskkill /PID 35484 /F)",
+      "Bash(mvn spring-boot:run -q)",
+      "Bash(echo '智慧路灯系统维护手册 *)",
+      "Bash(cmd.exe //c \"taskkill /F /PID 35484\")",
+      "Bash(cmd.exe //c \"taskkill /F /PID 6320\")",
+      "Bash(awk '{print $5}')",
+      "Bash(xargs -I{} cmd.exe //c \"taskkill /F /PID {}\")"
     ]
   }
 }

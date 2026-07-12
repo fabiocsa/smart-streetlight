@@ -1,12 +1,26 @@
 <template>
   <div class="sidebar">
     <div class="sidebar-header">
-      <h3>对话记录</h3>
-      <el-button type="primary" size="small" @click="$emit('new')">
+      <div class="tab-row">
+        <span
+          :class="['tab-item', { active: activeTab === 'chat' }]"
+          @click="$emit('update:activeTab', 'chat')"
+        >对话</span>
+        <span
+          :class="['tab-item', { active: activeTab === 'knowledge' }]"
+          @click="$emit('update:activeTab', 'knowledge')"
+        >知识库</span>
+      </div>
+      <el-button
+        v-if="activeTab === 'chat'"
+        type="primary" size="small" @click="$emit('new')"
+      >
         <el-icon><Plus /></el-icon> 新建
       </el-button>
     </div>
-    <div class="session-list">
+
+    <!-- 对话列表 -->
+    <div v-if="activeTab === 'chat'" class="session-list">
       <div
         v-for="s in sessions"
         :key="s.id"
@@ -34,18 +48,23 @@
         暂无对话记录
       </div>
     </div>
+
+    <!-- 知识库面板 -->
+    <KnowledgePanel v-if="activeTab === 'knowledge'" />
   </div>
 </template>
 
 <script setup>
 import { Plus, Delete } from '@element-plus/icons-vue'
+import KnowledgePanel from './KnowledgePanel.vue'
 
 defineProps({
   sessions: { type: Array, default: () => [] },
-  currentId: { type: [Number, String], default: null }
+  currentId: { type: [Number, String], default: null },
+  activeTab: { type: String, default: 'chat' }
 })
 
-defineEmits(['new', 'select', 'delete'])
+defineEmits(['new', 'select', 'delete', 'update:activeTab'])
 
 function formatTime(t) {
   if (!t) return ''
@@ -67,17 +86,35 @@ function formatTime(t) {
   background: #f5f7fa;
 }
 .sidebar-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 16px;
+  padding: 12px 12px 0;
   border-bottom: 1px solid #e4e7ed;
 }
-.sidebar-header h3 {
-  font-size: 15px;
-  font-weight: 600;
-  color: #303133;
+.tab-row {
+  display: flex;
+  gap: 0;
+  margin-bottom: 8px;
 }
+.tab-item {
+  flex: 1;
+  text-align: center;
+  padding: 8px 0;
+  font-size: 13px;
+  font-weight: 500;
+  color: #909399;
+  cursor: pointer;
+  border-bottom: 2px solid transparent;
+  transition: all 0.2s;
+}
+.tab-item:hover { color: #409EFF; }
+.tab-item.active {
+  color: #409EFF;
+  border-bottom-color: #409EFF;
+}
+
+.sidebar-header .el-button {
+  margin-bottom: 8px;
+}
+
 .session-list {
   flex: 1;
   overflow-y: auto;
