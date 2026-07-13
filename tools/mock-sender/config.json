@@ -25,7 +25,8 @@
       "configJson": "{\"min\":0,\"max\":800}",
       "autoSendMode": "algorithm",
       "autoSendContent": "",
-      "messageTemplate": ""
+      "messageTemplate": "",
+      "_was_running": true
     },
     "sensor_43748": {
       "sensorId": 43748,
@@ -41,7 +42,8 @@
       "lightStatus": "off",
       "controlMode": "auto",
       "dataTopic": "streetlight/sensor/43748/data",
-      "configJson": "{\"min\":0,\"max\":800}"
+      "configJson": "{\"min\":0,\"max\":800}",
+      "_was_running": true
     },
     "sensor_51547": {
       "sensorId": 51547,
@@ -57,45 +59,8 @@
       "lightStatus": "off",
       "controlMode": "auto",
       "dataTopic": "streetlight/sensor/51547/data",
-      "configJson": "{\"min\":0,\"max\":800}"
-    },
-    "sensor_94281": {
-      "sensorId": 94281,
-      "displayName": "雷霆大光线传感器",
-      "sensorType": "light",
-      "groupTag": "",
-      "enabled": false,
-      "interval": 5,
-      "dataRange": {
-        "min": 0,
-        "max": 800
-      },
-      "lightStatus": "off",
-      "controlMode": "auto",
-      "dataTopic": "streetlight/sensor/94281/data",
       "configJson": "{\"min\":0,\"max\":800}",
-      "autoSendMode": "fixed",
-      "autoSendContent": "{\n  \"illuminance\": 150,\n  \"lightIntensity\": 150,\n  \"cloudCover\": 0.3,\n  \"status\": \"OFF\",\n  \"sensorType\": \"light\",\n  \"timestamp\": \"{{timestamp}}\"\n}",
-      "messageTemplate": ""
-    },
-    "sensor_15645": {
-      "sensorId": 15645,
-      "displayName": "究极黑暗",
-      "sensorType": "light",
-      "groupTag": "",
-      "enabled": false,
-      "interval": 5,
-      "dataRange": {
-        "min": 0,
-        "max": 800
-      },
-      "lightStatus": "off",
-      "controlMode": "auto",
-      "dataTopic": "streetlight/sensor/15645/data",
-      "configJson": "{\"min\":0,\"max\":800}",
-      "autoSendMode": "fixed",
-      "autoSendContent": "{\n  \"illuminance\": 5,\n  \"lightIntensity\": 5,\n  \"cloudCover\": 0.3,\n  \"status\": \"OFF\",\n  \"sensorType\": \"light\",\n  \"timestamp\": \"{{timestamp}}\"\n}",
-      "messageTemplate": ""
+      "_was_running": true
     },
     "sensor_47401": {
       "sensorId": 47401,
@@ -111,7 +76,8 @@
       "lightStatus": "off",
       "controlMode": "auto",
       "dataTopic": "streetlight/sensor/47401/data",
-      "configJson": "{\"min\":0,\"max\":800}"
+      "configJson": "{\"min\":0,\"max\":800}",
+      "_was_running": true
     },
     "sensor_59264": {
       "sensorId": 59264,
@@ -127,7 +93,8 @@
       "lightStatus": "off",
       "controlMode": "auto",
       "dataTopic": "streetlight/sensor/59264/data",
-      "configJson": "{\"min\":0,\"max\":800}"
+      "configJson": "{\"min\":0,\"max\":800}",
+      "_was_running": true
     },
     "sensor_73679": {
       "sensorId": 73679,
@@ -143,7 +110,8 @@
       "lightStatus": "off",
       "controlMode": "auto",
       "dataTopic": "streetlight/sensor/73679/data",
-      "configJson": "{\"min\":0,\"max\":800}"
+      "configJson": "{\"min\":0,\"max\":800}",
+      "_was_running": true
     },
     "sensor_87098": {
       "sensorId": 87098,
@@ -159,7 +127,8 @@
       "lightStatus": "off",
       "controlMode": "auto",
       "dataTopic": "streetlight/sensor/87098/data",
-      "configJson": "{\"min\":0,\"max\":800}"
+      "configJson": "{\"min\":0,\"max\":800}",
+      "_was_running": true
     },
     "sensor_96938": {
       "sensorId": 96938,
@@ -175,7 +144,8 @@
       "lightStatus": "off",
       "controlMode": "auto",
       "dataTopic": "streetlight/sensor/96938/data",
-      "configJson": "{\"min\":0,\"max\":800}"
+      "configJson": "{\"min\":0,\"max\":800}",
+      "_was_running": true
     },
     "sensor_11352": {
       "sensorId": 11352,
@@ -191,7 +161,8 @@
       "lightStatus": "off",
       "controlMode": "auto",
       "dataTopic": "streetlight/sensor/11352/data",
-      "configJson": "{\"min\":0,\"max\":800}"
+      "configJson": "{\"min\":0,\"max\":800}",
+      "_was_running": true
     },
     "sensor_68374": {
       "sensorId": 68374,
@@ -207,7 +178,8 @@
       "lightStatus": "off",
       "controlMode": "auto",
       "dataTopic": "streetlight/sensor/68374/data",
-      "configJson": "{\"min\":0,\"max\":800}"
+      "configJson": "{\"min\":0,\"max\":800}",
+      "_was_running": true
     },
     "sensor_76185": {
       "sensorId": 76185,
@@ -223,7 +195,8 @@
       "lightStatus": "off",
       "controlMode": "auto",
       "dataTopic": "streetlight/sensor/76185/data",
-      "configJson": "{\"min\":0,\"max\":800}"
+      "configJson": "{\"min\":0,\"max\":800}",
+      "_was_running": true
     },
     "sensor_95267": {
       "sensorId": 95267,
@@ -239,6 +212,23 @@
       "lightStatus": "off",
       "controlMode": "auto",
       "dataTopic": "streetlight/sensor/95267/data",
+      "configJson": "{\"min\":0,\"max\":800}",
+      "_was_running": true
+    },
+    "sensor_31882": {
+      "sensorId": 31882,
+      "displayName": "123",
+      "sensorType": "light",
+      "groupTag": "",
+      "enabled": true,
+      "interval": 5,
+      "dataRange": {
+        "min": 0,
+        "max": 800
+      },
+      "lightStatus": "off",
+      "controlMode": "auto",
+      "dataTopic": "streetlight/sensor/31882/data",
       "configJson": "{\"min\":0,\"max\":800}"
     }
   },

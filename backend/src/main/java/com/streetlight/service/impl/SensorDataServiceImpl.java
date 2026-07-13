@@ -154,20 +154,20 @@ public class SensorDataServiceImpl implements SensorDataService {
                     data.containsKey("power") ? data.get("power") instanceof Number : "N/A");
         }
 
-        // ===== 第2步：传感器未绑定时，自动注册（仅赢家执行，避免重复注册） =====
+        // ===== 第2步：传感器未绑定时，自动注册 =====
+        // ★ autoRegisterFromData 内部已有 findBySimulatorSensorId 去重，
+        //    因此不需要 iAmFirst 保护。确保即使数据入库发生 UK 冲突也能注册。
         if (deviceId.startsWith("sensor_")) {
-            if (iAmFirst) {
-                try {
-                    String displayName = data.containsKey("displayName") && data.get("displayName") != null
-                            ? data.get("displayName").toString() : null;
-                    sensorRegistrationService.autoRegisterFromData(
-                            sensorId, sensorType, displayName,
-                            "streetlight/sensor/" + sensorId + "/data");
-                } catch (Exception e) {
-                    log.warn("传感器自动注册失败: sensorId={}, error={}", sensorId, e.getMessage());
-                }
-                log.info("传感器未绑定设备，跳过自动联动。");
+            try {
+                String displayName = data.containsKey("displayName") && data.get("displayName") != null
+                        ? data.get("displayName").toString() : null;
+                sensorRegistrationService.autoRegisterFromData(
+                        sensorId, sensorType, displayName,
+                        "streetlight/sensor/" + sensorId + "/data");
+            } catch (Exception e) {
+                log.warn("传感器自动注册失败: sensorId={}, error={}", sensorId, e.getMessage());
             }
+            log.info("传感器未绑定设备，跳过自动联动。");
             return sd;
         }
 

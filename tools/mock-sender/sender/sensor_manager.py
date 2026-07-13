@@ -463,7 +463,10 @@ class SensorManager:
             "enabled": True,
             "timestamp": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
         }
-        self._mqtt_mgr.publish_sensor_register(sensor_info)
+        ok = self._mqtt_mgr.publish_sensor_register(sensor_info)
+        if not ok:
+            logger.warning(f"[{_sensor_label(cfg)}] MQTT 注册消息发送失败（MQTT 可能未连接），"
+                           f"将由数据消息触发后端自动注册")
         return saved_key
 
     def remove_sensor(self, sensor_key: str) -> bool:
