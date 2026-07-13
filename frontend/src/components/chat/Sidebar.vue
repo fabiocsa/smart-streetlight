@@ -7,6 +7,7 @@
           @click="$emit('update:activeTab', 'chat')"
         >对话</span>
         <span
+          v-if="!authStore.isMunicipal"
           :class="['tab-item', { active: activeTab === 'knowledge' }]"
           @click="$emit('update:activeTab', 'knowledge')"
         >知识库</span>
@@ -57,6 +58,9 @@
 <script setup>
 import { Plus, Delete } from '@element-plus/icons-vue'
 import KnowledgePanel from './KnowledgePanel.vue'
+import { useAuthStore } from '../../stores/authStore'
+
+const authStore = useAuthStore()
 
 defineProps({
   sessions: { type: Array, default: () => [] },
