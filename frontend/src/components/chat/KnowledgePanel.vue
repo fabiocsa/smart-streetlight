@@ -71,6 +71,37 @@
         暂无文件，请上传知识文档
       </div>
     </div>
+
+    <!-- 操作日志 -->
+    <div class="changelog-section">
+      <div class="changelog-header">
+        <span>操作日志</span>
+        <el-button text size="small" @click="loadChangelog" :loading="changelogLoading">
+          <el-icon><Refresh /></el-icon>
+        </el-button>
+      </div>
+      <div class="changelog-list" v-loading="changelogLoading">
+        <div
+          v-for="log in changelogs"
+          :key="log.id"
+          class="changelog-item"
+          :class="'action-' + log.action.toLowerCase()"
+        >
+          <div class="changelog-top">
+            <el-tag
+              :type="log.action === 'UPLOAD' ? 'success' : 'danger'"
+              size="small"
+            >{{ log.action === 'UPLOAD' ? '上传' : '删除' }}</el-tag>
+            <span class="changelog-file">{{ log.fileName }}</span>
+          </div>
+          <div class="changelog-detail">{{ log.details }}</div>
+          <div class="changelog-time">{{ log.operator }} · {{ formatTime(log.createdAt) }}</div>
+        </div>
+        <div v-if="!changelogLoading && changelogs.length === 0" class="empty-files">
+          暂无操作记录
+        </div>
+      </div>
+    </div>
   </div>
 </template>
 
@@ -78,7 +109,7 @@
 import { ref, onMounted } from 'vue'
 import { ElMessage } from 'element-plus'
 import { UploadFilled, Document, Delete, Refresh, Close } from '@element-plus/icons-vue'
-import { uploadFile, getFiles, deleteFile } from '../../api/knowledge'
+import { uploadFile, getFiles, deleteFile, getChangelog } from '../../api/knowledge'
 
 const ALLOWED_EXTENSIONS = ['.txt', '.md', '.markdown', '.pdf', '.docx']
 const MAX_SIZE = 15 * 1024 * 1024
@@ -91,7 +122,22 @@ const uploading = ref(false)
 const loading = ref(false)
 const uploadRef = ref(null)
 
-onMounted(() => loadFiles())
+// 操作日志
+const changelogs = ref([])
+const changelogLoading = ref(false)
+
+onMounted(() => { loadFiles(); loadChangelog() })
+
+function formatTime(t) {
+  if (!t) return ''
+  const d = new Date(t)
+  const now = new Date()
+  const diff = now - d
+  if (diff < 60000) return '刚刚'
+  if (diff < 3600000) return Math.floor(diff / 60000) + '分钟前'
+  if (diff < 86400000) return Math.floor(diff / 3600000) + '小时前'
+  return d.toLocaleDateString()
+}
 
 function formatSize(bytes) {
   if (!bytes) return '0 B'
@@ -138,6 +184,7 @@ async function uploadAll() {
   if (success > 0) {
     ElMessage.success(`成功导入 ${success} 个文件`)
     await loadFiles()
+    await loadChangelog()
   }
 }
 
@@ -158,8 +205,21 @@ async function handleDelete(fileId) {
     await deleteFile(fileId)
     ElMessage.success('文件已删除')
     await loadFiles()
+    await loadChangelog()
   } catch {
     ElMessage.error('删除失败')
+  }
+}
+
+async function loadChangelog() {
+  changelogLoading.value = true
+  try {
+    const res = await getChangelog()
+    changelogs.value = (res || []).slice(0, 20)
+  } catch {
+    // ignore
+  } finally {
+    changelogLoading.value = false
   }
 }
 </script>
@@ -290,5 +350,58 @@ async function handleDelete(fileId) {
   color: #909399;
   font-size: 12px;
   padding: 24px 0;
+}
+
+/* ---- 操作日志 ---- */
+.changelog-section {
+  border-top: 2px solid #e4e7ed;
+  display: flex;
+  flex-direction: column;
+  max-height: 220px;
+}
+.changelog-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 12px 4px;
+  font-size: 13px;
+  font-weight: 600;
+  color: #303133;
+  flex-shrink: 0;
+}
+.changelog-list {
+  flex: 1;
+  overflow-y: auto;
+  padding: 4px 8px 8px;
+}
+.changelog-item {
+  padding: 6px 8px;
+  border-radius: 4px;
+  margin-bottom: 4px;
+  font-size: 12px;
+  border-left: 3px solid #909399;
+}
+.changelog-item.action-upload { border-left-color: #67c23a; }
+.changelog-item.action-delete { border-left-color: #f56c6c; }
+.changelog-top {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.changelog-file {
+  color: #303133;
+  font-weight: 500;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.changelog-detail {
+  color: #606266;
+  margin-top: 2px;
+}
+.changelog-time {
+  color: #909399;
+  font-size: 11px;
+  margin-top: 2px;
 }
 </style>

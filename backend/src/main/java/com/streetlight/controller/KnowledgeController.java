@@ -2,7 +2,9 @@ package com.streetlight.controller;
 
 import com.streetlight.common.Result;
 import com.streetlight.config.EmbeddingConfig;
+import com.streetlight.entity.KnowledgeChangelog;
 import com.streetlight.entity.KnowledgeFile;
+import com.streetlight.repository.KnowledgeChangelogRepository;
 import com.streetlight.repository.KnowledgeFileRepository;
 import com.streetlight.service.EmbeddingService;
 import com.streetlight.service.VectorStore;
@@ -13,6 +15,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
 
+import jakarta.servlet.http.HttpServletRequest;
 import java.io.IOException;
 import java.util.*;
 
@@ -29,9 +32,11 @@ import java.util.*;
 public class KnowledgeController {
 
     private final KnowledgeFileRepository fileRepo;
+    private final KnowledgeChangelogRepository changelogRepo;
     private final VectorStore vectorStore;
     private final EmbeddingService embeddingService;
     private final EmbeddingConfig embeddingConfig;
+    private final HttpServletRequest request;
 
     private static final Set<String> ALLOWED_EXTENSIONS =
             Set.of(".txt", ".md", ".markdown", ".pdf", ".docx");
@@ -129,6 +134,18 @@ public class KnowledgeController {
         // 持久化向量存储
         vectorStore.saveToFile();
 
+        // 记录操作日志
+        changelogRepo.save(KnowledgeChangelog.builder()
+                .fileId(kf.getId())
+                .fileName(originalName)
+                .action("UPLOAD")
+                .fileType(kf.getFileType())
+                .fileSize(file.getSize())
+                .chunkCount(embedded)
+                .details("上传文件，" + text.length() + " 字符 → " + chunks.size() + " 块 → " + embedded + " 条向量")
+                .operator(getCurrentUser())
+                .build());
+
         log.info("文件导入完成: {} → {} 字符 → {} 块 → {} 条向量",
                 originalName, text.length(), chunks.size(), embedded);
 
@@ -176,6 +193,18 @@ public class KnowledgeController {
         fileRepo.delete(kf);
         vectorStore.saveToFile();
 
+        // 记录操作日志
+        changelogRepo.save(KnowledgeChangelog.builder()
+                .fileId(fileId)
+                .fileName(kf.getFileName())
+                .action("DELETE")
+                .fileType(kf.getFileType())
+                .fileSize(kf.getFileSize())
+                .chunkCount(removed)
+                .details("删除文件，移除 " + removed + " 条向量")
+                .operator(getCurrentUser())
+                .build());
+
         log.info("已删除文件: {} (fileId={}, 移除 {} 条向量)", kf.getFileName(), fileId, removed);
 
         return Result.success(Map.of(
@@ -186,11 +215,43 @@ public class KnowledgeController {
         ));
     }
 
+    /** 查询操作日志 */
+    @GetMapping("/changelog")
+    public Result<List<Map<String, Object>>> changelog(@RequestParam(required = false) Long fileId) {
+        List<KnowledgeChangelog> logs;
+        if (fileId != null) {
+            logs = changelogRepo.findByFileIdOrderByCreatedAtDesc(fileId);
+        } else {
+            logs = changelogRepo.findAllByOrderByCreatedAtDesc();
+        }
+        List<Map<String, Object>> result = new ArrayList<>();
+        for (KnowledgeChangelog cl : logs) {
+            result.add(Map.of(
+                    "id", cl.getId(),
+                    "fileId", cl.getFileId(),
+                    "fileName", cl.getFileName(),
+                    "action", cl.getAction(),
+                    "fileType", cl.getFileType(),
+                    "fileSize", cl.getFileSize(),
+                    "chunkCount", cl.getChunkCount(),
+                    "details", cl.getDetails() != null ? cl.getDetails() : "",
+                    "operator", cl.getOperator() != null ? cl.getOperator() : "",
+                    "createdAt", cl.getCreatedAt() != null ? cl.getCreatedAt().toString() : ""
+            ));
+        }
+        return Result.success(result);
+    }
+
     // ---- 辅助 ----
 
     private String getExtension(String filename) {
         int dot = filename.lastIndexOf('.');
         return dot > 0 ? "." + filename.substring(dot + 1) : "";
+    }
+
+    private String getCurrentUser() {
+        Object username = request.getAttribute("username");
+        return username != null ? username.toString() : "未知用户";
     }
 
     private long countChunksByFileId(String fileId) {
