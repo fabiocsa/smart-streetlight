@@ -214,22 +214,6 @@
       "dataTopic": "streetlight/sensor/95267/data",
       "configJson": "{\"min\":0,\"max\":800}",
       "_was_running": true
-    },
-    "sensor_31882": {
-      "sensorId": 31882,
-      "displayName": "123",
-      "sensorType": "light",
-      "groupTag": "",
-      "enabled": true,
-      "interval": 5,
-      "dataRange": {
-        "min": 0,
-        "max": 800
-      },
-      "lightStatus": "off",
-      "controlMode": "auto",
-      "dataTopic": "streetlight/sensor/31882/data",
-      "configJson": "{\"min\":0,\"max\":800}"
     }
   },
   "simulation": {

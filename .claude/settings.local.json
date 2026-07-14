@@ -93,7 +93,11 @@
       "Bash(cmd.exe //c \"taskkill /F /PID 35484\")",
       "Bash(cmd.exe //c \"taskkill /F /PID 6320\")",
       "Bash(awk '{print $5}')",
-      "Bash(xargs -I{} cmd.exe //c \"taskkill /F /PID {}\")"
+      "Bash(xargs -I{} cmd.exe //c \"taskkill /F /PID {}\")",
+      "Read(//e//**)",
+      "Bash(ls \"E:/JAVA/下/smart-streetlight\")",
+      "Bash(ls /mnt/e/JAVA/下/smart-streetlight)",
+      "Bash(ls /e/JAVA/下/smart-streetlight)"
     ]
   }
 }

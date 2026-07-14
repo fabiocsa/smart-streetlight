@@ -127,7 +127,10 @@ public class ChatServiceImpl implements ChatService {
     // ==================== LLM 调用 ====================
 
     private String generateAnswer(String question, List<Map<String, String>> context) {
-        // 第一步：工具选择
+        // 第一步：知识库检索（无条件优先执行）
+        String knowledgeCtx = searchKnowledge(question);
+
+        // 第二步：工具选择
         ToolCall toolCall = null;
         try {
             toolCall = selectTool(question);
@@ -135,11 +138,11 @@ public class ChatServiceImpl implements ChatService {
             log.warn("工具选择失败，降级为通用问答", e);
         }
 
-        // 第二步：生成回答（带上下文）
+        // 第三步：生成回答（知识库内容同时传入两条路径）
         if (toolCall != null && toolCall.tool != null) {
-            return answerWithData(question, context, toolCall);
+            return answerWithData(question, context, toolCall, knowledgeCtx);
         }
-        return answerDirect(question, context);
+        return answerDirect(question, context, knowledgeCtx);
     }
 
     private ToolCall selectTool(String question) {
@@ -174,31 +177,38 @@ public class ChatServiceImpl implements ChatService {
         return new ToolCall(toolName, params != null ? params : Map.of());
     }
 
-    private String answerWithData(String question, List<Map<String, String>> context, ToolCall toolCall) {
+    private String answerWithData(String question, List<Map<String, String>> context,
+                                   ToolCall toolCall, String knowledgeCtx) {
         log.info("执行工具: {} params={}", toolCall.tool, toolCall.params);
         String toolResult = toolExecutor.execute(toolCall.tool, toolCall.params);
 
-        String systemPrompt = """
-                你是智慧路灯管理系统的智能助手，用中文简洁自然地回答用户问题。
-                以下是系统查询到的实时数据，请基于这些数据回答用户问题。
+        StringBuilder systemPrompt = new StringBuilder();
+        systemPrompt.append("""
+                你是智慧路灯管理系统的智能助手，用中文简洁自然地回答用户问题。""");
+
+        if (!knowledgeCtx.isEmpty()) {
+            systemPrompt.append("\n\n以下是从知识库中检索到的相关内容，请优先基于这些内容回答问题：\n")
+                    .append(knowledgeCtx);
+        }
+
+        systemPrompt.append("""
+
+                以下是系统查询到的实时数据，请结合知识库内容和实时数据回答用户问题。
                 如果数据中有 error 字段，请友好地告知用户查询出了问题。
-                不要编造数据中没有的信息。""";
+                不要编造数据中没有的信息。""");
 
         String userPrompt = "用户问题：" + question + "\n\n系统查询数据：" + toolResult;
 
-        // 构造 messages：system + 历史上下文 + 当前数据问题
         List<Map<String, String>> messages = new ArrayList<>();
-        messages.add(Map.of("role", "system", "content", systemPrompt));
+        messages.add(Map.of("role", "system", "content", systemPrompt.toString()));
         messages.addAll(context);
         messages.add(Map.of("role", "user", "content", userPrompt));
 
         return callLLM(messages);
     }
 
-    private String answerDirect(String question, List<Map<String, String>> context) {
-        // 优先从知识库检索相关知识
-        String knowledgeCtx = searchKnowledge(question);
-
+    private String answerDirect(String question, List<Map<String, String>> context,
+                                 String knowledgeCtx) {
         List<Map<String, String>> messages = new ArrayList<>();
         if (!knowledgeCtx.isEmpty()) {
             messages.add(Map.of("role", "system", "content", config.getSystemPrompt()
@@ -219,7 +229,7 @@ public class ChatServiceImpl implements ChatService {
         try {
             float[] qe = embeddingService.embed(question);
             List<SearchResult> results = vectorStore.search(qe, 3);
-            if (results.isEmpty() || results.get(0).score() < 0.5) return "";
+            if (results.isEmpty() || results.get(0).score() < 0.3) return "";
             StringBuilder sb = new StringBuilder();
             for (int i = 0; i < results.size(); i++) {
                 var r = results.get(i);
