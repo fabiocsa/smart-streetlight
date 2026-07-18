@@ -42,4 +42,14 @@ public interface SensorDataService {
      */
     Map<String, Object> getStats(String deviceId, String field,
                                   LocalDateTime start, LocalDateTime end);
+
+    /**
+     * 获取指定传感器在时间范围内的历史数据（带条目上限）。
+     * @param sensorId 传感器 ID
+     * @param start    起始时间
+     * @param end      结束时间
+     * @param limit    最大返回条数（≤0 时使用默认值 2000）
+     */
+    List<SensorData> getHistoryBySensorId(Long sensorId, LocalDateTime start,
+                                           LocalDateTime end, int limit);
 }

@@ -60,7 +60,7 @@ npm run preview                        # 预览生产构建
 # Mock 数据发生器（Python）
 cd tools/mock-sender
 pip install -r requirements.txt
-python app.py                          # 启动 Web 管理界面（端口 5000）+ MQTT 模拟器
+python app.py                          # 启动 Web 管理界面（端口 5050）+ MQTT 模拟器
 
 # 数据库（连接远程 MySQL，初始化脚本）
 mysql -h 8.130.102.89 -u remote_user -p streetlight < docs/init.sql
@@ -83,10 +83,10 @@ mysql -h 8.130.102.89 -u remote_user -p streetlight < docs/init.sql
 | Controller | `controller/` | REST API，`/api/*` 前缀 |
 | Service | `service/` + `service/impl/` | 业务逻辑 |
 | Repository | `repository/` | Spring Data JPA，含原生 SQL 与 JPQL 聚合查询 |
-| Entity | `entity/` | JPA 实体：Device, Sensor, SensorData(JSON列), AlarmLog, ControlLog, ChatMessage, ChatSession, User |
+| Entity | `entity/` | JPA 实体：Device, Sensor, SensorData(JSON列), AlarmLog, AlarmRule, ControlLog, ChatMessage, ChatSession, User, HandlerList, KnowledgeArticle, KnowledgeFile, SystemConfig |
 | MQTT | `mqtt/` | `MqttClientManager`（连接/订阅/主题路由）、`MqttMessageHandler`（消息分发）、`MqttPublishService`（发送指令） |
 | WebSocket | `websocket/` | `WebSocketHandler`，端点 `/ws/monitor`，广播 SENSOR_DATA / DEVICE_STATUS / NEW_ALARM / CONTROL_RESULT |
-| Config | `config/` | MQTT、WebSocket、CORS、DeepSeek、RestTemplate |
+| Config | `config/` | MQTT、WebSocket、CORS、DeepSeek、Embedding、MaxKB、RestTemplate、WebMVC |
 | Security | `security/` | JWT 鉴权 + `AuthInterceptor` |
 | Common | `common/` | `Result`（统一响应体）、`GlobalExceptionHandler`、`BusinessException` |
 
@@ -102,7 +102,7 @@ mysql -h 8.130.102.89 -u remote_user -p streetlight < docs/init.sql
 | 传感器管理（增删改/绑定） | ✅ | ✅ | ❌ |
 | 设备控制（开关灯/模式切换） | ✅ | ✅ | ✅ |
 | 批量阈值设置 | ✅ | ✅ | ❌ |
-| 告警管理 & 告警规则 | ✅ | ❌ | ❌ |
+| 告警管理 & 告警规则 | ✅ | ✅ | ❌ |
 | AI 智能问答 | ✅ | ✅ | ✅ |
 | 历史趋势 | ✅ | ✅ | ✅ |
 
@@ -119,6 +119,7 @@ mysql -h 8.130.102.89 -u remote_user -p streetlight < docs/init.sql
 | `AlarmType` | `enums/` | `OFFLINE`, `SENSOR_ABNORMAL`, `VOLTAGE_ABNORMAL`, `TEMPERATURE_HIGH`, `POWER_HIGH` |
 | `AlarmSeverity` | `enums/` | `INFO`, `WARNING`, `CRITICAL` |
 | `AlarmStatus` | `enums/` | `PENDING`（待处理）, `RESOLVED`（已解除） |
+| `AssignmentMode` | `enums/` | `manual`（手动指派）, `auto`（自动轮流分配） |
 
 ### 速查：关键 Service (v5)
 
@@ -131,6 +132,14 @@ mysql -h 8.130.102.89 -u remote_user -p streetlight < docs/init.sql
 | `SensorRegistrationService` | 传感器自动注册/注销，`autoRegisterFromData()` 使用 `REQUIRES_NEW` 事务 |
 | `HeartbeatChecker.checkHeartbeats()` | `@Scheduled(fixedRate=5000)` 每 5 秒检查心跳超时，标记离线并生成告警 |
 | `ChatServiceImpl` | DeepSeek API 多轮对话 |
+| `RagServiceImpl` | RAG 检索增强：向量检索 → context 注入 → DeepSeek 生成回答 |
+| `EmbeddingService` / `OpenAiEmbeddingServiceImpl` | 文本向量化（智谱 embedding-2，1024 维），用于知识库检索 |
+| `VectorStore` | 向量持久化 + 余弦相似度检索（JSON 文件存储） |
+| `ToolExecutor` | AI Function Calling 执行器：将工具调用请求映射到 Spring Bean 方法 |
+| `AlarmRuleServiceImpl` | 告警规则 CRUD + 启用/禁用 |
+| `HandlerServiceImpl` | 告警处理人 CRUD + 指派模式切换 + 自动轮流分配 |
+| `MaxKBClient` | 外部知识库（MaxKB）集成客户端 |
+| `KnowledgeBaseInitializer` | 应用启动时初始化向量存储 |
 
 ### 循环依赖处理
 
@@ -143,17 +152,21 @@ mysql -h 8.130.102.89 -u remote_user -p streetlight < docs/init.sql
 | 路由 | 组件 | 说明 | 权限 |
 |---|---|---|---|
 | `/login` | Login.vue | 登录页 | 公开 |
-| `/dashboard` | Dashboard.vue | 仪表盘总览 | admin, municipal |
-| `/devices` | DeviceList.vue | 设备管理 CRUD | admin, municipal |
-| `/devices/:id` | DeviceDetail.vue | 设备详情 + 传感器绑定 | admin, municipal |
-| `/sensors` | SensorList.vue | 传感器管理 | admin, municipal |
-| `/light-trend` | LightTrend.vue | 历史趋势（ECharts 多指标） | admin, municipal |
-| `/alarms` | AlarmList.vue | 告警管理 | **仅 admin** |
-| `/chat` | ChatView.vue | AI 智能问答 | admin, municipal |
+| `/dashboard` | Dashboard.vue | 仪表盘总览 | admin, operator, municipal |
+| `/devices` | DeviceList.vue | 设备管理 CRUD | admin, operator, municipal |
+| `/devices/:id` | DeviceDetail.vue | 设备详情 + 传感器绑定 | admin, operator, municipal |
+| `/sensors` | SensorList.vue | 传感器管理 | admin, operator, municipal |
+| `/light-trend` | LightTrend.vue | 历史趋势（ECharts 多指标） | admin, operator, municipal |
+| `/alarms` | AlarmList.vue | 告警管理 | admin, operator |
+| `/chat` | ChatView.vue | AI 智能问答 | admin, operator, municipal |
 
 路由使用 `createWebHashHistory`（hash 模式），`router.beforeEach` 守卫检查 token 和角色权限。
 
-状态管理：`stores/authStore.js`（登录/登出/角色）、`stores/chatStore.js`（AI 对话历史）。
+状态管理：`stores/authStore.js`（登录/登出/角色）、`stores/chatStore.js`（AI 对话历史）、`store/device.js`（设备 CRUD）、`store/sensor.js`（传感器管理）。注意：存在 `stores/` 和 `store/` 两个独立目录，均为 Pinia store，命名未统一。
+
+通用工具函数：`utils/common.js`（`formatTime`、`typeLabel`、`sensorTypeTag`、`debounce`、`clone` 等）。
+
+地图组件：`DeviceMap.vue` 使用高德地图 JSAPI Loader（`@amap/amap-jsapi-loader`）在仪表盘展示设备位置分布。
 
 ### WebSocket 实时数据
 
@@ -173,6 +186,35 @@ mysql -h 8.130.102.89 -u remote_user -p streetlight < docs/init.sql
 - `system-prompt` 注入角色：你是一个智慧路灯管理系统的智能助手…
 - 支持多轮对话：`ChatMessage` 表存储历史消息，按 `ChatSession` 分组
 - 前端 `/chat` 页面实现流式打字机效果（非真实 SSE 流，前端模拟逐字显示）
+
+## RAG 知识库 & 告警处理人
+
+### RAG 增强问答
+
+项目通过 Spring AI + 嵌入模型实现了基于知识库的 RAG（检索增强生成）问答：
+
+- **嵌入服务**：`EmbeddingService` / `OpenAiEmbeddingServiceImpl` 使用智谱 `embedding-2` 模型（1024 维，OpenAI 兼容接口），配置在 `application.yml` 的 `embedding` 段，支持环境变量覆盖（`EMBEDDING_API_BASE`、`EMBEDDING_API_KEY`、`EMBEDDING_MODEL`）
+- **向量存储**：`VectorStore` 将文档切片向量持久化到 JSON 文件（`data/knowledge-vector-store.json`），启动时自动加载，支持简单的余弦相似度检索
+- **知识文件**：`KnowledgeController`（`/api/knowledge`）支持上传 PDF/Word/txt 文件，后端使用 PDFBox 3.0.3 + POI 5.3.0 解析文本后切片向量化存入 `VectorStore`
+- **RAG 问答**：`RagController`（`POST /api/rag/ask`）接收用户问题 → `RagServiceImpl` 检索相关知识库片段 → 拼接为 context 注入 system prompt → 调用 DeepSeek API 生成回答
+- **工具调用**：`ToolExecutor` 支持 Function Calling 模式，将 AI 对工具调用的请求（如查设备状态、查告警列表）映射到对应的 Spring Bean 方法执行
+- **MaxKB 集成**：`MaxKBClient` + `MaxKBProperties` 为可选的外部知识库集成预留接口
+- **前端**：`ChatView.vue` 侧边栏包含 `KnowledgePanel.vue`（文件上传/列表管理），`KnowledgeBaseInitializer` 在应用启动时初始化向量存储
+
+依赖：Spring AI 1.0.0-M4（Milestone 仓库），`spring-ai-openai-spring-boot-starter` 用于嵌入调用。注意 `application.yml` 中排除了 `OpenAiAutoConfiguration`（Spring AI 的 OpenAI 自动配置）以避免冲突。
+
+### 告警处理人系统
+
+告警可指派给处理人（`HandlerList` 实体），支持两种模式（`AssignmentMode` 枚举）：
+
+- **手动模式** (`manual`)：管理员从处理人列表中手动选择指派
+- **自动模式** (`auto`)：新告警触发时，系统轮流分配给启用的处理人
+
+前端 `AlarmList.vue` 集成处理人指派 UI。`HandlerController`（`/api/handlers`）提供处理人 CRUD 和模式切换接口。
+
+### 告警规则引擎
+
+`AlarmRule` 实体支持为不同传感器类型配置告警阈值规则，`AlarmRuleController`（`/api/alarm-rules`）提供 CRUD + 启用/禁用切换。告警阈值（电压/温度/功率）可通过 `AlarmController` 的配置接口动态调整，替代硬编码阈值。
 
 ## Mock 数据发生器 (v5)
 
@@ -223,6 +265,16 @@ deepseek.enabled: true                  # 设为 false 可禁用 AI 问答（Cha
 ```
 
 MQTT Client ID 必须唯一（当前为 `backend-server-v2`，mock-sender 为 `mock-sender-v4`），多实例部署时需改为动态生成。
+
+### 依赖要点
+
+- **Spring AI**：通过 Spring Milestones 仓库引入 `1.0.0-M4` 版本（BOM `spring-ai-bom`），使用 `spring-ai-openai-spring-boot-starter` 做嵌入调用。注意 `application.yml` 中排除了 `OpenAiAutoConfiguration` 避免自动配置冲突
+- **文档解析**：PDFBox 3.0.3（PDF）+ POI 5.3.0（Word）用于知识库文件上传时的文本提取
+- **JVM 构建参数**：`-Xmx512m -Xms256m`（在 pom.xml 中配置）
+
+### 安全注意事项
+
+**API 密钥已硬编码在 `application.yml` 中**（DeepSeek API Key 和智谱 Embedding API Key），不适合生产环境。建议迁移到环境变量或密钥管理服务。Embedding 配置已支持环境变量覆盖（`EMBEDDING_API_KEY` 等），但 DeepSeek 密钥尚未支持。
 
 ### 无测试覆盖
 

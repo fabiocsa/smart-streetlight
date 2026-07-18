@@ -29,3 +29,8 @@ export function deleteSensor(id) {
 export function updateFrequency(id, data) {
   return request.put(`/sensors/${id}/frequency`, data)
 }
+
+/** 查询传感器历史数据 */
+export function getSensorHistory(sensorId, params) {
+  return request.get(`/sensors/${sensorId}/history`, { params })
+}

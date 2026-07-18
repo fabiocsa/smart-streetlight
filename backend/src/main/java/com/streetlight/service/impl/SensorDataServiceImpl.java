@@ -17,6 +17,8 @@ import com.streetlight.websocket.WebSocketHandler;
 import jakarta.persistence.EntityManager;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.dao.DataIntegrityViolationException;
+import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.transaction.support.TransactionSynchronization;
@@ -241,13 +243,19 @@ public class SensorDataServiceImpl implements SensorDataService {
 
         // 策略A：指定主传感器 — 非主传感器上报的数据跳过
         if ("single".equals(strategy) && primarySensorId != null && sensorId != null) {
-            if (!primarySensorId.equals(sensorId)) {
-                log.info("设备 {} 主传感器为 {}，忽略传感器 {} 的光照数据（策略=single）",
-                        deviceId, primarySensorId, sensorId);
+            // 将 primarySensorId（DB PK）解析为 simulatorSensorId，与 MQTT 上报的 sensorId 比较
+            Long resolvedPrimaryId = primarySensorId;
+            Sensor primarySensor = sensorRepository.findById(primarySensorId).orElse(null);
+            if (primarySensor != null && primarySensor.getSimulatorSensorId() != null) {
+                resolvedPrimaryId = primarySensor.getSimulatorSensorId();
+            }
+            if (!resolvedPrimaryId.equals(sensorId)) {
+                log.info("设备 {} 主传感器为 {}(simId={})，忽略传感器 {} 的光照数据（策略=single）",
+                        deviceId, primarySensorId, resolvedPrimaryId, sensorId);
                 return sd;
             }
-            log.info("设备 {} 使用主传感器 {} 的光照值进行决策: {}",
-                    deviceId, primarySensorId, lightIntensity);
+            log.info("设备 {} 使用主传感器 {}(simId={}) 的光照值进行决策: {}",
+                    deviceId, primarySensorId, resolvedPrimaryId, lightIntensity);
         }
 
         // 策略B：平均值 — 取所有已绑定 light 传感器最新数据的平均值
@@ -258,8 +266,10 @@ public class SensorDataServiceImpl implements SensorDataService {
                 double sum = 0;
                 int count = 0;
                 for (Sensor bs : boundLightSensors) {
+                    Long lookupId = bs.getSimulatorSensorId() != null
+                            ? bs.getSimulatorSensorId() : bs.getId();
                     SensorData latest = sensorDataRepository
-                            .findTopBySensorIdOrderByReportedAtDesc(bs.getId())
+                            .findTopBySensorIdOrderByReportedAtDesc(lookupId)
                             .orElse(null);
                     if (latest != null) {
                         Double val = latest.getIlluminance();
@@ -390,6 +400,15 @@ public class SensorDataServiceImpl implements SensorDataService {
         stats.put("min", sensorDataRepository.minByField(deviceId, field, start, end));
         stats.put("count", sensorDataRepository.countByDeviceIdAndTimeRange(deviceId, start, end));
         return stats;
+    }
+
+    @Override
+    public List<SensorData> getHistoryBySensorId(Long sensorId, LocalDateTime start,
+                                                  LocalDateTime end, int limit) {
+        int effectiveLimit = limit > 0 ? limit : 2000;
+        Pageable pageable = PageRequest.of(0, effectiveLimit);
+        return sensorDataRepository.findBySensorIdAndReportedAtBetweenOrderByReportedAtAsc(
+                sensorId, start, end, pageable);
     }
 
     // ==================== 电压配置辅助方法 ====================

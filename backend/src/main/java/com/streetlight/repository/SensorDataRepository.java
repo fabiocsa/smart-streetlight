@@ -1,6 +1,7 @@
 package com.streetlight.repository;
 
 import com.streetlight.entity.SensorData;
+import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
@@ -27,6 +28,10 @@ public interface SensorDataRepository extends JpaRepository<SensorData, Long> {
 
     /** 获取指定传感器的最新一条数据 */
     Optional<SensorData> findTopBySensorIdOrderByReportedAtDesc(Long sensorId);
+
+    /** 按传感器ID + 时间范围查询历史数据（带分页限制条数） */
+    List<SensorData> findBySensorIdAndReportedAtBetweenOrderByReportedAtAsc(
+            Long sensorId, LocalDateTime start, LocalDateTime end, Pageable pageable);
 
     List<SensorData> findBySensorTypeAndReportedAtBetweenOrderByReportedAtAsc(
             String sensorType, LocalDateTime start, LocalDateTime end);

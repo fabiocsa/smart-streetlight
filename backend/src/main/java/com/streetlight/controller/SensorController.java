@@ -5,13 +5,17 @@ import com.streetlight.dto.SensorFrequencyRequest;
 import com.streetlight.dto.SensorRequest;
 import com.streetlight.dto.SensorUpdateRequest;
 import com.streetlight.entity.Sensor;
+import com.streetlight.entity.SensorData;
+import com.streetlight.service.SensorDataService;
 import com.streetlight.service.SensorService;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
+import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
+import java.time.LocalDateTime;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -27,6 +31,7 @@ import java.util.Map;
 public class SensorController {
 
     private final SensorService sensorService;
+    private final SensorDataService sensorDataService;
 
     /** 获取所有传感器 */
     @GetMapping
@@ -86,5 +91,21 @@ public class SensorController {
         result.put("message", "传感器配置已同步到模拟器");
         result.put("syncedCount", count);
         return Result.success(result);
+    }
+
+    /** 查询传感器历史数据（通过 DB ID 查找 → 用 simulatorSensorId 查询 sensor_data） */
+    @GetMapping("/{sensorId}/history")
+    public ResponseEntity<List<SensorData>> getSensorHistory(
+            @PathVariable Long sensorId,
+            @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) LocalDateTime start,
+            @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) LocalDateTime end,
+            @RequestParam(defaultValue = "2000") int limit) {
+        Sensor sensor = sensorService.getSensorById(sensorId).orElse(null);
+        if (sensor == null) {
+            return ResponseEntity.notFound().build();
+        }
+        Long lookupId = sensor.getSimulatorSensorId() != null
+                ? sensor.getSimulatorSensorId() : sensor.getId();
+        return ResponseEntity.ok(sensorDataService.getHistoryBySensorId(lookupId, start, end, limit));
     }
 }

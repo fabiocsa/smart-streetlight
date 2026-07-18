@@ -126,8 +126,9 @@
             {{ formatTime(row.updatedAt) }}
           </template>
         </el-table-column>
-        <el-table-column label="操作" width="160" fixed="right">
+        <el-table-column label="操作" width="240" fixed="right">
           <template #default="{ row }">
+            <el-button type="primary" link @click="openHistoryDialog(row)">历史数据</el-button>
             <el-button v-if="authStore.isAdmin || authStore.isOperator" type="primary" link @click="openEditDialog(row)">编辑</el-button>
             <el-popconfirm
               v-if="authStore.isAdmin || authStore.isOperator"
@@ -166,6 +167,12 @@
       :edit-data="editingSensor"
       @saved="handleSaved"
     />
+
+    <!-- 传感器历史数据对话框 -->
+    <SensorHistoryDialog
+      v-model:visible="historyDialogVisible"
+      :sensor="selectedSensorForHistory"
+    />
   </div>
 </template>
 
@@ -175,6 +182,7 @@ import { ElMessage, ElMessageBox } from 'element-plus'
 import { useDeviceStore } from '../store/device'
 import { useSensorStore } from '../store/sensor'
 import SensorForm from '../components/SensorForm.vue'
+import SensorHistoryDialog from '../components/SensorHistoryDialog.vue'
 import { formatTime, typeLabel, debounce, resetPage } from '../utils/common'
 import { useAuthStore } from '../stores/authStore'
 
@@ -188,6 +196,8 @@ const filterType = ref('')
 const filterEnabled = ref('')
 const dialogVisible = ref(false)
 const editingSensor = ref(null)
+const historyDialogVisible = ref(false)
+const selectedSensorForHistory = ref(null)
 const currentPage = ref(1)
 const pageSize = 10
 const selectedIds = ref([])
@@ -246,6 +256,11 @@ async function refreshAll() {
 function openEditDialog(sensor) {
   editingSensor.value = { ...sensor }
   dialogVisible.value = true
+}
+
+function openHistoryDialog(sensor) {
+  selectedSensorForHistory.value = sensor
+  historyDialogVisible.value = true
 }
 
 function handleSaved() {
