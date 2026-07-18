@@ -15,6 +15,9 @@ tools/mock-sender/state.db
 # Frontend build
 frontend/dist/
 
+# Docs (AI-generated)
+docs/deepseek-init.md
+
 # Claude Code
 .claude/settings.local.json
 
