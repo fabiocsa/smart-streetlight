@@ -151,6 +151,21 @@ mysql -h 8.130.102.89 -u remote_user -p streetlight < docs/init.sql
 
 ## 前端架构
 
+### 主题系统（暗色/亮色双模）
+
+- `styles/global.css` — 全局 CSS 变量 + Element Plus 全套暗色覆盖。通过 `<html data-theme="dark|light">` 切换，所有颜色属性使用 `* { transition: ... }` 平滑过渡
+- `composables/useTheme.js` — `toggle()` 切换、`isDark` 状态、`localStorage` 持久化、监听系统 `prefers-color-scheme`
+- 所有组件和页面中使用 `var(--text-primary)` / `var(--bg-card)` / `var(--blue)` 等 CSS 变量，**禁止硬编码颜色**
+- Element Plus 按钮配色已全局重写（hover 上浮 + 发光阴影），通过 `--el-button-*` 变量控制
+
+### 导航栏（NavBar）
+
+`components/NavBar.vue` — 顶部固定导航栏，替代旧版侧边栏：
+- **顶部透明**：scrollY=0 时完全透明融入背景，滚动后 `has-bg` class 触发半透明毛玻璃
+- **智能显隐**：向下滚动隐藏，向上滚动/鼠标靠近顶部 60px/在页面顶部时显示
+- 菜单：仪表盘、设备、传感器、趋势、告警（admin/operator）、AI问答
+- 右侧：WS 状态灯、时钟、主题切换按钮（太阳↔月亮旋转动画）、告警铃铛、用户头像下拉
+
 ### 路由与权限
 
 | 路由 | 组件 | 说明 | 权限 |
@@ -170,7 +185,15 @@ mysql -h 8.130.102.89 -u remote_user -p streetlight < docs/init.sql
 
 通用工具函数：`utils/common.js`（`formatTime`、`typeLabel`、`sensorTypeTag`、`debounce`、`clone`、`lightStatusLabel`、`lightStatusTagType`、`isLightOn`）。灯光相关函数统一处理离线/unknown 状态，前端各组件应使用这些工具函数而非直接判断 `lightStatus === 'on'`。
 
-地图组件：`DeviceMap.vue` 使用高德地图 JSAPI Loader（`@amap/amap-jsapi-loader`）在仪表盘展示设备位置分布。
+地图组件：`DeviceMap.vue` 使用高德地图 JSAPI Loader（`@amap/amap-jsapi-loader`）在仪表盘展示设备位置分布。支持 `focusDeviceId` prop（外部触发地图聚焦）和 `select-device` emit（点击标记通知父组件）。暗色模式下通过 CSS `filter: invert(0.88) hue-rotate(180deg)` 反转地图颜色。
+
+### API 请求层
+
+`api/request.js` — axios 实例，`timeout: 15000`：
+- **错误去重**：`showErrorOnce()` 3 秒内相同消息不重复弹
+- **超时静默**：`ECONNABORTED` / `ERR_CANCELED` 不弹全局提示，由调用方自行处理
+- **控制 API**：`sendControl` / `setControlMode` 等单独设 `timeout: 8000`
+- 401 用 `router.push('/login')` 而非 `window.location.hash`
 
 ### WebSocket 实时数据
 
@@ -183,7 +206,15 @@ mysql -h 8.130.102.89 -u remote_user -p streetlight < docs/init.sql
 | `SENSOR_DATA` | 更新仪表盘实时数据面板（光照/温度/湿度/功率） |
 | `DEVICE_STATUS` | 更新设备在线/离线状态指示 |
 | `NEW_ALARM` | 弹出告警通知 + 刷新告警列表 |
-| `CONTROL_RESULT` | 显示控制指令执行结果通知 |
+| `CONTROL_RESULT` | 显示控制指令执行结果通知（含 `source` 字段，前端据此判断是否切换模式） |
+
+### 控制流注意事项
+
+- **CONTROL_RESULT.source**：后端 `updateControlResult` 从 ControlLog 提取 source 并通过 WebSocket 推送。前端 `handleControlResult` 检查 `data.source !== 'auto'` 才切换为手动模式，自动联动不改变模式
+- **DEVICE_STATUS 冲突**：手动操作期间（`sending=true`），DEVICE_STATUS 的 lightStatus 更新被阻塞，等 CONTROL_RESULT 确认
+- **toggleLight**：HTTP 成功后不立即改 controlMode，等 CONTROL_RESULT（3s fallback 兜底）
+- **controlMode 同步**：ControlPanel 中使用 writable computed（`get: props.device.controlMode, set: 写回 props`），不再手动 watch 同步，消除闪烁
+- **亮度控制已移除**：硬件（BearPi GPIO）不支持 PWM，前端已删除亮度滑块
 
 ## AI 智能问答（DeepSeek）
 
