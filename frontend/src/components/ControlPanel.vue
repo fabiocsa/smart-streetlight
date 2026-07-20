@@ -265,7 +265,8 @@ function connectWs() {
           handleControlResult(msg.data)
         }
         if (msg.type === 'DEVICE_STATUS' && msg.deviceId === props.device.deviceId) {
-          if (msg.data.lightStatus) {
+          // 手动操作进行中时不接受 DEVICE_STATUS 的 lightStatus 更新，避免覆盖
+          if (msg.data.lightStatus && !sending.value) {
             props.device.lightStatus = msg.data.lightStatus
           }
         }
@@ -285,6 +286,10 @@ function handleControlResult(data) {
     text: success
       ? `指令「${data.command === 'on' ? '开灯' : '关灯'}」执行成功`
       : `指令执行失败: ${data.result || '未知错误'}`
+  }
+  // 同步灯光状态（CONTROL_RESULT 是设备确认的最终状态，优先于 DEVICE_STATUS）
+  if (success && data.command) {
+    props.device.lightStatus = data.command
   }
   // 仅手动指令才切换为手动模式、触发父组件刷新；自动联动不改变模式
   if (success && data.source !== 'auto') {
@@ -338,8 +343,7 @@ async function toggleLight() {
 
   try {
     await sendControl(props.device.deviceId, { command: newCmd })
-    // 后端收到手动指令后会自动将设备切换为手动模式，前端同步
-    props.device.controlMode = 'manual'
+    // 不立即改模式，等 CONTROL_RESULT 确认后再切换（handleControlResult 中处理）
     // 如果 3 秒内未收到 WebSocket 结果，以 HTTP 成功为准
     fallbackHandle = setTimeout(() => {
       if (sending.value && pendingCmd.value === newCmd) {
