@@ -58,6 +58,7 @@ public class ChatServiceImpl implements ChatService {
     }
 
     @Override
+    @Transactional
     public ChatSession createSession(String userId, String title) {
         ChatSession session = ChatSession.builder()
                 .userId(userId)
@@ -74,6 +75,7 @@ public class ChatServiceImpl implements ChatService {
     }
 
     @Override
+    @Transactional
     public ChatSession renameSession(Long sessionId, String title) {
         ChatSession session = sessionRepo.findById(sessionId)
                 .orElseThrow(() -> new RuntimeException("会话不存在, id=" + sessionId));

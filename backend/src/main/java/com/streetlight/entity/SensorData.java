@@ -5,6 +5,7 @@ import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import jakarta.persistence.*;
 import lombok.*;
+import lombok.extern.slf4j.Slf4j;
 import org.hibernate.annotations.CreationTimestamp;
 
 import java.time.LocalDateTime;
@@ -22,6 +23,7 @@ import java.util.Map;
 @NoArgsConstructor
 @AllArgsConstructor
 @Builder
+@Slf4j
 public class SensorData {
 
     private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper();
@@ -67,6 +69,7 @@ public class SensorData {
         try {
             return OBJECT_MAPPER.readValue(dataJson, new TypeReference<LinkedHashMap<String, Object>>() {});
         } catch (JsonProcessingException e) {
+            log.warn("传感器数据 JSON 解析失败 (id={}, sensorType={}): {}", id, sensorType, e.getMessage());
             return Collections.emptyMap();
         }
     }

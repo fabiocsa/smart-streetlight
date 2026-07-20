@@ -28,7 +28,7 @@ public class OpenAiEmbeddingServiceImpl implements EmbeddingService {
 
     @Override
     public float[] embed(String text) {
-        if (!config.isEnabled() || config.getApiKey().isBlank()) {
+        if (!config.isEnabled() || config.getApiKey() == null || config.getApiKey().isBlank()) {
             log.warn("嵌入服务未启用或 API Key 为空，返回零向量");
             return new float[config.getDimension()];
         }

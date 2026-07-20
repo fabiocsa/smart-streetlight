@@ -32,7 +32,7 @@ public class VectorStore {
     }
 
     /** 添加文档向量，关联到指定文件 */
-    public void add(String fileId, float[] embedding, String content,
+    public synchronized void add(String fileId, float[] embedding, String content,
                     String fileName, String fileType, int chunkIndex) {
         Map<String, String> metadata = new LinkedHashMap<>();
         metadata.put("fileId", fileId);

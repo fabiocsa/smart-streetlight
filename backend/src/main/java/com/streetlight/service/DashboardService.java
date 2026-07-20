@@ -31,10 +31,14 @@ public class DashboardService {
     public Map<String, Object> getStats() {
         var devices = deviceService.getAllDevices();
 
+        // 一趟遍历完成 4 个计数
         long totalDevices = devices.size();
-        long onlineDevices = devices.stream().filter(d -> "online".equals(d.getStatus())).count();
+        long onlineDevices = 0, lightsOn = 0;
+        for (var d : devices) {
+            if ("online".equals(d.getStatus())) onlineDevices++;
+            if ("on".equals(d.getLightStatus())) lightsOn++;
+        }
         long offlineDevices = totalDevices - onlineDevices;
-        long lightsOn = devices.stream().filter(d -> "on".equals(d.getLightStatus())).count();
         long lightsOff = totalDevices - lightsOn;
         long pendingAlarms = alarmService.countPendingAlarms();
         long todayAlarms = alarmService.countTodayAlarms();
@@ -60,10 +64,11 @@ public class DashboardService {
 
     public List<Map<String, Object>> getDeviceStatusDistribution() {
         var devices = deviceService.getAllDevices();
-        long online = devices.stream().filter(d -> "online".equals(d.getStatus())).count();
-        long offline = devices.stream().filter(d -> "offline".equals(d.getStatus())).count();
-        long autoMode = devices.stream().filter(d -> "auto".equals(d.getControlMode())).count();
-        long manualMode = devices.stream().filter(d -> "manual".equals(d.getControlMode())).count();
+        long online = 0, offline = 0, autoMode = 0, manualMode = 0;
+        for (var d : devices) {
+            if ("online".equals(d.getStatus())) online++; else offline++;
+            if ("auto".equals(d.getControlMode())) autoMode++; else manualMode++;
+        }
 
         return List.of(
             Map.of("name", "在线", "value", online),

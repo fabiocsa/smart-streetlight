@@ -135,7 +135,7 @@ public class ToolExecutor {
         return toJson(Map.of(
                 "deviceId", deviceId,
                 "lightIntensity", data.getLightIntensity(),
-                "reportedAt", data.getReportedAt().toString()
+                "reportedAt", data.getReportedAt() != null ? data.getReportedAt().toString() : "N/A"
         ));
     }
 
@@ -198,9 +198,9 @@ public class ToolExecutor {
         int limit = getIntParam(params, "limit", 5);
         List<ControlLog> logs;
         if (deviceId != null && !deviceId.isBlank()) {
-            logs = controlLogRepository.findAll(
-                    PageRequest.of(0, limit, Sort.by(Sort.Direction.DESC, "createdAt"))).getContent();
-            logs = logs.stream().filter(l -> deviceId.equals(l.getDeviceId())).toList();
+            // 直接按 deviceId 查询，避免全表扫描后内存过滤
+            logs = controlLogRepository.findByDeviceIdOrderByCreatedAtDesc(
+                    deviceId, PageRequest.of(0, limit)).getContent();
         } else {
             logs = controlLogRepository.findAll(
                     PageRequest.of(0, limit, Sort.by(Sort.Direction.DESC, "createdAt"))).getContent();
@@ -218,7 +218,10 @@ public class ToolExecutor {
     }
 
     private Map<String, Object> toDataPoint(SensorData d) {
-        return Map.of("lightIntensity", d.getLightIntensity(), "time", d.getReportedAt().toString());
+        return Map.of(
+            "lightIntensity", d.getLightIntensity(),
+            "time", d.getReportedAt() != null ? d.getReportedAt().toString() : "N/A"
+        );
     }
 
     private int getIntParam(Map<String, Object> params, String key, int defaultValue) {
