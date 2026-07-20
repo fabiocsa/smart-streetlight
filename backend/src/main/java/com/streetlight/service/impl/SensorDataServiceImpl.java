@@ -230,14 +230,30 @@ public class SensorDataServiceImpl implements SensorDataService {
             return sd;
         }
 
-        // ===== 第8步：检查控制模式（持有行锁） =====
+        // ===== 第8步：unknown 状态恢复（自动/手动模式均适用） =====
+        if ("unknown".equals(lockedDevice.getLightStatus())) {
+            if (lightIntensity != null && lightIntensity < lockedDevice.getThresholdOn()) {
+                lockedDevice.setLightStatus("on");
+                log.info("设备 {} 灯光状态由 unknown 恢复为 on (光照={} < 开灯阈值={})",
+                        deviceId, lightIntensity, lockedDevice.getThresholdOn());
+            } else {
+                lockedDevice.setLightStatus("off");
+                log.info("设备 {} 灯光状态由 unknown 恢复为 off (光照={} >= 开灯阈值={})",
+                        deviceId, lightIntensity, lockedDevice.getThresholdOn());
+            }
+            deviceRepository.save(lockedDevice);
+            webSocketHandler.pushDeviceStatus(deviceId, lockedDevice.getStatus(),
+                    lockedDevice.getLightStatus());
+        }
+
+        // ===== 第9步：检查控制模式（持有行锁） =====
         if (!"auto".equals(lockedDevice.getControlMode())) {
             log.info("设备 {} 控制模式为 {}（持锁读取），跳过自动联动。光照={}",
                     deviceId, lockedDevice.getControlMode(), lightIntensity);
             return sd;
         }
 
-        // ===== 第9步：多传感器策略 — 重新计算决策光照值 =====
+        // ===== 第10步：多传感器策略 — 重新计算决策光照值 =====
         String strategy = lockedDevice.getSensorStrategy();
         Long primarySensorId = lockedDevice.getPrimarySensorId();
 
@@ -295,7 +311,7 @@ public class SensorDataServiceImpl implements SensorDataService {
             }
         }
 
-        // ===== 第10步：迟滞双阈值联动决策（持有行锁） =====
+        // ===== 第11步：迟滞双阈值联动决策（持有行锁） =====
         String cmd = null;
         if ("off".equals(lockedDevice.getLightStatus()) && lightIntensity < lockedDevice.getThresholdOn()) {
             cmd = "on";
