@@ -84,12 +84,12 @@ public class SensorDataServiceImpl implements SensorDataService {
         }
 
         if (iAmFirst) {
-            log.info("[自动联动诊断] deviceId={}, sensorId={}, sensorType={}, 是否未绑定={}, data字段={}",
+            log.debug("[自动联动诊断] deviceId={}, sensorId={}, sensorType={}, 是否未绑定={}, data字段={}",
                     deviceId, sensorId, sensorType, deviceId.startsWith("sensor_"), data.keySet());
         }
 
         // ===== 告警检测（在设备绑定检查之前执行，确保未绑定设备也能触发告警） =====
-        log.info("[告警检测] iAmFirst={}, dataKeys={}, hasVoltage={}, hasTemp={}, hasPower={}",
+        log.debug("[告警检测] iAmFirst={}, dataKeys={}, hasVoltage={}, hasTemp={}, hasPower={}",
                 iAmFirst, data.keySet(),
                 data.containsKey("voltage") && data.get("voltage") instanceof Number,
                 data.containsKey("temperature") && data.get("temperature") instanceof Number,
@@ -101,7 +101,7 @@ public class SensorDataServiceImpl implements SensorDataService {
             Double voltage = ((Number) data.get("voltage")).doubleValue();
             Double voltageMin = getConfigDouble("voltage_min", 210.0);
             Double voltageMax = getConfigDouble("voltage_max", 240.0);
-            log.info("[告警检测] 电压检测: voltage={}, min={}, max={}, 是否异常={}",
+            log.debug("[告警检测] 电压检测: voltage={}, min={}, max={}, 是否异常={}",
                     voltage, voltageMin, voltageMax, voltage > voltageMax || voltage < voltageMin);
 
             if (voltage > voltageMax || voltage < voltageMin) {
@@ -111,7 +111,7 @@ public class SensorDataServiceImpl implements SensorDataService {
                 alarmService.autoResolveVoltageAlarm(deviceId);
             }
         } else {
-            log.info("[告警检测] 跳过电压检测: iAmFirst={}, hasKey={}, isNumber={}",
+            log.debug("[告警检测] 跳过电压检测: iAmFirst={}, hasKey={}, isNumber={}",
                     iAmFirst, data.containsKey("voltage"),
                     data.containsKey("voltage") ? data.get("voltage") instanceof Number : "N/A");
         }
@@ -121,7 +121,7 @@ public class SensorDataServiceImpl implements SensorDataService {
                 && data.containsKey("temperature") && data.get("temperature") instanceof Number) {
             Double temperature = ((Number) data.get("temperature")).doubleValue();
             Double tempMax = getConfigDouble("temperature_max", 45.0);
-            log.info("[告警检测] 温度检测: temperature={}, max={}, 是否异常={}",
+            log.debug("[告警检测] 温度检测: temperature={}, max={}, 是否异常={}",
                     temperature, tempMax, temperature > tempMax);
 
             if (temperature > tempMax) {
@@ -131,7 +131,7 @@ public class SensorDataServiceImpl implements SensorDataService {
                 alarmService.autoResolveTemperatureAlarm(deviceId);
             }
         } else {
-            log.info("[告警检测] 跳过温度检测: iAmFirst={}, hasKey={}, isNumber={}",
+            log.debug("[告警检测] 跳过温度检测: iAmFirst={}, hasKey={}, isNumber={}",
                     iAmFirst, data.containsKey("temperature"),
                     data.containsKey("temperature") ? data.get("temperature") instanceof Number : "N/A");
         }
@@ -141,7 +141,7 @@ public class SensorDataServiceImpl implements SensorDataService {
                 && data.containsKey("power") && data.get("power") instanceof Number) {
             Double power = ((Number) data.get("power")).doubleValue();
             Double powerMax = getConfigDouble("power_max", 100.0);
-            log.info("[告警检测] 功率检测: power={}, max={}, 是否异常={}",
+            log.debug("[告警检测] 功率检测: power={}, max={}, 是否异常={}",
                     power, powerMax, power > powerMax);
 
             if (power > powerMax) {
@@ -151,7 +151,7 @@ public class SensorDataServiceImpl implements SensorDataService {
                 alarmService.autoResolvePowerAlarm(deviceId);
             }
         } else {
-            log.info("[告警检测] 跳过功率检测: iAmFirst={}, hasKey={}, isNumber={}",
+            log.debug("[告警检测] 跳过功率检测: iAmFirst={}, hasKey={}, isNumber={}",
                     iAmFirst, data.containsKey("power"),
                     data.containsKey("power") ? data.get("power") instanceof Number : "N/A");
         }

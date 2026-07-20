@@ -62,7 +62,7 @@ public class MqttMessageHandler implements MqttCallback {
     @Override
     public void messageArrived(String topic, MqttMessage message) {
         String payload = new String(message.getPayload(), StandardCharsets.UTF_8);
-        log.warn("★★★ 收到MQTT消息 - topic: {}, payload: {}", topic, payload);
+        log.debug("★★★ 收到MQTT消息 - topic: {}, payload: {}", topic, payload);
         try {
             if (mqttClientManager.isSensorDataTopic(topic)) {
                 handleSensorData(topic, payload);
@@ -83,10 +83,10 @@ public class MqttMessageHandler implements MqttCallback {
     }
 
     private void handleSensorData(String topic, String payload) throws JsonProcessingException {
-        log.warn("★★★ [MQTT诊断] handleSensorData 被调用: topic={}", topic);
+        log.debug("★★★ [MQTT诊断] handleSensorData 被调用: topic={}", topic);
         String sensorIdStr = mqttClientManager.extractSensorIdFromTopic(topic);
         if (sensorIdStr.isEmpty()) {
-            log.warn("★★★ [MQTT诊断] 无法从 topic 中提取 sensorId: {}", topic);
+            log.debug("★★★ [MQTT诊断] 无法从 topic 中提取 sensorId: {}", topic);
             return;
         }
         Long sensorId = Long.parseLong(sensorIdStr);
@@ -99,7 +99,7 @@ public class MqttMessageHandler implements MqttCallback {
                 ? root.get("sensorType").asText() : "light";
 
         String deviceId = deviceService.resolveDeviceIdForSensor(sensorId);
-        log.warn("★★★ [MQTT诊断] deviceId={}, sensorId={}, sensorType={}, dataKeys={}",
+        log.debug("★★★ [MQTT诊断] deviceId={}, sensorId={}, sensorType={}, dataKeys={}",
                 deviceId, sensorId, sensorType, data.keySet());
 
         LocalDateTime reportedAt = LocalDateTime.now();

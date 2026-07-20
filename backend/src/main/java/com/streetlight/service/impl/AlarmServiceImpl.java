@@ -15,6 +15,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.context.annotation.Lazy;
 import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageImpl;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Sort;
 import org.springframework.stereotype.Service;
@@ -125,44 +126,39 @@ public class AlarmServiceImpl implements AlarmService {
     public Page<AlarmLog> listAlarms(int page, int size, String status, String type,
                                       String severity, String deviceId, String keyword,
                                       String sort, String order) {
-        Sort.Direction dir;
-        if (order != null && (order.equalsIgnoreCase("asc") || order.equalsIgnoreCase("ascending"))) {
-            dir = Sort.Direction.ASC;
-        } else {
-            dir = Sort.Direction.DESC;
-        }
+        Sort.Direction dir = (order != null && order.equalsIgnoreCase("asc")) ? Sort.Direction.ASC : Sort.Direction.DESC;
         String sortField = (sort != null && !sort.isEmpty()) ? sort : "createdAt";
         PageRequest pr = PageRequest.of(page, size, Sort.by(dir, sortField));
 
-        // 多条件组合查询 — 优先使用最具体的查询
+        Page<AlarmLog> result;
         if (deviceId != null && !deviceId.isEmpty()) {
-            return alarmLogRepository.findByDeviceIdOrderByCreatedAtDesc(deviceId, pr);
+            result = alarmLogRepository.findByDeviceIdOrderByCreatedAtDesc(deviceId, pr);
+        } else if (status != null && severity != null) {
+            result = alarmLogRepository.findBySeverityAndStatus(
+                    AlarmSeverity.valueOf(severity.toUpperCase()), AlarmStatus.valueOf(status.toUpperCase()), pr);
+        } else if (status != null && type != null) {
+            result = alarmLogRepository.findByStatusAndAlarmType(
+                    AlarmStatus.valueOf(status.toUpperCase()), AlarmType.valueOf(type.toUpperCase()), pr);
+        } else if (status != null) {
+            result = alarmLogRepository.findByStatus(AlarmStatus.valueOf(status.toUpperCase()), pr);
+        } else if (type != null) {
+            result = alarmLogRepository.findByAlarmType(AlarmType.valueOf(type.toUpperCase()), pr);
+        } else if (severity != null) {
+            result = alarmLogRepository.findBySeverity(AlarmSeverity.valueOf(severity.toUpperCase()), pr);
+        } else {
+            result = alarmLogRepository.findAll(pr);
         }
-        if (status != null && severity != null) {
-            return alarmLogRepository.findBySeverityAndStatus(
-                    AlarmSeverity.valueOf(severity.toUpperCase()),
-                    AlarmStatus.valueOf(status.toUpperCase()), pr);
+
+        // keyword 过滤：在查询结果上做内存匹配（分页后数据量小，性能可接受）
+        if (keyword != null && !keyword.isEmpty()) {
+            String kw = keyword.toLowerCase();
+            List<AlarmLog> filtered = result.getContent().stream()
+                    .filter(a -> (a.getContent() != null && a.getContent().toLowerCase().contains(kw))
+                            || (a.getDeviceId() != null && a.getDeviceId().toLowerCase().contains(kw)))
+                    .toList();
+            return new org.springframework.data.domain.PageImpl<>(filtered, pr, filtered.size());
         }
-        if (status != null && type != null) {
-            return alarmLogRepository.findByStatusAndAlarmType(
-                    AlarmStatus.valueOf(status.toUpperCase()),
-                    AlarmType.valueOf(type.toUpperCase()), pr);
-        }
-        if (severity != null && type != null) {
-            // 新增：按严重级别+类型组合（复用已有查询模式）
-            // 目前无直接的复合查询，使用 findAll 兜底
-            return alarmLogRepository.findAll(pr);
-        }
-        if (status != null) {
-            return alarmLogRepository.findByStatus(AlarmStatus.valueOf(status.toUpperCase()), pr);
-        }
-        if (type != null) {
-            return alarmLogRepository.findByAlarmType(AlarmType.valueOf(type.toUpperCase()), pr);
-        }
-        if (severity != null) {
-            return alarmLogRepository.findBySeverity(AlarmSeverity.valueOf(severity.toUpperCase()), pr);
-        }
-        return alarmLogRepository.findAll(pr);
+        return result;
     }
 
     @Override
