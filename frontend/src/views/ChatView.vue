@@ -90,16 +90,17 @@ async function handleSend(text) {
 .chat-layout {
   display: flex;
   height: calc(100vh - 120px);
-  border: 1px solid #e4e7ed;
-  border-radius: 8px;
+  border: 1px solid rgba(51,65,85,0.3);
+  border-radius: 12px;
   overflow: hidden;
-  background: #fff;
+  background: var(--bg-card);
+  backdrop-filter: blur(16px);
 }
 
 .chat-sidebar {
   width: 260px;
   flex-shrink: 0;
-  border-right: 1px solid #e4e7ed;
+  border-right: 1px solid rgba(51,65,85,0.3);
 }
 
 .chat-main {
@@ -116,8 +117,7 @@ async function handleSend(text) {
   justify-content: center;
   flex: 1;
   gap: 12px;
-  color: #909399;
-  font-size: 14px;
+  color: var(--text-muted); font-size: 14px;
 }
 
 .chat-topbar {
@@ -125,12 +125,10 @@ async function handleSend(text) {
   display: flex;
   align-items: center;
   padding: 0 20px;
-  border-bottom: 1px solid #e4e7ed;
+  border-bottom: 1px solid rgba(51,65,85,0.3);
   flex-shrink: 0;
 }
 .session-label {
-  font-size: 14px;
-  font-weight: 600;
-  color: #303133;
+  font-size: 14px; font-weight: 600; color: var(--text-primary);
 }
 </style>

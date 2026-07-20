@@ -112,11 +112,11 @@ public class WebSocketHandler extends TextWebSocketHandler {
     }
 
     /** 推送控制结果 */
-    public void pushControlResult(String deviceId, String command, String result) {
+    public void pushControlResult(String deviceId, String command, String result, String source) {
         broadcast(Map.of(
                 "type", "CONTROL_RESULT",
                 "deviceId", deviceId,
-                "data", Map.of("command", command, "result", result)
+                "data", Map.of("command", command, "result", result, "source", source != null ? source : "manual")
         ));
     }
 

@@ -165,8 +165,8 @@
             </el-empty>
             <el-empty v-else description="暂无设备">
               <template #description>
-                <p style="color: #909399; margin: 0">尚未添加任何设备</p>
-                <p style="color: #c0c4cc; font-size: 12px; margin: 4px 0 0 0">
+                <p style="color: var(--text-muted); margin: 0">尚未添加任何设备</p>
+                <p style="color: var(--text-muted); font-size: 12px; margin: 4px 0 0 0">
                   点击「添加设备」通过 REST API 创建，传感器将通过 MQTT 自动挂载到已有设备下
                 </p>
               </template>
@@ -192,10 +192,10 @@
     <!-- 地图模式 -->
     <template v-else>
       <el-card shadow="never">
-        <div style="margin-bottom: 12px; color: #909399; font-size: 13px;">
+        <div style="margin-bottom: 12px; color: var(--text-muted); font-size: 13px;">
           地图上显示 {{ filteredDevices.filter(d => d.latitude != null && d.longitude != null).length }} /
           {{ filteredDevices.length }} 个设备
-          <span v-if="filteredDevices.filter(d => d.latitude == null || d.longitude == null).length > 0" style="color: #e6a23c; margin-left: 8px;">
+          <span v-if="filteredDevices.filter(d => d.latitude == null || d.longitude == null).length > 0" style="color: var(--amber); margin-left: 8px;">
             ⚠ {{ filteredDevices.filter(d => d.latitude == null || d.longitude == null).length }} 个设备缺少坐标信息
           </span>
         </div>
@@ -529,7 +529,7 @@ async function handleBatchUnbind() {
     await ElMessageBox.confirm(
       `确定解绑 ${devicesWithSensors.length} 个设备的 ${totalSensors} 个传感器吗？` +
         (offlineCount > 0 ? `（${offlineCount} 个离线设备已跳过）` : '') +
-        '<br><small style="color: #909399;">传感器不会被删除，仅解除与设备的绑定关系</small>',
+        '<br><small style="color: var(--text-muted);">传感器不会被删除，仅解除与设备的绑定关系</small>',
       '批量解绑确认',
       {
         confirmButtonText: '确定解绑',
@@ -617,7 +617,7 @@ function connectWs() {
           if (device && msg.data) {
             if (msg.data.result === 'success') {
               device.lightStatus = msg.data.command
-              device.controlMode = 'manual'
+              if (msg.data.source !== 'auto') device.controlMode = 'manual'
             }
           }
         }

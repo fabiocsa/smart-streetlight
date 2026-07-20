@@ -146,7 +146,7 @@ async function handleRegister() {
 <style scoped>
 .login-wrapper {
   display: flex; justify-content: center; align-items: center;
-  min-height: 100vh; background: #f0f2f5;
+  min-height: 100vh;
 }
 .login-card {
   width: 400px;

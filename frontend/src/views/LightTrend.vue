@@ -459,27 +459,17 @@ onMounted(async () => {
 
 .stat-row { margin-top: 0; }
 .mini-stat { display: flex; flex-direction: column; gap: 4px; }
-.mini-stat-label { font-size: 13px; color: #909399; }
+.mini-stat-label { font-size: 13px; color: var(--text-muted); }
 .mini-stat-value { font-size: 22px; font-weight: 700; }
-.mini-stat-value small { font-size: 13px; font-weight: 400; color: #909399; }
-
-/* 对比模式统计卡片 */
+.mini-stat-value small { font-size: 13px; font-weight: 400; color: var(--text-muted); }
 .compare-stat { display: flex; flex-direction: column; gap: 8px; }
-.compare-stat-header {
-  display: flex; justify-content: space-between; align-items: center;
-}
-.compare-stat-device { font-size: 14px; font-weight: 600; }
-.compare-stat-label { font-size: 12px; color: #909399; }
-.compare-stat-values {
-  display: flex; gap: 16px; flex-wrap: wrap;
-}
-.compare-stat-item {
-  display: flex; flex-direction: column; gap: 2px;
-  min-width: 50px;
-}
-.compare-stat-item .label { font-size: 11px; color: #909399; }
-.compare-stat-item .value { font-size: 16px; font-weight: 700; }
-
+.compare-stat-header { display: flex; justify-content: space-between; align-items: center; }
+.compare-stat-device { font-size: 14px; font-weight: 600; color: var(--text-primary); }
+.compare-stat-label { font-size: 12px; color: var(--text-muted); }
+.compare-stat-values { display: flex; gap: 16px; flex-wrap: wrap; }
+.compare-stat-item { display: flex; flex-direction: column; gap: 2px; min-width: 50px; }
+.compare-stat-item .label { font-size: 11px; color: var(--text-muted); }
+.compare-stat-item .value { font-size: 16px; font-weight: 700; color: var(--text-primary); }
 .chart-header { display: flex; justify-content: space-between; align-items: center; }
-.chart-subtitle { font-size: 13px; color: #909399; font-weight: 400; }
+.chart-subtitle { font-size: 13px; color: var(--text-muted); font-weight: 400; }
 </style>

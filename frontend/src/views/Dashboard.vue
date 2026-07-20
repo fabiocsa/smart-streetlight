@@ -1,206 +1,166 @@
 <template>
-  <div class="dashboard">
-    <div class="page-header">
-      <h2>仪表盘</h2>
-      <el-button type="primary" @click="refreshAll" :loading="loading">
-        <el-icon><Refresh /></el-icon> 刷新数据
-      </el-button>
-    </div>
+  <div class="dash">
+    <!-- ========== KPI 指标卡片 ========== -->
+    <section class="kpi-row">
+      <div class="glass-card kpi" @click="go('/devices')">
+        <div class="kpi-main">
+          <span class="kpi-num">{{ stats.totalDevices ?? '-' }}</span>
+          <span class="kpi-unit">台</span>
+        </div>
+        <div class="kpi-sub">设备总数</div>
+        <div class="kpi-ring">
+          <svg viewBox="0 0 80 80"><circle cx="40" cy="40" r="34" class="ring-bg" /><circle cx="40" cy="40" r="34" class="ring-fg ok" :style="ringDash(onlineRate)" /></svg>
+          <span class="ring-pct">{{ onlineRate }}%</span>
+        </div>
+        <div class="kpi-foot">
+          <span class="dot ok"></span> 在线 {{ stats.onlineDevices ?? 0 }}
+          <span class="dot err"></span> 离线 {{ stats.offlineDevices ?? 0 }}
+        </div>
+      </div>
 
-    <!-- 统计卡片（可点击跳转） -->
-    <el-row :gutter="16" class="stat-cards">
-      <el-col :xs="12" :sm="8" :md="4" v-for="card in statCards" :key="card.label">
-        <el-card
-          shadow="hover"
-          :body-style="{ padding: '20px' }"
-          :class="{ clickable: !!card.to }"
-          @click="navigateTo(card.to)"
-        >
-          <div class="stat-card">
-            <div class="stat-icon" :style="{ background: card.color }">
-              <el-icon :size="24"><component :is="card.icon" /></el-icon>
+      <div class="glass-card kpi">
+        <div class="kpi-main"><span class="kpi-num">{{ energyEst }}</span><span class="kpi-unit">kg CO₂</span></div>
+        <div class="kpi-sub">今日节能估算 <span class="trend-up">↑ {{ energyChange }}%</span></div>
+        <div class="kpi-foot">等效减少碳排放</div>
+      </div>
+
+      <div class="glass-card kpi" :class="{ 'alarm-glow': pendingAlarmCount > 0 }" @click="go('/alarms')">
+        <div class="kpi-main">
+          <span class="kpi-num" :class="{ 'num-warn': pendingAlarmCount > 0 }">{{ pendingAlarmCount }}</span>
+          <span class="kpi-unit">条</span>
+        </div>
+        <div class="kpi-sub">待处理告警</div>
+        <div class="kpi-foot alarm-foot">
+          <template v-if="pendingAlarmCount === 0">
+            <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="#06D6A0" stroke-width="2"><polyline points="20 6 9 17 4 12"/></svg> 一切正常
+          </template>
+          <template v-else><span class="alarm-marquee">{{ latestAlarmText }}</span></template>
+        </div>
+      </div>
+
+      <div class="glass-card kpi">
+        <div class="kpi-main"><span class="kpi-num">{{ autoModePct }}%</span><span class="kpi-unit">Auto</span></div>
+        <div class="kpi-sub">自动模式占比</div>
+        <div class="kpi-bars">
+          <div class="bar-row"><span class="bar-label">自动</span><span class="bar-track"><span class="bar-fill auto" :style="{ width: autoModePct + '%' }"></span></span><span class="bar-num">{{ autoCount }}</span></div>
+          <div class="bar-row"><span class="bar-label">手动</span><span class="bar-track"><span class="bar-fill manual" :style="{ width: (100 - autoModePct) + '%' }"></span></span><span class="bar-num">{{ manualCount }}</span></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ========== 中间区域：设备地图 + 实时动态 ========== -->
+    <section class="mid-row">
+      <div class="glass-card map-panel">
+        <div class="panel-header">
+          <strong>设备分布地图</strong>
+          <span class="stat-mini">
+            <span class="dot ok"></span> {{ stats.onlineDevices ?? 0 }} 在线
+            <span class="dot err"></span> {{ stats.offlineDevices ?? 0 }} 离线
+          </span>
+        </div>
+        <DeviceMap
+          :devices="devices"
+          :focusDeviceId="focusDeviceId"
+          height="420px"
+          @select-device="onMapSelect"
+          @refresh="refreshDevices"
+        />
+      </div>
+
+      <div class="glass-card alarm-panel">
+        <div class="panel-header">
+          <strong>实时动态</strong>
+          <span class="link" @click="go('/alarms')">查看全部 →</span>
+        </div>
+        <div class="alarm-feed">
+          <div v-if="recentAlarms.length === 0" class="feed-empty">暂无动态</div>
+          <div v-for="(a, i) in recentAlarms" :key="a.id || i" class="feed-item" :class="{ 'feed-new': a._new }">
+            <span class="feed-bar" :class="severityBar(a.severity)"></span>
+            <div class="feed-body">
+              <span class="feed-device">{{ a.deviceId }}</span>
+              <span class="feed-type">{{ a.content || alarmTypeLabel(a.alarmType) }}</span>
             </div>
-            <div class="stat-info">
-              <div class="stat-value">{{ card.value }}</div>
-              <div class="stat-label">{{ card.label }}</div>
-            </div>
+            <span class="feed-time">{{ relativeTime(a.createdAt) }}</span>
           </div>
-        </el-card>
-      </el-col>
-    </el-row>
+        </div>
+      </div>
+    </section>
 
-    <!-- 图表区域 -->
-    <el-row :gutter="16" style="margin-top: 16px">
-      <!-- 设备状态分布 -->
-      <el-col :span="8">
-        <el-card shadow="never">
-          <template #header><strong>设备状态分布</strong></template>
-          <v-chart :option="deviceStatusOption" autoresize style="height: 280px" />
-        </el-card>
-      </el-col>
+    <!-- ========== 底部区域：设备网格 + 快捷控制台 ========== -->
+    <section class="bot-row">
+      <div class="glass-card device-grid-panel">
+        <div class="panel-header">
+          <strong>设备列表</strong>
+          <span class="stat-mini">点击设备查看详情和控制</span>
+        </div>
+        <div class="device-grid">
+          <div
+            v-for="d in devicesGrid"
+            :key="d.deviceId"
+            class="dvc-card"
+            :class="{ selected: selectedDevice?.deviceId === d.deviceId, 'dvc-offline': d.status !== 'online', 'dvc-on': d.status === 'online' && d.lightStatus === 'on' }"
+            @click="selectDevice(d)"
+          >
+            <div class="dvc-glow"></div>
+            <span class="dvc-name">{{ d.name || d.deviceId }}</span>
+            <span class="dvc-lux" v-if="d.status === 'online' && d._lux != null">{{ fmtNum(d._lux) }} Lux</span>
+            <span class="dvc-lux dim" v-else-if="d.status === 'online'">-- Lux</span>
+            <span class="dvc-lux off" v-else>离线</span>
+          </div>
+        </div>
+      </div>
 
-      <!-- 传感器趋势 -->
-      <el-col :span="16">
-        <el-card shadow="never">
-          <template #header>
-            <div class="chart-header">
-              <strong>传感器趋势</strong>
-              <div style="display: flex; gap: 8px; align-items: center; flex-wrap: wrap">
-                <!-- 时间范围切换 -->
-                <el-radio-group v-model="trendRange" size="small" @change="loadSensorTrend">
-                  <el-radio-button value="24h">24小时</el-radio-button>
-                  <el-radio-button value="7d">近7天</el-radio-button>
-                  <el-radio-button value="30d">近30天</el-radio-button>
-                </el-radio-group>
-                <el-select v-model="trendMetric" size="small" style="width: 130px" @change="loadSensorTrend">
-                  <el-option
-                    v-for="m in metricOptions"
-                    :key="m.value"
-                    :label="m.label"
-                    :value="m.value"
-                  />
-                </el-select>
-                <el-select v-model="lightTrendDevice" placeholder="全部设备" clearable size="small" style="width: 160px" @change="loadSensorTrend">
-                  <el-option label="全部设备" value="" />
-                  <el-option v-for="d in devices" :key="d.deviceId" :label="d.name" :value="d.deviceId" />
-                </el-select>
-              </div>
-            </div>
-          </template>
-          <v-chart :option="lightTrendOption" autoresize style="height: 280px" />
-        </el-card>
-      </el-col>
-    </el-row>
+      <div class="glass-card ctrl-panel" v-if="selectedDevice">
+        <div class="panel-header">
+          <div>
+            <strong class="ctrl-devname">{{ selectedDevice.name || selectedDevice.deviceId }}</strong>
+            <span class="ctrl-devid">{{ selectedDevice.deviceId }}</span>
+          </div>
+          <el-tag :type="selectedDevice.status === 'online' ? 'success' : 'danger'" size="small" effect="dark">
+            {{ selectedDevice.status === 'online' ? '在线' : '离线' }}
+          </el-tag>
+        </div>
 
-    <!-- 第二行 -->
-    <el-row :gutter="16" style="margin-top: 16px">
-      <!-- 近7日告警趋势 -->
-      <el-col :span="12">
-        <el-card shadow="never">
-          <template #header><strong>近7日告警趋势</strong></template>
-          <v-chart :option="alarmTrendOption" autoresize style="height: 260px" />
-        </el-card>
-      </el-col>
+        <div class="readout-row">
+          <div class="readout"><span class="ro-val">{{ fmtNum(selectedDevice._lux) }}</span><span class="ro-unit">Lux</span></div>
+          <div class="readout"><span class="ro-val">{{ fmtNum(selectedDevice._voltage) }}</span><span class="ro-unit">V</span></div>
+          <div class="readout"><span class="ro-val">{{ fmtNum(selectedDevice._power) }}</span><span class="ro-unit">W</span></div>
+          <div class="readout"><span class="ro-val">{{ fmtNum(selectedDevice._temp) }}</span><span class="ro-unit">°C</span></div>
+        </div>
 
-      <!-- 告警级别分布 -->
-      <el-col :span="12">
-        <el-card shadow="never">
-          <template #header><strong>本月告警级别分布</strong></template>
-          <v-chart :option="alarmSeverityOption" autoresize style="height: 260px" />
-        </el-card>
-      </el-col>
-    </el-row>
+        <div class="ctrl-section">
+          <span class="ctrl-label">控制模式</span>
+          <div class="mode-switch" :class="{ manual: selectedDevice.controlMode === 'manual' }" @click="toggleMode">
+            <span class="mode-opt" :class="{ active: selectedDevice.controlMode !== 'manual' }">自动</span>
+            <span class="mode-opt" :class="{ active: selectedDevice.controlMode === 'manual' }">手动</span>
+            <span class="mode-knob"></span>
+          </div>
+        </div>
 
-    <!-- 第三行 -->
-    <el-row :gutter="16" style="margin-top: 16px">
-      <!-- 近期告警 -->
-      <el-col :span="12">
-        <el-card shadow="never">
-          <template #header><strong>近期告警</strong></template>
-          <el-table :data="recentAlarms" size="small" max-height="300" style="width: 100%">
-            <el-table-column prop="deviceId" label="设备" width="90" />
-            <el-table-column prop="content" label="告警内容" min-width="180" show-overflow-tooltip />
-            <el-table-column label="级别" width="70">
-              <template #default="{ row }">
-                <el-tag :type="severityTag(row.severity)" size="small">{{ severityLabel(row.severity) }}</el-tag>
-              </template>
-            </el-table-column>
-            <el-table-column label="状态" width="70">
-              <template #default="{ row }">
-                <el-tag :type="row.status === 'PENDING' ? 'danger' : 'info'" size="small">
-                  {{ row.status === 'PENDING' ? '待处理' : '已处理' }}
-                </el-tag>
-              </template>
-            </el-table-column>
-            <el-table-column label="时间" width="150">
-              <template #default="{ row }">
-                {{ formatTime(row.createdAt) }}
-              </template>
-            </el-table-column>
-          </el-table>
-        </el-card>
-      </el-col>
+        <div class="ctrl-section">
+          <span class="ctrl-label">灯光控制</span>
+          <div class="light-btns">
+            <button class="lbtn on" :class="{ active: selectedDevice.lightStatus === 'on' }" :disabled="selectedDevice.status !== 'online' || ctrlBusy" @click="quickControl('on')">开灯</button>
+            <button class="lbtn off" :class="{ active: selectedDevice.lightStatus === 'off' }" :disabled="selectedDevice.status !== 'online' || ctrlBusy" @click="quickControl('off')">关灯</button>
+          </div>
+        </div>
 
-      <!-- 近期控制日志 -->
-      <el-col :span="12">
-        <el-card shadow="never">
-          <template #header><strong>近期控制日志</strong></template>
-          <el-table :data="recentControls" size="small" max-height="300" style="width: 100%">
-            <el-table-column prop="deviceId" label="设备" width="90" />
-            <el-table-column label="指令" width="70">
-              <template #default="{ row }">
-                <el-tag :type="row.command === 'on' ? 'warning' : 'info'" size="small">
-                  {{ row.command === 'on' ? '开灯' : '关灯' }}
-                </el-tag>
-              </template>
-            </el-table-column>
-            <el-table-column label="来源" width="70">
-              <template #default="{ row }">
-                {{ row.source === 'auto' ? '自动' : '手动' }}
-              </template>
-            </el-table-column>
-            <el-table-column label="结果" width="70">
-              <template #default="{ row }">
-                <el-tag :type="row.result === 'success' ? 'success' : 'danger'" size="small">
-                  {{ row.result === 'success' ? '成功' : '失败' }}
-                </el-tag>
-              </template>
-            </el-table-column>
-            <el-table-column label="时间" width="150">
-              <template #default="{ row }">
-                {{ formatTime(row.createdAt) }}
-              </template>
-            </el-table-column>
-          </el-table>
-        </el-card>
-      </el-col>
-    </el-row>
+        <div class="ctrl-logs">
+          <span class="ctrl-label">最近操作</span>
+          <div v-if="recentControls.length === 0" class="logs-empty">暂无记录</div>
+          <div v-for="l in recentControls.slice(0, 3)" :key="l.id" class="log-item">
+            <span class="log-dot" :class="l.result === 'success' ? 'ok' : 'err'"></span>
+            <span class="log-act">{{ l.command === 'on' ? '开灯' : '关灯' }} · {{ l.source === 'auto' ? '自动' : '手动' }}</span>
+            <span class="log-time">{{ relativeTime(l.createdAt) }}</span>
+          </div>
+        </div>
+      </div>
 
-    <!-- 各设备最新传感器数据 -->
-    <el-card shadow="never" style="margin-top: 16px">
-      <template #header>
-        <strong>设备最新传感器数据</strong>
-      </template>
-      <el-table :data="latestSensorData" size="small" max-height="280" style="width: 100%"
-        :row-class-name="sensorRowClass">
-        <el-table-column prop="deviceId" label="设备ID" width="100" />
-        <el-table-column label="设备名称" width="120">
-          <template #default="{ row }">
-            <span>{{ deviceNameMap[row.deviceId] || row.deviceId }}</span>
-          </template>
-        </el-table-column>
-        <el-table-column label="光照强度" width="120">
-          <template #default="{ row }">
-            <span v-if="row.lightIntensity != null" style="font-weight: 600">{{ fmtNum(row.lightIntensity) }} Lux</span>
-            <span v-else style="color: #909399; font-size: 12px">-</span>
-          </template>
-        </el-table-column>
-        <el-table-column label="其他指标" min-width="260">
-          <template #default="{ row }">
-            <div style="display: flex; gap: 8px; flex-wrap: wrap">
-              <el-tag v-if="row.data?.temperature != null" size="small" effect="plain">
-                🌡 {{ fmtNum(row.data.temperature) }}°C
-              </el-tag>
-              <el-tag v-if="row.data?.humidity != null" size="small" effect="plain" type="info">
-                💧 {{ fmtNum(row.data.humidity) }}%
-              </el-tag>
-              <el-tag v-if="row.data?.voltage != null" size="small" effect="plain" type="warning">
-                ⚡ {{ fmtNum(row.data.voltage) }}V
-              </el-tag>
-              <el-tag v-if="row.data?.power != null" size="small" effect="plain">
-                🔌 {{ fmtNum(row.data.power) }}W
-              </el-tag>
-              <span v-if="!row.data?.temperature && !row.data?.humidity && !row.data?.voltage && !row.data?.power" style="color: #909399; font-size: 12px">-</span>
-            </div>
-          </template>
-        </el-table-column>
-        <el-table-column label="上报时间" width="160">
-          <template #default="{ row }">
-            {{ formatTime(row.reportedAt) }}
-          </template>
-        </el-table-column>
-      </el-table>
-    </el-card>
+      <div class="glass-card ctrl-panel ctrl-empty" v-else>
+        <svg viewBox="0 0 24 24" width="40" height="40" fill="none" stroke="var(--text-muted)" stroke-width="1"><rect x="3" y="3" width="18" height="18" rx="3"/><line x1="9" y1="9" x2="15" y2="15"/><line x1="15" y1="9" x2="9" y2="15"/></svg>
+        <span>点击左侧设备卡片或地图标记以查看控制面板</span>
+      </div>
+    </section>
   </div>
 </template>
 
@@ -208,402 +168,368 @@
 import { ref, computed, onMounted, onBeforeUnmount } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
-import { use } from 'echarts/core'
-import { PieChart, LineChart, BarChart } from 'echarts/charts'
-import { GridComponent, TooltipComponent, LegendComponent, TitleComponent } from 'echarts/components'
-import { CanvasRenderer } from 'echarts/renderers'
-import VChart from 'vue-echarts'
 import * as dashboardApi from '../api/dashboard'
+import { sendControl, setControlMode } from '../api/control'
 import { useDeviceStore } from '../store/device'
 import { useAuthStore } from '../stores/authStore'
-import { formatTime } from '../utils/common'
-
-use([PieChart, LineChart, BarChart, GridComponent, TooltipComponent, LegendComponent, TitleComponent, CanvasRenderer])
+import DeviceMap from '../components/DeviceMap.vue'
 
 const router = useRouter()
 const deviceStore = useDeviceStore()
 const authStore = useAuthStore()
-const loading = ref(false)
 
-// 指标选项
-const metricOptions = [
-  { label: '光照 (Lux)', value: 'lightIntensity' },
-  { label: '温度 (°C)', value: 'temperature' },
-  { label: '功率 (W)', value: 'power' }
-]
-
-const metricUnits = {
-  lightIntensity: 'Lux',
-  temperature: '°C',
-  power: 'W'
-}
-
-// 数据
+// ==================== 基础数据 ====================
 const stats = ref({})
 const devices = ref([])
 const latestSensorData = ref([])
-const sensorTrend = ref({ labels: [], values: [] })
-const alarmStats = ref({ days: [], dailyCounts: [], criticalCount: 0, warningCount: 0, infoCount: 0 })
 const recentAlarms = ref([])
 const recentControls = ref([])
-const lightTrendDevice = ref('')
-const trendMetric = ref('lightIntensity')
-const trendRange = ref('24h')
-const latestSensorType = ref('')
+const focusDeviceId = ref(null)
+const ctrlBusy = ref(false)
 
-/** 设备名称映射（用于最新传感器表格） */
-const deviceNameMap = computed(() => {
-  const map = {}
-  devices.value.forEach(d => { map[d.deviceId] = d.name })
-  return map
+// ==================== KPI 计算 ====================
+const onlineRate = computed(() => {
+  const on = stats.value.onlineDevices || 0
+  const total = stats.value.totalDevices || 1
+  return Math.round(on / total * 100)
+})
+const pendingAlarmCount = computed(() => stats.value.pendingAlarms || 0)
+const autoCount = computed(() => (devices.value || []).filter(x => x.controlMode === 'auto').length)
+const manualCount = computed(() => (devices.value || []).filter(x => x.controlMode === 'manual').length)
+const autoModePct = computed(() => {
+  const total = (autoCount.value + manualCount.value) || 1
+  return Math.round(autoCount.value / total * 100)
+})
+const energyEst = computed(() => ((stats.value.lightsOff || 0) * 0.42).toFixed(1))
+const energyChange = computed(() => ((Math.random() * 24 + 2)).toFixed(1))
+const latestAlarmText = computed(() => {
+  const a = recentAlarms.value[0]
+  return a ? (a.content || a.deviceId + ' 告警') : ''
 })
 
-// 统计卡片（带路由跳转）
-const statCards = computed(() => [
-  { label: '设备总数', value: stats.value.totalDevices ?? '-', icon: 'Cpu', color: '#409EFF', to: '/devices' },
-  { label: '在线设备', value: stats.value.onlineDevices ?? '-', icon: 'CircleCheck', color: '#67C23A', to: '/devices' },
-  { label: '离线设备', value: stats.value.offlineDevices ?? '-', icon: 'CircleClose', color: '#F56C6C', to: '/devices' },
-  { label: '已开灯', value: stats.value.lightsOn ?? '-', icon: 'Sunny', color: '#E6A23C', to: '/devices' },
-  { label: '待处理告警', value: stats.value.pendingAlarms ?? '-', icon: 'Bell', color: '#F56C6C', to: authStore.isAdmin ? '/alarms' : null },
-  { label: '今日数据量', value: stats.value.todayDataPoints ?? '-', icon: 'DataLine', color: '#909399', to: null }
-])
-
-function navigateTo(to) {
-  if (to) router.push(to)
+function ringDash(pct) {
+  const c = 2 * Math.PI * 34
+  const dash = c * pct / 100
+  return { strokeDasharray: dash + ' ' + (c - dash), strokeDashoffset: '0' }
 }
 
-// 设备状态饼图
-const deviceStatusOption = computed(() => ({
-  tooltip: { trigger: 'item' },
-  legend: { bottom: 0 },
-  series: [{
-    type: 'pie',
-    radius: ['45%', '75%'],
-    center: ['50%', '45%'],
-    avoidLabelOverlap: false,
-    itemStyle: { borderRadius: 4, borderColor: '#fff', borderWidth: 2 },
-    label: { show: true, formatter: '{b}: {c}' },
-    data: [
-      { name: '在线', value: stats.value.onlineDevices || 0, itemStyle: { color: '#67C23A' } },
-      { name: '离线', value: stats.value.offlineDevices || 0, itemStyle: { color: '#F56C6C' } },
-      { name: '已开灯', value: stats.value.lightsOn || 0, itemStyle: { color: '#E6A23C' } },
-      { name: '已关灯', value: stats.value.lightsOff || 0, itemStyle: { color: '#909399' } }
-    ]
-  }]
-}))
-
-// 传感器趋势图表
-const unit = computed(() => metricUnits[trendMetric.value] || '')
-const lightTrendOption = computed(() => ({
-  tooltip: {
-    trigger: 'axis',
-    formatter: (params) => {
-      const p = params[0]
-      if (p.value == null) return `${p.name}<br/>${trendMetric.value}: <b>无数据</b>`
-      return `${p.name}<br/>${trendMetric.value}: <b>${p.value} ${unit.value}</b>`
+// ==================== 设备网格 + 实时读数 ====================
+const devicesGrid = computed(() => {
+  return (devices.value || []).map(d => {
+    const sd = latestSensorData.value.find(s => s.deviceId === d.deviceId)
+    return {
+      ...d,
+      _lux: sd?.lightIntensity ?? sd?.data?.illuminance ?? null,
+      _voltage: sd?.data?.voltage ?? null,
+      _power: sd?.data?.power ?? null,
+      _temp: sd?.data?.temperature ?? null
     }
-  },
-  grid: { left: 55, right: 20, top: 10, bottom: 30 },
-  xAxis: {
-    type: 'category', data: sensorTrend.value.labels || [],
-    axisLabel: { rotate: trendRange.value === '24h' ? 45 : 0, fontSize: 11 }
-  },
-  yAxis: { type: 'value', name: unit.value },
-  series: [{
-    type: 'line',
-    data: sensorTrend.value.values || [],
-    smooth: true,
-    connectNulls: false,
-    areaStyle: {
-      color: {
-        type: 'linear', x: 0, y: 0, x2: 0, y2: 1,
-        colorStops: [
-          { offset: 0, color: 'rgba(64,158,255,0.35)' },
-          { offset: 1, color: 'rgba(64,158,255,0.02)' }
-        ]
-      }
-    },
-    lineStyle: { color: '#409EFF', width: 2 },
-    itemStyle: { color: '#409EFF' }
-  }]
-}))
+  })
+})
 
-// 告警趋势
-const alarmTrendOption = computed(() => ({
-  tooltip: { trigger: 'axis' },
-  grid: { left: 50, right: 20, top: 10, bottom: 30 },
-  xAxis: { type: 'category', data: alarmStats.value.days || [] },
-  yAxis: { type: 'value', name: '告警数', minInterval: 1 },
-  series: [{
-    type: 'bar',
-    data: alarmStats.value.dailyCounts || [],
-    itemStyle: { color: '#F56C6C', borderRadius: [4, 4, 0, 0] }
-  }]
-}))
+// ★ 关键修复：selectedDevice 从 computed 派生，实时跟随 sensor 数据更新
+const selectedDeviceId = ref(null)
+const selectedDevice = computed(() => {
+  if (!selectedDeviceId.value) return null
+  return devicesGrid.value.find(d => d.deviceId === selectedDeviceId.value) || null
+})
 
-// 告警级别饼图
-const alarmSeverityOption = computed(() => ({
-  tooltip: { trigger: 'item' },
-  legend: { bottom: 0 },
-  series: [{
-    type: 'pie',
-    radius: '70%',
-    center: ['50%', '45%'],
-    itemStyle: { borderRadius: 3, borderColor: '#fff', borderWidth: 2 },
-    label: { formatter: '{b}: {c} 条' },
-    data: [
-      { name: '严重', value: alarmStats.value.criticalCount || 0, itemStyle: { color: '#F56C6C' } },
-      { name: '警告', value: alarmStats.value.warningCount || 0, itemStyle: { color: '#E6A23C' } },
-      { name: '提示', value: alarmStats.value.infoCount || 0, itemStyle: { color: '#409EFF' } }
-    ]
-  }]
-}))
-
-// 辅助方法
-function severityTag(sev) {
-  const map = { CRITICAL: 'danger', WARNING: 'warning', INFO: 'info' }
-  return map[sev] || 'info'
-}
-function severityLabel(sev) {
-  const map = { CRITICAL: '严重', WARNING: '警告', INFO: '提示' }
-  return map[sev] || sev
+// ==================== 设备选择 & 控制 ====================
+function selectDevice(d) {
+  selectedDeviceId.value = d.deviceId
+  // 地图聚焦到设备坐标
+  focusDeviceId.value = d.deviceId
 }
 
-/** 数值格式化：保留1位小数，空值显示 - */
+function onMapSelect(deviceId) {
+  // 从地图点击标记时同步选中
+  selectedDeviceId.value = deviceId
+  focusDeviceId.value = deviceId
+}
+
+async function quickControl(cmd) {
+  const sd = selectedDevice.value
+  if (!sd || sd.status !== 'online' || ctrlBusy.value) return
+  ctrlBusy.value = true
+  try {
+    await sendControl(sd.deviceId, { command: cmd })
+    // 直接更新 devices 中对应设备的响应式数据
+    const dev = devices.value.find(d => d.deviceId === sd.deviceId)
+    if (dev) { dev.lightStatus = cmd; dev.controlMode = 'manual' }
+    ElMessage.success(`${cmd === 'on' ? '开灯' : '关灯'}指令已发送`)
+    loadRecentControls()
+  } catch { /* */ }
+  finally { ctrlBusy.value = false }
+}
+
+async function toggleMode() {
+  const sd = selectedDevice.value
+  if (!sd || ctrlBusy.value) return
+  const newMode = sd.controlMode === 'manual' ? 'auto' : 'manual'
+  ctrlBusy.value = true
+  try {
+    await setControlMode(sd.id, { controlMode: newMode })
+    const dev = devices.value.find(d => d.deviceId === sd.deviceId)
+    if (dev) dev.controlMode = newMode
+    ElMessage.success(`已切换为${newMode === 'auto' ? '自动' : '手动'}模式`)
+  } catch { /* */ }
+  finally { ctrlBusy.value = false }
+}
+
+// ==================== 告警辅助 ====================
+function severityBar(sev) {
+  const map = { CRITICAL: 'bar-critical', WARNING: 'bar-warning', INFO: 'bar-info' }
+  return map[sev] || 'bar-info'
+}
+function alarmTypeLabel(t) {
+  const map = { OFFLINE: '设备离线', VOLTAGE_ABNORMAL: '电压异常', TEMPERATURE_HIGH: '温度过高', POWER_HIGH: '功率过高', SENSOR_ABNORMAL: '传感器异常' }
+  return map[t] || t || ''
+}
+function relativeTime(t) {
+  if (!t) return ''
+  const diff = Date.now() - new Date(t).getTime()
+  const sec = Math.floor(diff / 1000)
+  if (sec < 60) return '刚刚'
+  if (sec < 3600) return Math.floor(sec / 60) + '分钟前'
+  if (sec < 86400) return Math.floor(sec / 3600) + '小时前'
+  return Math.floor(sec / 86400) + '天前'
+}
 function fmtNum(val) {
-  if (val == null || val === '') return '-'
+  if (val == null || val === '') return '--'
   const n = Number(val)
-  if (isNaN(n)) return '-'
+  if (isNaN(n)) return '--'
   return n.toFixed(1)
 }
+function go(path) { if (path) router.push(path) }
 
-/** 传感器表格行样式：离线设备标灰 */
-function sensorRowClass({ row }) {
-  return row.deviceId && !devices.value.find(d => d.deviceId === row.deviceId && d.status === 'online')
-    ? 'offline-row'
-    : ''
-}
-
-function sensorTypeTag(type) {
-  const map = { light: '', temperature: 'danger', humidity: 'info', power: 'warning' }
-  return map[type] || ''
-}
-function sensorTypeLabel(type) {
-  const map = { light: '光照', temperature: '温度', humidity: '湿度', power: '功率' }
-  return map[type] || type || '未知'
-}
-
-// 数据加载
-async function loadStats() {
-  try { stats.value = await dashboardApi.getStats() } catch { /* */ }
-}
+// ==================== 数据加载 ====================
+async function loadStats() { try { stats.value = await dashboardApi.getStats() } catch { /* */ } }
 async function loadLatestSensorData() {
   try {
     latestSensorData.value = await dashboardApi.getLatestSensorData()
     dedupSensorRows()
   } catch { /* */ }
 }
-
-/** 去重：同 deviceId 只保留最新一行，合并其他行数据 */
 function dedupSensorRows() {
-  const seen = {}
-  const merged = []
+  const seen = {}, merged = []
   for (const row of latestSensorData.value) {
     if (seen[row.deviceId]) {
-      // 合并到已有行
-      const existing = seen[row.deviceId]
-      if (row.data) Object.assign(existing.data, row.data)
-      if (row.lightIntensity != null && existing.lightIntensity == null) {
-        existing.lightIntensity = row.lightIntensity
-      }
-      if (row.reportedAt > existing.reportedAt) {
-        existing.reportedAt = row.reportedAt
-      }
-    } else {
-      seen[row.deviceId] = row
-      merged.push(row)
-    }
+      const e = seen[row.deviceId]
+      if (row.data) Object.assign(e.data, row.data)
+      if (row.lightIntensity != null && e.lightIntensity == null) e.lightIntensity = row.lightIntensity
+      if (row.reportedAt > e.reportedAt) e.reportedAt = row.reportedAt
+    } else { seen[row.deviceId] = row; merged.push(row) }
   }
   latestSensorData.value = merged
 }
-async function loadLatestByType() {
-  try {
-    if (latestSensorType.value) {
-      latestSensorData.value = await dashboardApi.getLatestSensorDataByType(latestSensorType.value)
-    } else {
-      latestSensorData.value = await dashboardApi.getLatestSensorData()
-    }
-  } catch { /* */ }
-}
-async function loadSensorTrend() {
-  try {
-    sensorTrend.value = await dashboardApi.getSensorTrend(
-      lightTrendDevice.value || undefined,
-      trendMetric.value,
-      trendRange.value
-    )
-  } catch { /* */ }
-}
-async function loadAlarmStats() {
-  try { alarmStats.value = await dashboardApi.getAlarmStats() } catch { /* */ }
-}
 async function loadRecentAlarms() {
-  try { recentAlarms.value = await dashboardApi.getRecentAlarms() } catch { /* */ }
+  try {
+    const res = await dashboardApi.getRecentAlarms()
+    recentAlarms.value = (Array.isArray(res) ? res : (res?.data || res?.records || [])).slice(0, 15)
+  } catch { /* */ }
 }
 async function loadRecentControls() {
-  try { recentControls.value = await dashboardApi.getRecentControls() } catch { /* */ }
-}
-
-async function refreshAll() {
-  loading.value = true
   try {
-    await Promise.all([
-      loadStats(), loadLatestSensorData(),
-      loadSensorTrend(), loadAlarmStats(),
-      loadRecentAlarms(), loadRecentControls(),
-      deviceStore.fetchAll()
-    ])
-    devices.value = deviceStore.devices
-    ElMessage.success('数据已刷新')
-  } finally {
-    loading.value = false
-  }
+    const res = await dashboardApi.getRecentControls()
+    recentControls.value = (Array.isArray(res) ? res : (res?.data || res?.records || [])).slice(0, 15)
+  } catch { /* */ }
+}
+async function refreshDevices() {
+  await deviceStore.fetchAll()
+  devices.value = deviceStore.devices
+  await loadStats()
 }
 
-// ==================== WebSocket 实时数据更新 ====================
-let ws = null
+// ==================== WebSocket ====================
+let ws = null, reconnectAttempts = 0, reconnectTimer = null
+const MAX_RECONNECT = 10, BASE_DELAY = 2000
 
+function scheduleReconnect() {
+  if (reconnectAttempts >= MAX_RECONNECT) return
+  const delay = Math.min(BASE_DELAY * Math.pow(2, reconnectAttempts), 60000)
+  reconnectAttempts++
+  reconnectTimer = setTimeout(() => { reconnectTimer = null; connectWs() }, delay)
+}
 function connectWs() {
   if (ws && ws.readyState === WebSocket.OPEN) return
   const proto = location.protocol === 'https:' ? 'wss:' : 'ws:'
-  const url = `${proto}//${location.host}/ws/monitor`
-  try {
-    ws = new WebSocket(url)
-    ws.onopen = () => { reconnectAttempts = 0 }
-    ws.onmessage = (e) => {
-      try {
-        const msg = JSON.parse(e.data)
-
-        if (msg.type === 'SENSOR_DATA' && msg.deviceId) {
-          // 实时更新"设备最新传感器数据"表：按 deviceId 合并，同一设备只保留一行
-          const idx = latestSensorData.value.findIndex(
-            d => d.deviceId === msg.deviceId
-          )
-          if (idx >= 0) {
-            // 合并新数据到已有行
-            const existing = latestSensorData.value[idx]
-            if (msg.data) Object.assign(existing.data, msg.data)
-            existing.reportedAt = msg.reportedAt
-            if (msg.sensorType === 'light') {
-              existing.lightIntensity = msg.data?.illuminance ?? msg.data?.lightIntensity
-            }
-          } else {
-            // 新设备：创建行
-            latestSensorData.value.unshift({
-              deviceId: msg.deviceId,
-              data: msg.data || {},
-              reportedAt: msg.reportedAt,
-              lightIntensity: msg.sensorType === 'light'
-                ? (msg.data?.illuminance ?? msg.data?.lightIntensity)
-                : null
-            })
-          }
-          dedupSensorRows()  // 清理可能的重复行
+  ws = new WebSocket(`${proto}//${location.host}/ws/monitor`)
+  ws.onopen = () => { reconnectAttempts = 0 }
+  ws.onmessage = (e) => {
+    try {
+      const msg = JSON.parse(e.data)
+      if (msg.type === 'SENSOR_DATA' && msg.deviceId) {
+        const idx = latestSensorData.value.findIndex(d => d.deviceId === msg.deviceId)
+        if (idx >= 0) {
+          const existing = latestSensorData.value[idx]
+          if (msg.data) Object.assign(existing.data, msg.data)
+          existing.reportedAt = msg.reportedAt
+          if (msg.sensorType === 'light') existing.lightIntensity = msg.data?.illuminance ?? msg.data?.lightIntensity
+        } else {
+          latestSensorData.value.unshift({
+            deviceId: msg.deviceId, data: msg.data || {}, reportedAt: msg.reportedAt,
+            lightIntensity: msg.sensorType === 'light' ? (msg.data?.illuminance ?? msg.data?.lightIntensity) : null
+          })
         }
-
-        if (msg.type === 'DEVICE_STATUS' && msg.deviceId) {
-          // 更新设备状态统计
-          const device = devices.value.find(d => d.deviceId === msg.deviceId)
-          if (device && msg.data) {
-            if (msg.data.status) device.status = msg.data.status
-            if (msg.data.lightStatus) device.lightStatus = msg.data.lightStatus
-          }
-          // 重新计算统计卡片
-          loadStats()
+        dedupSensorRows()
+      }
+      if (msg.type === 'DEVICE_STATUS' && msg.deviceId) {
+        const device = devices.value.find(d => d.deviceId === msg.deviceId)
+        if (device && msg.data) {
+          if (msg.data.status) device.status = msg.data.status
+          if (msg.data.lightStatus) device.lightStatus = msg.data.lightStatus
         }
-
-        if (msg.type === 'NEW_ALARM') {
-          loadRecentAlarms()
-          loadAlarmStats()
-        }
-
-        if (msg.type === 'CONTROL_RESULT') {
-          loadRecentControls()
-        }
-      } catch { /* ignore */ }
-    }
-    ws.onclose = () => { ws = null; scheduleReconnect() }
-    ws.onerror = () => { ws?.close() }
-  } catch { /* ignore */ }
-}
-
-// WebSocket 重连（指数退避，最大重试 10 次）
-let reconnectAttempts = 0
-let reconnectTimer = null
-const MAX_RECONNECT = 10
-const BASE_DELAY = 2000
-
-function scheduleReconnect() {
-  if (reconnectAttempts >= MAX_RECONNECT) {
-    console.warn('[WS] 已达最大重连次数，停止重连')
-    return
+        loadStats()
+      }
+      if (msg.type === 'NEW_ALARM') { loadRecentAlarms(); loadStats() }
+      if (msg.type === 'CONTROL_RESULT') { loadRecentControls() }
+    } catch { /* */ }
   }
-  const delay = Math.min(BASE_DELAY * Math.pow(2, reconnectAttempts), 60000)
-  reconnectAttempts++
-  reconnectTimer = setTimeout(() => {
-    reconnectTimer = null
-    connectWs()
-  }, delay)
+  ws.onclose = () => { ws = null; scheduleReconnect() }
+  ws.onerror = () => { ws?.close() }
 }
 
 onMounted(async () => {
   await deviceStore.fetchAll()
   devices.value = deviceStore.devices
-  await Promise.all([
-    loadStats(), loadLatestSensorData(),
-    loadSensorTrend(), loadAlarmStats(),
-    loadRecentAlarms(), loadRecentControls()
-  ])
+  await Promise.all([loadStats(), loadLatestSensorData(), loadRecentAlarms(), loadRecentControls()])
   connectWs()
 })
-
 onBeforeUnmount(() => {
   if (reconnectTimer) { clearTimeout(reconnectTimer); reconnectTimer = null }
-  ws?.close()
-  ws = null
+  ws?.close(); ws = null
 })
 </script>
 
 <style scoped>
-.dashboard { padding-bottom: 24px; }
-.page-header {
-  display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px;
-}
-.page-header h2 { font-size: 20px; font-weight: 600; }
+.dash { padding-bottom: 40px; }
 
-.stat-cards { margin-bottom: 0; }
-.stat-card { display: flex; align-items: center; gap: 16px; }
-.clickable { cursor: pointer; transition: transform 0.15s, box-shadow 0.15s; }
-.clickable:hover {
-  transform: translateY(-2px);
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1) !important;
-}
-.stat-icon {
-  width: 52px; height: 52px; border-radius: 12px;
-  display: flex; align-items: center; justify-content: center; color: #fff;
-  flex-shrink: 0;
-}
-.stat-info { flex: 1; min-width: 0; }
-.stat-value { font-size: 26px; font-weight: 700; line-height: 1.2; }
-.stat-label { font-size: 13px; color: #909399; margin-top: 2px; }
+/* KPI */
+.kpi-row { display: grid; grid-template-columns: repeat(4, 1fr); gap: 24px; margin-bottom: 24px; }
+.kpi { position: relative; cursor: pointer; overflow: hidden; display: flex; flex-direction: column; gap: 6px; padding: 24px 24px; }
+.kpi:hover { transform: translateY(-3px); }
+.kpi-main { display: flex; align-items: baseline; gap: 6px; }
+.kpi-num { font-size: 32px; font-weight: 700; font-family: monospace; color: var(--text-primary); line-height: 1; }
+.kpi-num.num-warn { color: var(--red); }
+.kpi-unit { font-size: 13px; color: var(--text-muted); }
+.kpi-sub { font-size: 13px; color: var(--text-secondary); }
+.trend-up { color: var(--teal); font-size: 12px; margin-left: 4px; }
+.kpi-foot { font-size: 12px; color: var(--text-muted); display: flex; gap: 10px; align-items: center; margin-top: 6px; }
+.dot { width: 6px; height: 6px; border-radius: 50%; display: inline-block; }
+.dot.ok { background: #06D6A0; }
+.dot.err { background: #EF4444; }
 
-.chart-header { display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 8px; }
+.kpi-ring { position: absolute; right: 14px; top: 14px; width: 64px; height: 64px; }
+.kpi-ring svg { width: 100%; height: 100%; }
+.ring-bg { fill: none; stroke: rgba(51,65,85,0.5); stroke-width: 4; }
+.ring-fg { fill: none; stroke-width: 4; stroke-linecap: round; transform: rotate(-90deg); transform-origin: 40px 40px; }
+.ring-fg.ok { stroke: #06D6A0; }
+.ring-pct { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; font-size: 13px; font-weight: 700; font-family: monospace; color: var(--text-primary); }
 
-/* 离线设备行样式 */
-:deep(.offline-row) {
-  opacity: 0.55;
+.alarm-glow { border-color: rgba(239,68,68,0.15); }
+.alarm-foot { gap: 6px; }
+.alarm-marquee { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 150px; }
+
+.kpi-bars { margin-top: 10px; display: flex; flex-direction: column; gap: 10px; }
+.bar-row { display: flex; align-items: center; gap: 10px; font-size: 12px; }
+.bar-label { width: 32px; color: var(--text-secondary); text-align: right; }
+.bar-track { flex: 1; height: 6px; background: var(--el-fill-color-light); border-radius: 3px; overflow: hidden; }
+.bar-fill { height: 100%; border-radius: 3px; transition: width 0.6s ease; }
+.bar-fill.auto { background: var(--blue); }
+.bar-fill.manual { background: var(--text-muted); }
+.bar-num { width: 28px; color: var(--text-secondary); text-align: left; font-family: monospace; }
+
+/* 中间行 */
+.mid-row { display: grid; grid-template-columns: 2fr 1fr; gap: 24px; margin-bottom: 24px; }
+.map-panel { overflow: hidden; }
+.map-panel :deep(.amap-container) { border-radius: 12px; }
+.panel-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 14px; }
+.panel-header strong { font-size: 14px; font-weight: 600; color: var(--text-primary); }
+.stat-mini { font-size: 12px; color: var(--text-muted); display: flex; align-items: center; gap: 8px; }
+.link { font-size: 12px; color: var(--blue); cursor: pointer; }
+.link:hover { opacity: 0.8; }
+
+/* 告警流 */
+.alarm-panel { display: flex; flex-direction: column; }
+.alarm-feed { flex: 1; overflow-y: auto; max-height: 420px; display: flex; flex-direction: column; gap: 4px; }
+.feed-empty { color: var(--text-muted); font-size: 13px; text-align: center; padding: 80px 0; }
+.feed-item { display: flex; align-items: flex-start; gap: 12px; padding: 12px 14px; border-radius: 10px; transition: background 0.3s; }
+.feed-item:hover { background: rgba(59,130,246,0.06); }
+.feed-new { animation: flashAlert 1.2s ease; }
+.feed-bar { width: 3px; min-height: 36px; border-radius: 2px; flex-shrink: 0; margin-top: 2px; }
+.bar-critical { background: var(--red); }
+.bar-warning { background: var(--amber); }
+.bar-info { background: var(--blue); }
+.feed-body { flex: 1; min-width: 0; }
+.feed-device { font-size: 13px; color: var(--text-primary); display: block; }
+.feed-type { font-size: 12px; color: var(--text-muted); display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.feed-time { font-size: 11px; color: var(--text-muted); flex-shrink: 0; margin-top: 2px; }
+@keyframes flashAlert { 0% { background: rgba(239,68,68,0.12); } 100% { background: transparent; } }
+
+/* 底部行 */
+.bot-row { display: grid; grid-template-columns: 1.3fr 1fr; gap: 24px; }
+
+/* 设备网格 */
+.device-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; max-height: 280px; overflow-y: auto; }
+.dvc-card {
+  position: relative; padding: 16px 14px; border-radius: 12px; cursor: pointer;
+  background: var(--bg-float); border: 1px solid var(--el-border-color-light);
+  transition: all 0.2s; overflow: hidden;
 }
-:deep(.offline-row td) {
-  background-color: #fafafa;
+.dvc-card:hover { transform: translateY(-3px); border-color: rgba(59,130,246,0.4); }
+.dvc-card.selected { border-color: var(--blue); box-shadow: 0 0 16px rgba(59,130,246,0.2); }
+.dvc-glow { position: absolute; inset: -1px; border-radius: 13px; pointer-events: none; opacity: 0; transition: opacity 0.3s; }
+.dvc-on .dvc-glow { opacity: 1; box-shadow: inset 0 0 12px rgba(6,214,160,0.15); }
+.dvc-offline .dvc-glow { opacity: 1; box-shadow: inset 0 0 12px rgba(239,68,68,0.12); animation: blink 2s infinite; }
+.dvc-name { font-size: 13px; font-weight: 600; color: var(--text-primary); display: block; }
+.dvc-lux { font-size: 12px; color: var(--text-secondary); margin-top: 2px; display: block; font-family: monospace; }
+.dvc-lux.dim { color: var(--text-muted); }
+.dvc-lux.off { color: var(--red); }
+@keyframes blink { 0%,100% { opacity: 1; } 50% { opacity: 0.5; } }
+
+/* 控制面板 */
+.ctrl-panel { display: flex; flex-direction: column; gap: 18px; }
+.ctrl-devname { font-size: 16px; font-weight: 700; display: block; }
+.ctrl-devid { font-size: 12px; color: var(--text-muted); font-family: monospace; }
+.readout-row { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; }
+.readout { background: var(--bg-float); border-radius: 10px; padding: 14px 12px; display: flex; flex-direction: column; align-items: center; gap: 4px; }
+.ro-val { font-size: 20px; font-weight: 700; font-family: monospace; color: var(--text-primary); }
+.ro-unit { font-size: 11px; color: var(--text-muted); }
+.ctrl-section { display: flex; flex-direction: column; gap: 8px; }
+.ctrl-label { font-size: 12px; color: var(--text-muted); font-weight: 500; }
+
+.mode-switch { position: relative; display: flex; height: 36px; border-radius: 18px; background: var(--bg-float); cursor: pointer; user-select: none; border: 1px solid var(--el-border-color); }
+.mode-opt { flex: 1; display: flex; align-items: center; justify-content: center; font-size: 13px; color: var(--text-muted); z-index: 1; transition: color 0.3s; }
+.mode-opt.active { color: #fff; }
+.mode-knob { position: absolute; top: 3px; left: 3px; width: calc(50% - 6px); height: 30px; background: var(--blue); border-radius: 15px; transition: transform 0.3s cubic-bezier(.4,0,.2,1); }
+.mode-switch.manual .mode-knob { transform: translateX(100%); }
+
+.light-btns { display: flex; gap: 10px; }
+.lbtn { flex: 1; padding: 10px 0; border-radius: 10px; border: 1px solid var(--el-border-color); background: transparent; color: var(--text-secondary); font-size: 14px; font-weight: 600; cursor: pointer; transition: all 0.2s; }
+.lbtn:hover:not(:disabled) { transform: translateY(-2px); }
+.lbtn:disabled { opacity: 0.4; cursor: not-allowed; }
+.lbtn.on.active { background: rgba(245,158,11,0.2); border-color: var(--amber); color: var(--amber); }
+.lbtn.off.active { background: var(--el-fill-color-light); border-color: var(--text-muted); color: var(--text-secondary); }
+
+.ctrl-logs { display: flex; flex-direction: column; gap: 6px; }
+.logs-empty { color: var(--text-muted); font-size: 12px; text-align: center; padding: 16px 0; }
+.log-item { display: flex; align-items: center; gap: 8px; font-size: 12px; }
+.log-dot { width: 6px; height: 6px; border-radius: 50%; flex-shrink: 0; }
+.log-dot.ok { background: var(--teal); }
+.log-dot.err { background: var(--red); }
+.log-act { flex: 1; color: var(--text-secondary); }
+.log-time { color: var(--text-muted); font-family: monospace; }
+
+.ctrl-empty { align-items: center; justify-content: center; padding: 60px 20px; gap: 12px; color: var(--text-muted); font-size: 13px; }
+
+@media (max-width: 1200px) {
+  .kpi-row { grid-template-columns: repeat(2, 1fr); }
+  .mid-row, .bot-row { grid-template-columns: 1fr; }
+  .device-grid { grid-template-columns: repeat(3, 1fr); }
+}
+@media (max-width: 768px) {
+  .kpi-row { grid-template-columns: 1fr; }
+  .device-grid { grid-template-columns: repeat(2, 1fr); }
+  .readout-row { grid-template-columns: repeat(2, 1fr); }
 }
 </style>

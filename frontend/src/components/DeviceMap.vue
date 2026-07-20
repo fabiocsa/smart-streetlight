@@ -1,6 +1,6 @@
 <template>
   <div class="map-wrapper" ref="mapWrapper">
-    <div ref="mapContainer" class="map-container" :style="{ height: height }"></div>
+    <div ref="mapContainer" class="map-container" :class="{ dark: isDark }" :style="{ height: height }"></div>
 
     <!-- 工具栏（左上角） -->
     <div class="map-toolbar">
@@ -126,17 +126,20 @@ import { sendControl, sendBatchControl, setControlMode } from '../api/control'
 import { unbindSensor, deleteDevice } from '../api/device'
 import { useAuthStore } from '../stores/authStore'
 import { useDeviceStore } from '../store/device'
+import { useTheme } from '../composables/useTheme'
 
 const props = defineProps({
   devices: { type: Array, default: () => [] },
-  height: { type: String, default: '600px' }
+  height: { type: String, default: '600px' },
+  focusDeviceId: { type: String, default: null }
 })
 
-const emit = defineEmits(['refresh', 'add-device'])
+const emit = defineEmits(['refresh', 'add-device', 'select-device'])
 
 const router = useRouter()
 const authStore = useAuthStore()
 const deviceStore = useDeviceStore()
+const { isDark } = useTheme()
 const isAdmin = computed(() => authStore.isAdmin)
 
 const mapContainer = ref(null)
@@ -454,8 +457,9 @@ function updateMarkers() {
         return
       }
 
-      // 普通点击 → 显示详情
+      // 普通点击 → 显示详情 + 通知父组件
       contextMenu.visible = false
+      emit('select-device', device.deviceId)
       infoWindow.setContent(buildInfoContent(device))
       infoWindow.open(map, marker.getPosition())
       setTimeout(() => {
@@ -481,21 +485,21 @@ function buildInfoContent(device) {
 
   return `
     <div style="font-size: 13px; line-height: 1.8; min-width: 220px;">
-      <div style="font-size: 15px; font-weight: 600; margin-bottom: 6px; border-bottom: 1px solid #eee; padding-bottom: 4px;">
+      <div style="font-size: 15px; font-weight: 600; margin-bottom: 6px; border-bottom: 1px solid #ddd; padding-bottom: 4px; color: #222;">
         ${device.name || device.deviceId}
       </div>
       <table style="width: 100%; border-collapse: collapse;">
-        <tr><td style="color: #666; padding-right: 8px;">设备ID</td><td>${device.deviceId}</td></tr>
-        <tr><td style="color: #666; padding-right: 8px;">状态</td><td>${statusMap[device.status] || device.status}</td></tr>
-        <tr><td style="color: #666; padding-right: 8px;">灯光</td><td>${lightMap[device.lightStatus] || device.lightStatus}</td></tr>
-        <tr><td style="color: #666; padding-right: 8px;">控制模式</td><td>${modeMap[device.controlMode] || device.controlMode}</td></tr>
-        <tr><td style="color: #666; padding-right: 8px;">纬度</td><td>${device.latitude ?? '-'}</td></tr>
-        <tr><td style="color: #666; padding-right: 8px;">经度</td><td>${device.longitude ?? '-'}</td></tr>
-        <tr><td style="color: #666; padding-right: 8px;">位置</td><td>${device.location || '-'}</td></tr>
+        <tr><td style="color: #777; padding-right: 8px;">设备ID</td><td style="color: #333;">${device.deviceId}</td></tr>
+        <tr><td style="color: #777; padding-right: 8px;">状态</td><td style="color: #333;">${statusMap[device.status] || device.status}</td></tr>
+        <tr><td style="color: #777; padding-right: 8px;">灯光</td><td style="color: #333;">${lightMap[device.lightStatus] || device.lightStatus}</td></tr>
+        <tr><td style="color: #777; padding-right: 8px;">控制模式</td><td style="color: #333;">${modeMap[device.controlMode] || device.controlMode}</td></tr>
+        <tr><td style="color: #777; padding-right: 8px;">纬度</td><td style="color: #333;">${device.latitude ?? '-'}</td></tr>
+        <tr><td style="color: #777; padding-right: 8px;">经度</td><td style="color: #333;">${device.longitude ?? '-'}</td></tr>
+        <tr><td style="color: #777; padding-right: 8px;">位置</td><td style="color: #333;">${device.location || '-'}</td></tr>
       </table>
       <div style="margin-top: 8px; text-align: center;">
         <button id="detail-btn-${device.id}"
-          style="padding: 4px 16px; background: #409eff; color: #fff; border: none; border-radius: 4px; cursor: pointer; font-size: 12px;">
+          style="padding: 4px 16px; background: #2563eb; color: #fff; border: none; border-radius: 4px; cursor: pointer; font-size: 12px;">
           查看详情
         </button>
       </div>
@@ -689,7 +693,7 @@ async function batchUnbind() {
     await ElMessageBox.confirm(
       `确定解绑 ${devicesWithSensors.length} 个设备的 ${totalSensors} 个传感器吗？` +
         (offlineCount > 0 ? `（${offlineCount} 个离线设备已跳过）` : '') +
-        '<br><small style="color: #909399;">传感器不会被删除，仅解除与设备的绑定关系</small>',
+        '<br><small style="color: #94a3b8;">传感器不会被删除，仅解除与设备的绑定关系</small>',
       '批量解绑确认',
       {
         confirmButtonText: '确定解绑',
@@ -728,6 +732,16 @@ watch(() => props.devices, () => {
   nextTick(updateMarkers)
 }, { deep: true })
 
+// 外部请求聚焦设备时，地图平移到设备坐标并放大
+watch(() => props.focusDeviceId, (id) => {
+  if (!id || !map) return
+  const d = props.devices.find(x => x.deviceId === id)
+  if (d && d.longitude && d.latitude) {
+    map.setCenter([d.longitude, d.latitude])
+    map.setZoom(18)
+  }
+})
+
 onMounted(() => {
   nextTick(initMap)
 })
@@ -754,6 +768,10 @@ onBeforeUnmount(() => {
 }
 
 /* 工具栏 */
+/* 暗色模式下地图反转颜色 */
+.map-container.dark { filter: invert(0.88) hue-rotate(180deg) saturate(0.6); }
+.map-container.dark :deep(img) { filter: inherit; }
+
 .map-toolbar {
   position: absolute;
   top: 12px;
@@ -763,10 +781,12 @@ onBeforeUnmount(() => {
   flex-direction: column;
   align-items: flex-start;
   gap: 4px;
-  background: rgba(255, 255, 255, 0.95);
-  padding: 4px;
-  border-radius: 6px;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
+  background: var(--bg-card);
+  backdrop-filter: blur(12px);
+  padding: 6px;
+  border-radius: 8px;
+  border: 1px solid var(--border-card);
+  box-shadow: var(--shadow-sm);
 }
 .map-toolbar > * {
   margin: 0 !important;
@@ -790,75 +810,29 @@ onBeforeUnmount(() => {
 
 /* 选框 */
 .selection-box {
-  position: absolute;
-  z-index: 9;
-  background: rgba(64, 158, 255, 0.1);
-  border: 2px dashed #409eff;
-  pointer-events: none;
+  position: absolute; z-index: 9;
+  background: rgba(37, 99, 235, 0.1); border: 2px dashed #2563eb; pointer-events: none;
 }
-
-/* 操作栏 */
 .operation-bar {
-  position: absolute;
-  bottom: 24px;
-  left: 50%;
-  transform: translateX(-50%);
-  z-index: 10;
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  background: rgba(255, 255, 255, 0.97);
-  padding: 10px 18px;
-  border-radius: 8px;
-  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.2);
-  white-space: nowrap;
+  position: absolute; bottom: 24px; left: 50%; transform: translateX(-50%); z-index: 10;
+  display: flex; align-items: center; gap: 8px;
+  background: var(--bg-card); backdrop-filter: blur(16px);
+  border: 1px solid var(--border-card); border-radius: 10px;
+  padding: 10px 18px; box-shadow: var(--shadow-md); white-space: nowrap;
 }
-
-.op-count {
-  font-size: 13px;
-  font-weight: 600;
-  color: #333;
-  margin-right: 4px;
-}
-
-/* 操作栏动画 */
-.slide-up-enter-active {
-  transition: all 0.3s ease-out;
-}
-.slide-up-leave-active {
-  transition: all 0.2s ease-in;
-}
-.slide-up-enter-from {
-  transform: translateX(-50%) translateY(20px);
-  opacity: 0;
-}
-.slide-up-leave-to {
-  transform: translateX(-50%) translateY(10px);
-  opacity: 0;
-}
-
-/* 右键菜单 */
+.op-count { font-size: 13px; font-weight: 600; color: var(--text-primary); margin-right: 4px; }
+.slide-up-enter-active { transition: all 0.3s ease-out; }
+.slide-up-leave-active { transition: all 0.2s ease-in; }
+.slide-up-enter-from { transform: translateX(-50%) translateY(20px); opacity: 0; }
+.slide-up-leave-to { transform: translateX(-50%) translateY(10px); opacity: 0; }
 .context-menu {
-  position: absolute;
-  z-index: 20;
-  background: #fff;
-  border-radius: 6px;
-  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.2);
-  padding: 4px 0;
-  min-width: 150px;
+  position: absolute; z-index: 20;
+  background: var(--bg-card); backdrop-filter: blur(16px);
+  border: 1px solid var(--border-card); border-radius: 8px;
+  box-shadow: var(--shadow-md); padding: 4px 0; min-width: 150px;
+  color: var(--text-primary);
 }
-.context-menu-item {
-  padding: 8px 16px;
-  font-size: 13px;
-  cursor: pointer;
-  transition: background 0.15s;
-}
-.context-menu-item:hover {
-  background: #f0f5ff;
-}
-.context-menu-divider {
-  height: 1px;
-  background: #eee;
-  margin: 4px 0;
-}
+.context-menu-item { padding: 8px 16px; font-size: 13px; cursor: pointer; transition: background 0.15s; color: var(--text-primary); }
+.context-menu-item:hover { background: rgba(59, 130, 246, 0.1); }
+.context-menu-divider { height: 1px; background: var(--el-border-color-light); margin: 4px 0; }
 </style>

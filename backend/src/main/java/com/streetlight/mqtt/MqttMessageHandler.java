@@ -136,8 +136,7 @@ public class MqttMessageHandler implements MqttCallback {
         String command = root.has("command") ? root.get("command").asText() : "";
         String result = root.has("result") ? root.get("result").asText() : "fail";
 
-        controlService.updateControlResult(deviceId, command, result);
-        webSocketHandler.pushControlResult(deviceId, command, result);
+        controlService.updateControlResult(deviceId, command, result);  // 内部已推送 WebSocket
     }
 
     /** 处理传感器心跳（v2: topic = streetlight/sensor/{sensorId}/status） */

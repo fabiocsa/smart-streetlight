@@ -48,29 +48,6 @@
           </div>
         </div>
 
-        <!-- 亮度调节 -->
-        <div class="section-title" style="margin-top: 20px">亮度调节</div>
-        <div class="brightness-area">
-          <el-slider
-            v-model="brightness"
-            :min="0"
-            :max="100"
-            :step="5"
-            :disabled="device.lightStatus !== 'on' || sending"
-            show-input
-            :format-tooltip="(v) => v + '%'"
-            style="padding: 0 12px"
-          />
-          <el-button
-            type="primary"
-            :disabled="device.lightStatus !== 'on' || sending"
-            :loading="sending && pendingCmd === 'brightness'"
-            @click="applyBrightness"
-            style="margin-top: 8px"
-          >
-            应用亮度
-          </el-button>
-        </div>
       </el-col>
 
       <!-- 右侧：控制模式 + 阈值 -->
@@ -250,8 +227,11 @@ const emit = defineEmits(['updated'])
 const sending = ref(false)
 const pendingCmd = ref('')       // 当前等待的指令类型
 const lastResult = ref(null)      // 最近操作结果 { type, text }
-const brightness = ref(50)
-const controlMode = ref('auto')
+// ★ controlMode 直接派生自 props，不再手动同步，消除闪烁
+const controlMode = computed({
+  get: () => props.device?.controlMode || 'auto',
+  set: (v) => { if (props.device) props.device.controlMode = v }
+})
 const thresholdOn = ref(50)
 const thresholdOff = ref(100)
 const sensorStrategy = ref('single')
@@ -306,15 +286,12 @@ function handleControlResult(data) {
       ? `指令「${data.command === 'on' ? '开灯' : '关灯'}」执行成功`
       : `指令执行失败: ${data.result || '未知错误'}`
   }
-  // 后端手动指令会自动切为手动模式，前端同步
-  if (success) {
-    controlMode.value = 'manual'
+  // 仅手动指令才切换为手动模式、触发父组件刷新；自动联动不改变模式
+  if (success && data.source !== 'auto') {
     props.device.controlMode = 'manual'
+    emit('updated')
   }
-  // 刷新日志
   loadLogs()
-  // 通知父组件刷新
-  if (success) emit('updated')
 }
 
 // 同步 device prop → 本地状态
@@ -323,10 +300,7 @@ function handleControlResult(data) {
 watch(() => props.device, (d) => {
   if (!d) return
   // 手动操作进行中时跳过同步，保持乐观更新的值
-  if (!sending.value) {
-    controlMode.value = d.controlMode || 'auto'
-    brightness.value = d.brightness ?? 50
-  }
+  if (!sending.value) { /* brightness removed */ }
   thresholdOn.value = d.thresholdOn ?? 50
   thresholdOff.value = d.thresholdOff ?? 100
   sensorStrategy.value = d.sensorStrategy || 'single'
@@ -363,12 +337,8 @@ async function toggleLight() {
   }, WS_TIMEOUT)
 
   try {
-    await sendControl(props.device.deviceId, {
-      command: newCmd,
-      brightness: newCmd === 'on' ? brightness.value : null
-    })
+    await sendControl(props.device.deviceId, { command: newCmd })
     // 后端收到手动指令后会自动将设备切换为手动模式，前端同步
-    controlMode.value = 'manual'
     props.device.controlMode = 'manual'
     // 如果 3 秒内未收到 WebSocket 结果，以 HTTP 成功为准
     fallbackHandle = setTimeout(() => {
@@ -390,28 +360,6 @@ async function toggleLight() {
   }
 }
 
-async function applyBrightness() {
-  if (sending.value || props.device.lightStatus !== 'on') return
-
-  sending.value = true
-  pendingCmd.value = 'brightness'
-
-  try {
-    await sendControl(props.device.deviceId, { command: 'on', brightness: brightness.value })
-    // ★ 修复：亮度调节也是手动指令，后端会切换为手动模式
-    controlMode.value = 'manual'
-    props.device.controlMode = 'manual'
-    props.device.brightness = brightness.value
-    ElMessage.success(`亮度已设置为 ${brightness.value}%，已切换为手动模式`)
-    emit('updated')
-  } catch {
-    // 错误已拦截
-  } finally {
-    sending.value = false
-    pendingCmd.value = ''
-  }
-}
-
 async function handleModeChange(mode) {
   if (sending.value) return
 
@@ -423,8 +371,7 @@ async function handleModeChange(mode) {
     props.device.controlMode = mode
     emit('updated')
   } catch {
-    // 恢复原值
-    controlMode.value = props.device.controlMode || 'auto'
+    // computed 自动从 props 同步，无需手动恢复
   } finally {
     sending.value = false
   }
@@ -549,71 +496,29 @@ onBeforeUnmount(() => {
 }
 
 .section-title {
-  font-size: 14px; font-weight: 600; color: #606266; margin-bottom: 12px;
+  font-size: 14px; font-weight: 600; color: var(--text-primary); margin-bottom: 12px;
 }
-
-.switch-area {
-  display: flex; flex-direction: column; align-items: center; gap: 12px;
-  padding: 16px 0;
-}
-
+.switch-area { display: flex; flex-direction: column; align-items: center; gap: 12px; padding: 16px 0; }
 .switch-knob {
-  width: 120px; height: 120px;
-  border-radius: 50%;
+  width: 120px; height: 120px; border-radius: 50%;
   display: flex; flex-direction: column; align-items: center; justify-content: center;
-  cursor: pointer; user-select: none;
-  transition: all 0.3s ease;
-  background: #f0f2f5; color: #909399;
-  border: 3px solid #dcdfe6;
+  cursor: pointer; user-select: none; transition: all 0.3s ease;
+  background: var(--el-fill-color-light); color: var(--text-muted);
+  border: 3px solid var(--el-border-color);
 }
-
 .switch-knob.active {
-  background: #fdf6ec; color: #e6a23c;
-  border-color: #e6a23c;
-  box-shadow: 0 0 20px rgba(230, 162, 60, 0.3);
+  background: rgba(245,158,11,0.1); color: var(--amber);
+  border-color: var(--amber);
+  box-shadow: 0 0 20px rgba(245,158,11,0.25);
 }
-
-.switch-knob.disabled {
-  cursor: not-allowed; opacity: 0.6;
-}
-
-.switch-label {
-  font-size: 13px; font-weight: 600; margin-top: 4px;
-}
-
-.switch-hint {
-  font-size: 11px; color: #c0c4cc; margin-top: 2px;
-}
-
-.brightness-area {
-  padding: 8px 0;
-}
-
-.mode-group {
-  margin-bottom: 8px;
-}
-
-.mode-desc {
-  font-size: 12px; color: #909399; margin: 8px 0;
-}
-
-.threshold-area {
-  padding: 8px 0;
-}
-
-.form-hint {
-  font-size: 12px; color: #c0c4cc; margin-left: 8px;
-}
-
-.strategy-area {
-  padding: 8px 0;
-}
-
-.strategy-group {
-  display: flex; flex-direction: column; gap: 8px;
-}
-
-.strategy-desc {
-  font-size: 12px; color: #909399; margin: 8px 0;
-}
+.switch-knob.disabled { cursor: not-allowed; opacity: 0.6; }
+.switch-label { font-size: 13px; font-weight: 600; margin-top: 4px; }
+.switch-hint { font-size: 11px; color: var(--text-muted); margin-top: 2px; }
+.mode-group { margin-bottom: 8px; }
+.mode-desc { font-size: 12px; color: var(--text-muted); margin: 8px 0; }
+.threshold-area { padding: 12px 0; display: flex; flex-direction: column; gap: 12px; }
+.form-hint { font-size: 12px; color: var(--text-muted); display: block; margin-top: 4px; }
+.strategy-area { padding: 8px 0; }
+.strategy-group { display: flex; flex-direction: column; gap: 8px; }
+.strategy-desc { font-size: 12px; color: var(--text-muted); margin: 8px 0; }
 </style>

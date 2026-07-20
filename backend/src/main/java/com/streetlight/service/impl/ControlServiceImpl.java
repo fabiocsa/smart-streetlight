@@ -95,10 +95,12 @@ public class ControlServiceImpl implements ControlService {
         // 取该设备+指令中最新一条未收到响应的控制日志（避免多条 pending 时匹配到旧的）
         ControlLog cl = controlLogRepository
                 .findTopByDeviceIdAndCommandAndResultIsNullOrderByCreatedAtDesc(deviceId, command);
+        String source = "manual";  // 兜底
         if (cl != null) {
             cl.setResult(result);
             controlLogRepository.save(cl);
-            log.info("更新控制结果: deviceId={}, command={}, result={}", deviceId, command, result);
+            source = cl.getSource();
+            log.info("更新控制结果: deviceId={}, command={}, result={}, source={}", deviceId, command, result, source);
         } else {
             log.debug("未找到待更新的控制日志: deviceId={}, command={}", deviceId, command);
         }
@@ -108,6 +110,8 @@ public class ControlServiceImpl implements ControlService {
                 deviceRepository.save(d);
             });
         }
+        // 推送控制结果（含 source，前端据此判断是否切换模式）
+        webSocketHandler.pushControlResult(deviceId, command, result, source);
     }
 
     @Override

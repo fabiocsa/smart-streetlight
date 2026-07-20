@@ -62,7 +62,7 @@
           </el-col>
           <el-col :span="12">
             <el-form-item label="控制模式">
-              <el-tag :type="form.controlMode === 'auto' ? 'success' : ''">
+              <el-tag :type="form.controlMode === 'auto' ? 'success' : 'info'">
                 {{ form.controlMode === 'auto' ? '自动' : '手动' }}
               </el-tag>
             </el-form-item>
@@ -91,6 +91,7 @@
 
     <!-- 已绑定传感器列表 -->
     <SensorTable
+      v-if="form.id"
       :device-id="form.id"
       :sensors="sensors"
       :loading="sensorStore.loading"

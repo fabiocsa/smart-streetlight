@@ -176,7 +176,5 @@ async function submit() {
 </script>
 
 <style scoped>
-.form-hint {
-  font-size: 12px; color: #909399; line-height: 1.5; margin-top: 4px;
-}
+.form-hint { font-size: 12px; color: var(--text-muted); line-height: 1.5; margin-top: 4px; }
 </style>

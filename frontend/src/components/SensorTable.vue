@@ -4,7 +4,7 @@
       <div style="display: flex; justify-content: space-between; align-items: center">
         <span>
           <strong>已绑定传感器</strong>
-          <span style="color: #909399; margin-left: 8px">（共 {{ sensors.length }} 个）</span>
+          <span style="color: var(--text-muted); margin-left: 8px">（共 {{ sensors.length }} 个）</span>
         </span>
         <el-button
           v-if="selectedIds.length > 0 && (authStore.isAdmin || authStore.isOperator)"
@@ -43,7 +43,7 @@
             style="width: 80px"
             @change="(v) => $emit('updateFrequency', row.id, v)"
           />
-          <span style="margin-left: 4px; font-size: 12px; color: #909399">秒</span>
+          <span style="margin-left: 4px; font-size: 12px; color: var(--text-muted)">秒</span>
         </template>
       </el-table-column>
       <el-table-column label="启用" width="80">

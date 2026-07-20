@@ -150,7 +150,7 @@
       <div style="display: flex; gap: 24px; align-items: center">
         <span>正常电压范围：</span>
         <el-tag type="success" size="large">{{ voltageMin }}V ~ {{ voltageMax }}V</el-tag>
-        <span style="color: #909399; font-size: 13px">电压超出此范围将自动触发告警</span>
+        <span style="color: var(--text-muted); font-size: 13px">电压超出此范围将自动触发告警</span>
       </div>
     </el-card>
 
@@ -170,7 +170,7 @@
       <div style="display: flex; gap: 24px; align-items: center">
         <span>正常温度上限：</span>
         <el-tag type="success" size="large">{{ tempMax }}°C</el-tag>
-        <span style="color: #909399; font-size: 13px">温度超过此上限将自动触发告警</span>
+        <span style="color: var(--text-muted); font-size: 13px">温度超过此上限将自动触发告警</span>
       </div>
     </el-card>
 
@@ -190,7 +190,7 @@
       <div style="display: flex; gap: 24px; align-items: center">
         <span>正常功率上限：</span>
         <el-tag type="success" size="large">{{ powerMax }}W</el-tag>
-        <span style="color: #909399; font-size: 13px">功率超过此上限将自动触发告警</span>
+        <span style="color: var(--text-muted); font-size: 13px">功率超过此上限将自动触发告警</span>
       </div>
     </el-card>
 

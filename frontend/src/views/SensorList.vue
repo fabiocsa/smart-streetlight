@@ -101,7 +101,7 @@
               @change="(v) => handleFrequencyChange(row, v)"
             />
             <span v-else>{{ row.reportFrequency || '-' }}</span>
-            <span v-if="authStore.isAdmin || authStore.isOperator" style="margin-left: 2px; font-size: 12px; color: #909399">秒</span>
+            <span v-if="authStore.isAdmin || authStore.isOperator" style="margin-left: 2px; font-size: 12px; color: var(--text-muted)">秒</span>
           </template>
         </el-table-column>
         <el-table-column label="启用" width="80">

@@ -84,14 +84,12 @@ function formatTime(t) {
 
 <style scoped>
 .sidebar {
-  display: flex;
-  flex-direction: column;
-  height: 100%;
-  background: #f5f7fa;
+  display: flex; flex-direction: column; height: 100%;
+  background: var(--el-fill-color-light);
 }
 .sidebar-header {
   padding: 12px 12px 0;
-  border-bottom: 1px solid #e4e7ed;
+  border-bottom: 1px solid rgba(51,65,85,0.3);
 }
 .tab-row {
   display: flex;
@@ -102,18 +100,13 @@ function formatTime(t) {
   flex: 1;
   text-align: center;
   padding: 8px 0;
-  font-size: 13px;
-  font-weight: 500;
-  color: #909399;
+  font-size: 13px; font-weight: 500; color: var(--text-muted);
   cursor: pointer;
   border-bottom: 2px solid transparent;
   transition: all 0.2s;
 }
-.tab-item:hover { color: #409EFF; }
-.tab-item.active {
-  color: #409EFF;
-  border-bottom-color: #409EFF;
-}
+.tab-item:hover { color: var(--blue); }
+.tab-item.active { color: var(--blue); border-bottom-color: var(--blue); }
 
 .sidebar-header .el-button {
   margin-bottom: 8px;
@@ -131,34 +124,14 @@ function formatTime(t) {
   margin-bottom: 4px;
   transition: background 0.15s;
 }
-.session-item:hover { background: #e8eaed; }
-.session-item.active { background: #d9ecff; }
-.session-title {
-  font-size: 13px;
-  color: #303133;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  margin-bottom: 4px;
-}
-.session-meta {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-}
-.session-time {
-  font-size: 11px;
-  color: #909399;
-}
-.delete-btn {
-  opacity: 0;
-  transition: opacity 0.15s;
-  padding: 2px;
-}
+.session-item:hover { background: var(--el-fill-color-light); }
+.session-item.active { background: rgba(59,130,246,0.1); }
+.session-title { font-size: 13px; color: var(--text-primary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; margin-bottom: 4px; }
+.session-meta { display: flex; align-items: center; justify-content: space-between; }
+.session-time { font-size: 11px; color: var(--text-muted); }
+.delete-btn { opacity: 0; transition: opacity 0.15s; padding: 2px; }
 .session-item:hover .delete-btn { opacity: 1; }
-.empty-sessions {
-  text-align: center;
-  color: #909399;
+.empty-sessions { text-align: center; color: var(--text-muted);
   font-size: 13px;
   padding: 32px 0;
 }

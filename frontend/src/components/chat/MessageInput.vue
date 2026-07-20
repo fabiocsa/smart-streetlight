@@ -44,8 +44,7 @@ function handleSend() {
 <style scoped>
 .msg-input {
   padding: 12px 0 4px;
-  border-top: 1px solid #e4e7ed;
-  background: #fff;
-  flex-shrink: 0;
+  border-top: 1px solid rgba(51,65,85,0.3);
+  background: var(--bg-card); flex-shrink: 0;
 }
 </style>

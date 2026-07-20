@@ -172,7 +172,7 @@ onMounted(() => {
 .sensor-name {
   font-size: 15px;
   font-weight: 500;
-  color: #303133;
+  color: var(--text-primary);
 }
 .json-preview {
   display: inline-block;
@@ -181,7 +181,7 @@ onMounted(() => {
   text-overflow: ellipsis;
   white-space: nowrap;
   font-size: 12px;
-  color: #909399;
+  color: var(--text-muted);
   cursor: default;
 }
 </style>
