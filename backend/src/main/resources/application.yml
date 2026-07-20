@@ -11,6 +11,15 @@ spring:
     username: remote_user
     password: 123456
     driver-class-name: com.mysql.cj.jdbc.Driver
+    hikari:
+      minimum-idle: 2
+      maximum-pool-size: 10
+      idle-timeout: 300000           # 5 分钟空闲后回收
+      max-lifetime: 600000           # 10 分钟最大生命周期
+      connection-timeout: 10000      # 等待连接超时 10s
+      leak-detection-threshold: 30000 # 30s 未归还视为泄漏（仅日志警告）
+      validation-timeout: 3000
+      keepalive-time: 60000          # 每分钟保活一次，防止 MySQL 断开
 
   servlet:
     multipart:
