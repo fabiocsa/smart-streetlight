@@ -83,12 +83,12 @@ mysql -h 8.130.102.89 -u remote_user -p streetlight < docs/init.sql
 | Controller | `controller/` | REST API，`/api/*` 前缀 |
 | Service | `service/` + `service/impl/` | 业务逻辑 |
 | Repository | `repository/` | Spring Data JPA，含原生 SQL 与 JPQL 聚合查询 |
-| Entity | `entity/` | JPA 实体：Device, Sensor, SensorData(JSON列), AlarmLog, AlarmRule, ControlLog, ChatMessage, ChatSession, User, HandlerList, KnowledgeArticle, KnowledgeFile, SystemConfig |
+| Entity | `entity/` | JPA 实体。Device 含 `@Formula` 计算的 `sensorCount`（从 device_sensor 表子查询）；SensorData 含 JSON 列 `data_json`；默认 `Device.lightStatus = "unknown"` |
 | MQTT | `mqtt/` | `MqttClientManager`（连接/订阅/主题路由）、`MqttMessageHandler`（消息分发）、`MqttPublishService`（发送指令） |
 | WebSocket | `websocket/` | `WebSocketHandler`，端点 `/ws/monitor`，广播 SENSOR_DATA / DEVICE_STATUS / NEW_ALARM / CONTROL_RESULT |
 | Config | `config/` | MQTT、WebSocket、CORS、DeepSeek、Embedding、MaxKB、RestTemplate、WebMVC |
 | Security | `security/` | JWT 鉴权 + `AuthInterceptor` |
-| Common | `common/` | `Result`（统一响应体）、`GlobalExceptionHandler`、`BusinessException` |
+| Common | `common/` | `Result`（统一响应体）、`GlobalExceptionHandler`（含 `MethodArgumentNotValidException`→400, `HttpMessageNotReadableException`→400, `MethodArgumentTypeMismatchException`→400, `DataIntegrityViolationException`→409, `BusinessException`, `Exception`→500）、`BusinessException` |
 
 ### RBAC 权限模型
 
@@ -114,7 +114,7 @@ mysql -h 8.130.102.89 -u remote_user -p streetlight < docs/init.sql
 | 枚举 | 位置 | 可选值 |
 |---|---|---|
 | `ControlMode` | `enums/` | `auto`（自动联动）, `manual`（手动控制） |
-| `LightStatus` | `enums/` | `on`（开灯）, `off`（关灯） |
+| `LightStatus` | `enums/` | `on`（开灯）, `off`（关灯）, `unknown`（未知 — 设备离线或新创建时） |
 | `DeviceStatus` | `enums/` | `online`, `offline` |
 | `AlarmType` | `enums/` | `OFFLINE`, `SENSOR_ABNORMAL`, `VOLTAGE_ABNORMAL`, `TEMPERATURE_HIGH`, `POWER_HIGH` |
 | `AlarmSeverity` | `enums/` | `INFO`, `WARNING`, `CRITICAL` |
@@ -125,12 +125,12 @@ mysql -h 8.130.102.89 -u remote_user -p streetlight < docs/init.sql
 
 | Service | 职责 |
 |---|---|
-| `SensorDataServiceImpl.saveAndAutoControl()` | **核心方法**：保存数据 → 更新心跳 → 告警检测（按 sensorType 分流） → `SELECT ... FOR UPDATE` 悲观锁读设备 → 多传感器策略（single/average） → 光照阈值判定 → 下发 MQTT cmd → WebSocket 推送状态 |
+| `SensorDataServiceImpl.saveAndAutoControl()` | **核心方法**：保存数据 → 更新心跳 + 设备恢复在线自动解除告警 → 告警检测（按 sensorType 分流） → `SELECT ... FOR UPDATE` 悲观锁读设备 → **unknown 状态恢复**（光照 < 开灯阈值则设 on，否则设 off） → 多传感器策略（single/average） → 迟滞双阈值联动决策 → 下发 MQTT cmd → WebSocket 推送状态 |
 | `ControlServiceImpl` | 设备控制（开关灯/模式切换/阈值/传感器策略），通过 light 传感器 cmd 主题下发 |
 | `DashboardService` | 仪表盘数据聚合。`getLatestSensorData()` 按 deviceId 合并多种传感器数据；`getSensorTrend()` 通过 `sensorTypeForMetric()` 动态映射 sensorType |
 | `AlarmServiceImpl` | 5 种告警类型（OFFLINE/VOLTAGE_ABNORMAL/TEMPERATURE_HIGH/POWER_HIGH/SENSOR_ABNORMAL），自动创建/解除。电压/温度/功率告警仅对相应的 sensorType 触发 |
 | `SensorRegistrationService` | 传感器自动注册/注销，`autoRegisterFromData()` 使用 `REQUIRES_NEW` 事务 |
-| `HeartbeatChecker.checkHeartbeats()` | `@Scheduled(fixedRate=5000)` 每 5 秒检查心跳超时，标记离线并生成告警 |
+| `HeartbeatChecker.checkHeartbeats()` | `@Scheduled(fixedRate=5000)` 每 5 秒检查心跳超时，标记离线并设 `lightStatus = "unknown"`，生成 OFFLINE 告警 |
 | `ChatServiceImpl` | DeepSeek API 多轮对话 |
 | `RagServiceImpl` | RAG 检索增强：向量检索 → context 注入 → DeepSeek 生成回答 |
 | `EmbeddingService` / `OpenAiEmbeddingServiceImpl` | 文本向量化（智谱 embedding-2，1024 维），用于知识库检索 |
@@ -144,6 +144,10 @@ mysql -h 8.130.102.89 -u remote_user -p streetlight < docs/init.sql
 ### 循环依赖处理
 
 `MqttMessageHandler` ↔ `MqttClientManager` 和 `MqttMessageHandler` → `DeviceService` → `SensorRepository` → … → `MqttPublishService` → `MqttClientManager` 形成间接循环。通过 `@Lazy` 注解打破：`MqttMessageHandler` 构造函数中注入 `DeviceService` 和 `MqttClientManager` 时使用 `@Lazy`，Spring 注入代理对象，首次调用时才解析实际 bean。
+
+### 批量操作事务隔离
+
+`AlarmServiceImpl` 和 `ControlServiceImpl` 的批量方法（`batchResolve`、`batchUpdateResolvedBy`、`sendBatchControlCommand`）使用 `@Lazy @Autowired` 自注入模式：注入自身代理 `private XxxServiceImpl self`，通过 `self.method()` 而非 `this.method()` 调用，确保每个子项在独立事务中运行，单个失败不影响其余子项。批量方法自身不加 `@Transactional`。
 
 ## 前端架构
 
@@ -164,13 +168,15 @@ mysql -h 8.130.102.89 -u remote_user -p streetlight < docs/init.sql
 
 状态管理：`stores/authStore.js`（登录/登出/角色）、`stores/chatStore.js`（AI 对话历史）、`store/device.js`（设备 CRUD）、`store/sensor.js`（传感器管理）。注意：存在 `stores/` 和 `store/` 两个独立目录，均为 Pinia store，命名未统一。
 
-通用工具函数：`utils/common.js`（`formatTime`、`typeLabel`、`sensorTypeTag`、`debounce`、`clone` 等）。
+通用工具函数：`utils/common.js`（`formatTime`、`typeLabel`、`sensorTypeTag`、`debounce`、`clone`、`lightStatusLabel`、`lightStatusTagType`、`isLightOn`）。灯光相关函数统一处理离线/unknown 状态，前端各组件应使用这些工具函数而非直接判断 `lightStatus === 'on'`。
 
 地图组件：`DeviceMap.vue` 使用高德地图 JSAPI Loader（`@amap/amap-jsapi-loader`）在仪表盘展示设备位置分布。
 
 ### WebSocket 实时数据
 
-前端在 `Dashboard.vue` 等页面建立 WebSocket 连接到 `ws://localhost:8080/ws/monitor`（开发环境通过 Vite proxy）。收到 JSON 消息后根据 `type` 字段分发：
+前端在 `Dashboard.vue`、`DeviceList.vue`、`ControlPanel.vue` 建立 WebSocket 连接到 `ws://localhost:8080/ws/monitor`（开发环境通过 Vite proxy）。收到 JSON 消息后根据 `type` 字段分发：
+
+**重连策略**：指数退避（2s→4s→8s…最大60s），最多重试 10 次，成功后重置计数器。组件卸载时必须清理 WS 连接和重连 timer（`onBeforeUnmount`）。
 
 | type | 触发动作 |
 |---|---|
@@ -240,6 +246,19 @@ mysql -h 8.130.102.89 -u remote_user -p streetlight < docs/init.sql
 | `streetlight/sensor/unregister` | 上行 | 传感器注销 |
 
 **已删除的旧 topic：** `streetlight/{deviceId}/control`、`streetlight/{deviceId}/control/response`、`streetlight/mock-sender/config`
+
+## 真实硬件（鸿蒙 BearPi-HM_Nano）
+
+`hard/sample/my_first_app/` — 基于 OpenHarmony 的智慧路灯设备端 C 代码：
+
+- **硬件平台**：BearPi-HM_Nano + E53_SC1 扩展板（BH1750 光照传感器 + LED）
+- **传感器**：BH1750 I2C 光照传感器（0x23 地址），连续高分辨率模式
+- **MQTT**：连接远程 EMQX Broker，topic 设计同后端。上报 `illuminance` + `lightStatus`（设备端 `g_light_on` 变量，反映 LED 实际状态）
+- **上报周期**：数据 5s/次，心跳 30s/次（每 6 次数据发一次）
+- **控制指令**：订阅 cmd 主题，匹配 `command:on/off` 控制 LED 开关，执行后发 cmd/response
+- **遗嘱消息**：MQTT connect 时设置 will，断连时自动发 offline 状态到 status 主题
+- **注意**：设备端 `g_light_on` 初始为 0（关灯），重启后 LED 灭
+- 源码：`hello_world.c`（主逻辑）+ `src/wifi_connect.c`（WiFi 连接）+ `include/wifi_connect.h`
 
 ## SensorData JSON 列设计 (v5)
 
