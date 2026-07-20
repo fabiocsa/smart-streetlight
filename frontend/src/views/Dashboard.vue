@@ -434,7 +434,7 @@ onBeforeUnmount(() => {
 .bar-row { display: flex; align-items: center; gap: 10px; font-size: 12px; }
 .bar-label { width: 32px; color: var(--text-secondary); text-align: right; }
 .bar-track { flex: 1; height: 6px; background: var(--el-fill-color-light); border-radius: 3px; overflow: hidden; }
-.bar-fill { height: 100%; border-radius: 3px; transition: width 0.6s ease; }
+.bar-fill { display: block; height: 100%; border-radius: 3px; transition: width 0.6s ease; }
 .bar-fill.auto { background: var(--blue); }
 .bar-fill.manual { background: var(--text-muted); }
 .bar-num { width: 28px; color: var(--text-secondary); text-align: left; font-family: monospace; }
