@@ -55,8 +55,8 @@
         <el-row :gutter="20">
           <el-col :span="12">
             <el-form-item label="灯光状态">
-              <el-tag :type="form.lightStatus === 'on' ? 'warning' : 'info'">
-                {{ form.lightStatus === 'on' ? '已开启' : '已关闭' }}
+              <el-tag :type="lightStatusTagType(form)">
+                {{ lightStatusLabel(form) }}
               </el-tag>
             </el-form-item>
           </el-col>
@@ -132,6 +132,7 @@ import { useDeviceStore } from '../store/device'
 import { useSensorStore } from '../store/sensor'
 import SensorTable from '../components/SensorTable.vue'
 import ControlPanel from '../components/ControlPanel.vue'
+import { lightStatusLabel, lightStatusTagType } from '../utils/common'
 
 const route = useRoute()
 const router = useRouter()

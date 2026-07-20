@@ -4,6 +4,7 @@ import com.streetlight.enums.DeviceStatus;
 import jakarta.persistence.*;
 import lombok.*;
 import org.hibernate.annotations.CreationTimestamp;
+import org.hibernate.annotations.Formula;
 import org.hibernate.annotations.UpdateTimestamp;
 
 import java.time.LocalDateTime;
@@ -44,7 +45,7 @@ public class Device {
 
     @Column(name = "light_status", nullable = false, length = 10)
     @Builder.Default
-    private String lightStatus = "off";
+    private String lightStatus = "unknown";
 
     @Column(name = "control_mode", nullable = false, length = 10)
     @Builder.Default
@@ -90,6 +91,12 @@ public class Device {
     )
     @Builder.Default
     private List<Sensor> sensors = new ArrayList<>();
+
+    /**
+     * 已绑定传感器数量（通过 device_sensor 关联表自动计算，非持久化字段）。
+     */
+    @Formula("(SELECT COUNT(*) FROM device_sensor ds WHERE ds.device_id = id)")
+    private int sensorCount;
 
     @Column(name = "last_heartbeat")
     private LocalDateTime lastHeartbeat;

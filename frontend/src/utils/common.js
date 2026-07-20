@@ -52,3 +52,25 @@ export function debounce(fn, delay = 300) {
 export function clone(obj) {
   return JSON.parse(JSON.stringify(obj))
 }
+
+// 灯光状态中文标签（离线时显示"未知"）
+export function lightStatusLabel(device) {
+  if (!device) return '-'
+  if (device.status === 'offline') return '未知'
+  if (device.lightStatus === 'unknown') return '未知'
+  return device.lightStatus === 'on' ? '开启' : '关闭'
+}
+
+// 灯光状态 Element Plus Tag type（离线/未知时灰色 info）
+export function lightStatusTagType(device) {
+  if (!device) return 'info'
+  if (device.status === 'offline' || device.lightStatus === 'unknown') return 'info'
+  return device.lightStatus === 'on' ? 'warning' : 'info'
+}
+
+// 灯是否确定在开启状态（离线/未知返回 false）
+export function isLightOn(device) {
+  if (!device) return false
+  if (device.status === 'offline' || device.lightStatus === 'unknown') return false
+  return device.lightStatus === 'on'
+}

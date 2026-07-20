@@ -215,6 +215,7 @@ function cancelAddLocation() {
 // ======================== 标记 DOM 元素 ========================
 function getMarkerColor(device) {
   if (device.status !== 'online') return '#bfbfbf'
+  if (device.lightStatus === 'unknown') return '#bfbfbf'
   return device.lightStatus === 'on' ? '#faad14' : '#1890ff'
 }
 
@@ -473,7 +474,7 @@ function updateMarkers() {
 // ======================== 信息窗内容 ========================
 function buildInfoContent(device) {
   const statusMap = { online: '在线', offline: '离线' }
-  const lightMap = { on: '开启', off: '关闭' }
+  const lightMap = { on: '开启', off: '关闭', unknown: '未知' }
   const modeMap = { auto: '自动', manual: '手动' }
 
   return `

@@ -42,8 +42,9 @@ public class HeartbeatChecker {
                 .findByStatusAndLastHeartbeatBefore("online", thresholdTime);
 
         for (Device device : offlineDevices) {
-            // 标记设备为离线
+            // 标记设备为离线，灯光状态设为未知
             device.setStatus("offline");
+            device.setLightStatus("unknown");
             deviceRepository.save(device);
 
             // 委托 AlarmService 创建离线告警（内部处理去重逻辑）

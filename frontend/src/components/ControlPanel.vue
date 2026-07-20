@@ -25,24 +25,25 @@
       <el-col :span="12">
         <div class="section-title">灯光控制</div>
         <div class="switch-area">
-          <el-tooltip content="点击切换灯光开关" placement="top">
+          <el-tooltip :content="device.status === 'offline' ? '设备离线，无法控制' : (device.lightStatus === 'unknown' ? '灯光状态未知，请等待数据上报' : '点击切换灯光开关')" placement="top">
             <div
               class="switch-knob"
-              :class="{ active: device.lightStatus === 'on', disabled: sending }"
+              :class="{ active: device.lightStatus === 'on', disabled: device.status !== 'online' || device.lightStatus === 'unknown' || sending }"
               @click="toggleLight"
             >
               <el-icon :size="36">
                 <Sunny v-if="device.lightStatus === 'on'" />
-                <Moon v-else />
+                <Moon v-else-if="device.lightStatus === 'off'" />
+                <QuestionFilled v-else />
               </el-icon>
-              <span class="switch-label">{{ device.lightStatus === 'on' ? '已开灯' : '已关灯' }}</span>
-              <span class="switch-hint">点击{{ device.lightStatus === 'on' ? '关灯' : '开灯' }}</span>
+              <span class="switch-label">{{ switchLabel }}</span>
+              <span class="switch-hint">{{ switchHint }}</span>
             </div>
           </el-tooltip>
 
           <div class="switch-status">
-            <el-tag :type="device.lightStatus === 'on' ? 'warning' : 'info'" size="large">
-              {{ device.lightStatus === 'on' ? '● 运行中' : '○ 已关闭' }}
+            <el-tag :type="lightStatusTagType(device)" size="large">
+              {{ lightStatusText(device) }}
             </el-tag>
           </div>
         </div>
@@ -234,9 +235,9 @@
 <script setup>
 import { ref, watch, onMounted, computed } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { Sunny, Moon, Setting, User, Refresh } from '@element-plus/icons-vue'
+import { Sunny, Moon, Setting, User, Refresh, QuestionFilled } from '@element-plus/icons-vue'
 import { sendControl, setControlMode, setThreshold, getControlLogs, setSensorStrategy } from '../api/control'
-import { formatTime, debounce } from '../utils/common'
+import { formatTime, debounce, lightStatusTagType } from '../utils/common'
 
 const props = defineProps({
   device: { type: Object, required: true },
@@ -329,7 +330,7 @@ watch(() => props.device, (d) => {
 // =============== 操作函数 ===============
 
 async function toggleLight() {
-  if (sending.value || props.device.status !== 'online') return
+  if (sending.value || props.device.status !== 'online' || props.device.lightStatus === 'unknown') return
 
   const newCmd = props.device.lightStatus === 'on' ? 'off' : 'on'
   const actionText = newCmd === 'on' ? '开灯' : '关灯'
@@ -453,6 +454,26 @@ async function applyThreshold() {
 const lightSensors = computed(() => {
   return (props.sensors || []).filter(s => s.sensorType === 'light')
 })
+
+// 开关旋钮标签
+const switchLabel = computed(() => {
+  if (props.device?.lightStatus === 'unknown' || props.device?.status === 'offline') return '状态未知'
+  return props.device?.lightStatus === 'on' ? '已开灯' : '已关灯'
+})
+
+// 开关旋钮提示文字
+const switchHint = computed(() => {
+  if (props.device?.status === 'offline') return '设备已离线'
+  if (props.device?.lightStatus === 'unknown') return '等待数据'
+  return '点击' + (props.device?.lightStatus === 'on' ? '关灯' : '开灯')
+})
+
+// 灯光状态文字
+function lightStatusText(device) {
+  if (!device) return '○ 未知'
+  if (device.status === 'offline' || device.lightStatus === 'unknown') return '○ 未知'
+  return device.lightStatus === 'on' ? '● 运行中' : '○ 已关闭'
+}
 
 async function applySensorStrategy() {
   if (sending.value) return

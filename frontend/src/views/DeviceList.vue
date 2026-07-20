@@ -103,8 +103,8 @@
           </el-table-column>
           <el-table-column label="灯光" width="80">
             <template #default="{ row }">
-              <el-tag :type="row.lightStatus === 'on' ? 'warning' : 'info'" size="small">
-                {{ row.lightStatus === 'on' ? '开启' : '关闭' }}
+              <el-tag :type="lightStatusTagType(row)" size="small">
+                {{ lightStatusLabel(row) }}
               </el-tag>
             </template>
           </el-table-column>
@@ -244,7 +244,7 @@ import DeviceForm from '../components/DeviceForm.vue'
 import DeviceMap from '../components/DeviceMap.vue'
 import { sendControl, sendBatchControl, setControlMode, setBatchThreshold } from '../api/control'
 import { unbindSensor } from '../api/device'
-import { formatTime, debounce, resetPage } from '../utils/common'
+import { formatTime, debounce, resetPage, lightStatusLabel, lightStatusTagType } from '../utils/common'
 
 const router = useRouter()
 const deviceStore = useDeviceStore()
