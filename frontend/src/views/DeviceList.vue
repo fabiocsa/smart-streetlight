@@ -578,6 +578,20 @@ async function refreshDevices() {
 
 // ==================== WebSocket 实时状态更新 ====================
 let ws = null
+let reconnectAttempts = 0
+let reconnectTimer = null
+const MAX_RECONNECT = 10
+const BASE_DELAY = 2000
+
+function scheduleReconnect() {
+  if (reconnectAttempts >= MAX_RECONNECT) return
+  const delay = Math.min(BASE_DELAY * Math.pow(2, reconnectAttempts), 60000)
+  reconnectAttempts++
+  reconnectTimer = setTimeout(() => {
+    reconnectTimer = null
+    connectWs()
+  }, delay)
+}
 
 function connectWs() {
   if (ws && ws.readyState === WebSocket.OPEN) return
@@ -585,6 +599,7 @@ function connectWs() {
   const url = `${proto}//${location.host}/ws/monitor`
   try {
     ws = new WebSocket(url)
+    ws.onopen = () => { reconnectAttempts = 0 }
     ws.onmessage = (e) => {
       try {
         const msg = JSON.parse(e.data)
@@ -608,7 +623,7 @@ function connectWs() {
         }
       } catch { /* ignore */ }
     }
-    ws.onclose = () => { ws = null; setTimeout(connectWs, 5000) }
+    ws.onclose = () => { ws = null; scheduleReconnect() }
     ws.onerror = () => { ws?.close() }
   } catch { /* ignore */ }
 }
@@ -619,6 +634,7 @@ onMounted(() => {
 })
 
 onBeforeUnmount(() => {
+  if (reconnectTimer) { clearTimeout(reconnectTimer); reconnectTimer = null }
   ws?.close()
   ws = null
 })

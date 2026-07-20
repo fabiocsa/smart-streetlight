@@ -12,10 +12,13 @@ import com.streetlight.service.HandlerService;
 import com.streetlight.websocket.WebSocketHandler;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.context.annotation.Lazy;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Sort;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDate;
@@ -31,6 +34,10 @@ public class AlarmServiceImpl implements AlarmService {
     private final AlarmLogRepository alarmLogRepository;
     private final WebSocketHandler webSocketHandler;
     private final HandlerService handlerService;
+
+    @Lazy
+    @Autowired
+    private AlarmServiceImpl self;  // 自注入，用于批量操作中每个子项独立事务
 
     @Override
     @Transactional
@@ -190,12 +197,11 @@ public class AlarmServiceImpl implements AlarmService {
     }
 
     @Override
-    @Transactional
     public Map<String, Object> batchUpdateResolvedBy(List<Long> alarmIds, String resolvedBy) {
         int success = 0, fail = 0;
         for (Long id : alarmIds) {
             try {
-                updateResolvedBy(id, resolvedBy);
+                self.updateResolvedBy(id, resolvedBy);  // 通过代理调用，每个子项独立事务
                 success++;
             } catch (Exception e) {
                 fail++;
@@ -210,12 +216,11 @@ public class AlarmServiceImpl implements AlarmService {
     }
 
     @Override
-    @Transactional
     public Map<String, Object> batchResolve(List<Long> alarmIds, String resolvedBy, String notes) {
         int success = 0, fail = 0;
         for (Long id : alarmIds) {
             try {
-                resolveAlarm(id, resolvedBy, notes);
+                self.resolveAlarm(id, resolvedBy, notes);  // 通过代理调用，每个子项独立事务
                 success++;
             } catch (Exception e) {
                 fail++;

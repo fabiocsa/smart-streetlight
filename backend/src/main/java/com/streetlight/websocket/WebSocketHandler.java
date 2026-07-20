@@ -43,18 +43,26 @@ public class WebSocketHandler extends TextWebSocketHandler {
         sessions.remove(session.getId());
     }
 
-    /** 广播消息给所有连接的客户端 */
+    /** 广播消息给所有连接的客户端。单个 session 失败不影响其余 session。 */
     public void broadcast(Object payload) {
+        String json;
         try {
-            String json = objectMapper.writeValueAsString(payload);
-            TextMessage message = new TextMessage(json);
-            for (WebSocketSession session : sessions.values()) {
-                if (session.isOpen()) {
+            json = objectMapper.writeValueAsString(payload);
+        } catch (IOException e) {
+            log.error("WebSocket JSON序列化失败: {}", e.getMessage(), e);
+            return;
+        }
+        TextMessage message = new TextMessage(json);
+        for (WebSocketSession session : sessions.values()) {
+            if (session.isOpen()) {
+                try {
                     session.sendMessage(message);
+                } catch (IOException e) {
+                    log.warn("WebSocket发送失败 (session={}): {}", session.getId(), e.getMessage());
+                    // 清理已断开的 session，避免后续广播再次尝试
+                    sessions.remove(session.getId());
                 }
             }
-        } catch (IOException e) {
-            log.error("WebSocket广播失败: {}", e.getMessage(), e);
         }
     }
 

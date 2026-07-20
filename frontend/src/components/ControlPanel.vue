@@ -233,7 +233,7 @@
 </template>
 
 <script setup>
-import { ref, watch, onMounted, computed } from 'vue'
+import { ref, watch, onMounted, onBeforeUnmount, computed } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { Sunny, Moon, Setting, User, Refresh, QuestionFilled } from '@element-plus/icons-vue'
 import { sendControl, setControlMode, setThreshold, getControlLogs, setSensorStrategy } from '../api/control'
@@ -265,6 +265,12 @@ const logsLoading = ref(false)
 let ws = null
 const WS_TIMEOUT = 8000
 let timeoutHandle = null
+let fallbackHandle = null    // 3 秒 HTTP 兜底 timer
+
+function cleanupTimers() {
+  if (timeoutHandle) { clearTimeout(timeoutHandle); timeoutHandle = null }
+  if (fallbackHandle) { clearTimeout(fallbackHandle); fallbackHandle = null }
+}
 
 function connectWs() {
   if (ws && ws.readyState === WebSocket.OPEN) return
@@ -290,7 +296,7 @@ function connectWs() {
 }
 
 function handleControlResult(data) {
-  if (timeoutHandle) { clearTimeout(timeoutHandle); timeoutHandle = null }
+  cleanupTimers()
   sending.value = false
   pendingCmd.value = ''
   const success = data.result === 'success'
@@ -361,28 +367,25 @@ async function toggleLight() {
       command: newCmd,
       brightness: newCmd === 'on' ? brightness.value : null
     })
-    // ★ 修复：后端收到手动指令后会自动将设备切换为手动模式，
-    // 前端同步更新 controlMode 以保持一致
+    // 后端收到手动指令后会自动将设备切换为手动模式，前端同步
     controlMode.value = 'manual'
     props.device.controlMode = 'manual'
-    // 如果 3 秒内未收到 WebSocket 结果，认为指令已下发等待反馈
-    setTimeout(() => {
+    // 如果 3 秒内未收到 WebSocket 结果，以 HTTP 成功为准
+    fallbackHandle = setTimeout(() => {
       if (sending.value && pendingCmd.value === newCmd) {
-        // WebSocket 未及时返回，以 HTTP 成功为准（不触发 emit('updated')，避免 stale reload）
         sending.value = false
         pendingCmd.value = ''
-        if (timeoutHandle) { clearTimeout(timeoutHandle); timeoutHandle = null }
+        cleanupTimers()
         props.device.lightStatus = newCmd
         props.device.controlMode = 'manual'
         lastResult.value = { type: 'success', text: `指令「${actionText}」已下发，已切换为手动模式` }
-        // ★ 修复: 不再触发 emit('updated') → loadDevice()，避免从 DB 读到旧 lightStatus 导致回退
         loadLogs()
       }
     }, 3000)
   } catch (e) {
     sending.value = false
     pendingCmd.value = ''
-    if (timeoutHandle) { clearTimeout(timeoutHandle); timeoutHandle = null }
+    cleanupTimers()
     lastResult.value = { type: 'error', text: `指令下发失败: ${e.message || '网络错误'}` }
   }
 }
@@ -523,6 +526,17 @@ onMounted(() => {
   if (props.device?.deviceId && !logsLoaded) {
     logsLoaded = true
     loadLogs()
+  }
+})
+
+onBeforeUnmount(() => {
+  cleanupTimers()
+  if (ws) {
+    ws.onmessage = null
+    ws.onclose = null
+    ws.onerror = null
+    ws.close()
+    ws = null
   }
 })
 </script>

@@ -15,7 +15,7 @@
           type="warning"
           @click="handleBatchEnable(false)"
         >
-          批量删除 ({{ selectedIds.length }})
+          批量禁用 ({{ selectedIds.length }})
         </el-button>
         <el-button
           v-if="selectedIds.length > 0 && (authStore.isAdmin || authStore.isOperator)"

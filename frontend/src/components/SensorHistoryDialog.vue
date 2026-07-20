@@ -126,11 +126,7 @@ function formatLocalISO(d) {
 
 async function loadData() {
   const sensorId = props.sensor?.id
-  console.log('[SensorHistory] loadData called, sensorId:', sensorId, 'sensor:', props.sensor)
-  if (!sensorId) {
-    console.warn('[SensorHistory] sensor.id is empty, skipping')
-    return
-  }
+  if (!sensorId) return
   loading.value = true
   historyData.value = []
   errorMsg.value = ''
@@ -139,30 +135,24 @@ async function loadData() {
     const end = new Date()
     const start = new Date(end.getTime() - rangeToMs(selectedRange.value))
     const params = { start: formatLocalISO(start), end: formatLocalISO(end), limit: 2000 }
-    console.log('[SensorHistory] fetching with params:', params)
     const res = await getSensorHistory(sensorId, params)
-    console.log('[SensorHistory] API response:', res)
     let arr = Array.isArray(res) ? res : (res?.data || res?.records || [])
     arr.reverse()
     historyData.value = arr
-    console.log('[SensorHistory] historyData set, length:', historyData.value.length)
   } catch (e) {
     errorMsg.value = e?.message || '请求失败'
-    console.error('[SensorHistory] 加载失败:', e)
   } finally {
     loading.value = false
   }
 }
 
 function onDialogOpen() {
-  console.log('[SensorHistory] dialog opened, sensor:', props.sensor)
   selectedRange.value = '1h'
   errorMsg.value = ''
   loadData()
 }
 
 onMounted(() => {
-  console.log('[SensorHistory] mounted, visible:', props.visible, 'sensor:', props.sensor)
   if (props.visible) {
     selectedRange.value = '1h'
     errorMsg.value = ''

@@ -1,4 +1,5 @@
 import { createRouter, createWebHashHistory } from 'vue-router'
+import { useAuthStore } from '../stores/authStore'
 
 const routes = [
   {
@@ -62,8 +63,8 @@ const router = createRouter({
 
 // 路由守卫：未登录跳转登录页，无权限跳转 Dashboard
 router.beforeEach((to, from, next) => {
-  const token = localStorage.getItem('token')
-  const role = localStorage.getItem('role')
+  const authStore = useAuthStore()
+  const token = authStore.token || localStorage.getItem('token')
 
   // 公开页面直接放行
   if (to.meta.public) {
@@ -75,10 +76,10 @@ router.beforeEach((to, from, next) => {
     return next('/login')
   }
 
-  // 检查角色权限
+  // 检查角色权限（优先从 Pinia store 读取）
+  const role = authStore.role || localStorage.getItem('role')
   const allowedRoles = to.meta.roles
   if (allowedRoles && !allowedRoles.includes(role)) {
-    // 无权限 → 回退到 Dashboard
     return next('/dashboard')
   }
 

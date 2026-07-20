@@ -19,7 +19,9 @@ export const useDeviceStore = defineStore('device', () => {
 
   async function fetchOne(id) {
     const res = await deviceApi.getDevice(id)
-    currentDevice.value = res || res.data || null
+    // API 响应可能直接返回数据，也可能包含在 .data 中
+    const device = (res && typeof res.data !== 'undefined') ? res.data : res
+    currentDevice.value = device || null
     return currentDevice.value
   }
 

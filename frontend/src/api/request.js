@@ -1,5 +1,6 @@
 import axios from 'axios'
 import { ElMessage } from 'element-plus'
+import router from '../router'
 
 const request = axios.create({
   baseURL: '/api',
@@ -15,16 +16,22 @@ request.interceptors.request.use((config) => {
   return config
 })
 
+/** 清理登录态并跳转登录页 */
+function handleLogout() {
+  localStorage.removeItem('token')
+  localStorage.removeItem('username')
+  localStorage.removeItem('role')
+  // 使用 router.push 替代 window.location.hash，保持 Vue Router 状态一致
+  router.push('/login').catch(() => {})
+}
+
 // 响应拦截器：统一处理错误 + 401 自动跳转登录
 request.interceptors.response.use(
   (response) => {
     const res = response.data
     if (res && typeof res.code !== 'undefined') {
       if (res.code === 401) {
-        localStorage.removeItem('token')
-        localStorage.removeItem('username')
-        localStorage.removeItem('role')
-        window.location.hash = '#/login'
+        handleLogout()
         return Promise.reject(new Error('请先登录'))
       }
       if (res.code === 403) {
@@ -41,10 +48,7 @@ request.interceptors.response.use(
   },
   (error) => {
     if (error.response?.status === 401) {
-      localStorage.removeItem('token')
-      localStorage.removeItem('username')
-      localStorage.removeItem('role')
-      window.location.hash = '#/login'
+      handleLogout()
     }
     const msg = error.response?.data?.message || error.message || '网络异常'
     ElMessage.error(msg)

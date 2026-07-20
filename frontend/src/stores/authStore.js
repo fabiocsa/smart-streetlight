@@ -47,8 +47,11 @@ export const useAuthStore = defineStore('auth', () => {
         localStorage.setItem('username', info.username)
         localStorage.setItem('role', info.role)
       }
-    } catch {
-      logout()
+    } catch (e) {
+      // 仅 token 过期/无效时登出；网络错误等保留现有登录态
+      if (e.response?.status === 401) {
+        logout()
+      }
     }
   }
 

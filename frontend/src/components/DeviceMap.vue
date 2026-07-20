@@ -123,8 +123,9 @@ import { Rank, Select, Plus } from '@element-plus/icons-vue'
 import { setBatchThreshold } from '../api/control'
 import AMapLoader from '@amap/amap-jsapi-loader'
 import { sendControl, sendBatchControl, setControlMode } from '../api/control'
-import { unbindSensor } from '../api/device'
+import { unbindSensor, deleteDevice } from '../api/device'
 import { useAuthStore } from '../stores/authStore'
+import { useDeviceStore } from '../store/device'
 
 const props = defineProps({
   devices: { type: Array, default: () => [] },
@@ -135,6 +136,7 @@ const emit = defineEmits(['refresh', 'add-device'])
 
 const router = useRouter()
 const authStore = useAuthStore()
+const deviceStore = useDeviceStore()
 const isAdmin = computed(() => authStore.isAdmin)
 
 const mapContainer = ref(null)
@@ -579,16 +581,18 @@ async function batchDelete() {
     )
   } catch { return }
 
-  // 逐个删除
-  let success = 0, fail = 0
-  for (const d of devices) {
-    try {
-      await sendControl(d.deviceId, { command: 'off' }) // 先关灯
-      // 实际删除需要调用 device API，这里用 emit 通知父组件
-    } catch { fail++ }
+  const ids = devices.map(d => d.id)
+  const results = await deviceStore.removeBatch(ids)
+  const successCount = results.filter(r => r.success).length
+  const failCount = results.filter(r => !r.success).length
+
+  if (failCount > 0) {
+    ElMessage.warning(`成功删除 ${successCount} 个，${failCount} 个失败`)
+  } else {
+    ElMessage.success(`成功删除 ${successCount} 个设备`)
   }
-  ElMessage.success(`批量删除完成`)
   clearSelection()
+  emit('refresh')
 }
 
 // ======================== 右键菜单操作 ========================

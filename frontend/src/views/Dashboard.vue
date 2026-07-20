@@ -479,6 +479,7 @@ function connectWs() {
   const url = `${proto}//${location.host}/ws/monitor`
   try {
     ws = new WebSocket(url)
+    ws.onopen = () => { reconnectAttempts = 0 }
     ws.onmessage = (e) => {
       try {
         const msg = JSON.parse(e.data)
@@ -531,9 +532,28 @@ function connectWs() {
         }
       } catch { /* ignore */ }
     }
-    ws.onclose = () => { ws = null; setTimeout(connectWs, 5000) }
+    ws.onclose = () => { ws = null; scheduleReconnect() }
     ws.onerror = () => { ws?.close() }
   } catch { /* ignore */ }
+}
+
+// WebSocket 重连（指数退避，最大重试 10 次）
+let reconnectAttempts = 0
+let reconnectTimer = null
+const MAX_RECONNECT = 10
+const BASE_DELAY = 2000
+
+function scheduleReconnect() {
+  if (reconnectAttempts >= MAX_RECONNECT) {
+    console.warn('[WS] 已达最大重连次数，停止重连')
+    return
+  }
+  const delay = Math.min(BASE_DELAY * Math.pow(2, reconnectAttempts), 60000)
+  reconnectAttempts++
+  reconnectTimer = setTimeout(() => {
+    reconnectTimer = null
+    connectWs()
+  }, delay)
 }
 
 onMounted(async () => {
@@ -548,6 +568,7 @@ onMounted(async () => {
 })
 
 onBeforeUnmount(() => {
+  if (reconnectTimer) { clearTimeout(reconnectTimer); reconnectTimer = null }
   ws?.close()
   ws = null
 })

@@ -12,6 +12,8 @@ import com.streetlight.service.ControlService;
 import com.streetlight.websocket.WebSocketHandler;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.context.annotation.Lazy;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
@@ -33,6 +35,10 @@ public class ControlServiceImpl implements ControlService {
     private final SensorRepository sensorRepository;
     private final MqttPublishService mqttPublishService;
     private final WebSocketHandler webSocketHandler;
+
+    @Lazy
+    @Autowired
+    private ControlServiceImpl self;  // 自注入，用于批量操作中每个子项独立事务
 
     @Override
     @Transactional
@@ -105,7 +111,6 @@ public class ControlServiceImpl implements ControlService {
     }
 
     @Override
-    @Transactional
     public List<Map<String, Object>> sendBatchControlCommand(List<String> deviceIds,
                                                               String command, Integer brightness) {
         List<Map<String, Object>> results = new ArrayList<>();
@@ -113,7 +118,7 @@ public class ControlServiceImpl implements ControlService {
             Map<String, Object> item = new LinkedHashMap<>();
             item.put("deviceId", deviceId);
             try {
-                sendControlCommand(deviceId, command, "manual", brightness);
+                self.sendControlCommand(deviceId, command, "manual", brightness);  // 通过代理调用，每个子项独立事务
                 item.put("result", "success");
             } catch (Exception e) {
                 item.put("result", "fail");

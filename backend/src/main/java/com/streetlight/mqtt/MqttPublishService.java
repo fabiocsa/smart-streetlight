@@ -6,6 +6,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.eclipse.paho.mqttv5.client.MqttClient;
 import org.eclipse.paho.mqttv5.common.MqttException;
 import org.eclipse.paho.mqttv5.common.MqttMessage;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 
 import java.nio.charset.StandardCharsets;
@@ -24,6 +25,9 @@ public class MqttPublishService {
 
     private final MqttClient mqttClient;
     private final ObjectMapper objectMapper = new ObjectMapper();
+
+    @Value("${mqtt.topic-prefix:streetlight}")
+    private String topicPrefix;
 
     public MqttPublishService(MqttClient mqttClient) {
         this.mqttClient = mqttClient;
@@ -51,8 +55,8 @@ public class MqttPublishService {
             return;
         }
         try {
-            // 直接构造 topic，不依赖 MqttClientManager（避免循环依赖）
-            String topic = "streetlight/sensor/" + sensorId + "/cmd";
+            // 使用配置的 topic 前缀，避免硬编码
+            String topic = topicPrefix + "/sensor/" + sensorId + "/cmd";
             Map<String, Object> payload = new LinkedHashMap<>();
             payload.put("command", command);
             payload.put("source", source);
