@@ -30,9 +30,10 @@ public class HeartbeatChecker {
     private int offlineThresholdSeconds;
 
     /**
-     * 定时检查所有在线设备的心跳状态，每5秒执行一次
+     * 定时检查所有在线设备的心跳状态。
+     * 启动后延迟 30s 首次执行，避免硬件/模拟器尚未连上 MQTT 时误判全部离线。
      */
-    @Scheduled(fixedRate = 5000)
+    @Scheduled(initialDelay = 30000, fixedRate = 5000)
     @Transactional
     public void checkHeartbeats() {
         LocalDateTime thresholdTime = LocalDateTime.now().minusSeconds(offlineThresholdSeconds);

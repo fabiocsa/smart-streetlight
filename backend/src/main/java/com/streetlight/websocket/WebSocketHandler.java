@@ -43,8 +43,9 @@ public class WebSocketHandler extends TextWebSocketHandler {
         sessions.remove(session.getId());
     }
 
-    /** 广播消息给所有连接的客户端。单个 session 失败不影响其余 session。 */
+    /** 广播消息给所有连接的客户端。无连接时跳过序列化。单个 session 失败不影响其余。 */
     public void broadcast(Object payload) {
+        if (sessions.isEmpty()) return;
         String json;
         try {
             json = objectMapper.writeValueAsString(payload);

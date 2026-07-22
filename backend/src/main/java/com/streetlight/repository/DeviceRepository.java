@@ -29,6 +29,18 @@ public interface DeviceRepository extends JpaRepository<Device, Long> {
 
     List<Device> findByStatusAndLastHeartbeatBefore(String status, LocalDateTime time);
 
+    long countByStatus(String status);
+    long countByLightStatus(String lightStatus);
+    long countByControlMode(String controlMode);
+
+    /** 一次性返回 device 表全部统计，避免多次 COUNT 往返远程 DB */
+    @Query("SELECT COUNT(d) as total, " +
+           "SUM(CASE WHEN d.status = 'online' THEN 1 ELSE 0 END) as online, " +
+           "SUM(CASE WHEN d.lightStatus = 'on' THEN 1 ELSE 0 END) as lightsOn, " +
+           "SUM(CASE WHEN d.controlMode = 'auto' THEN 1 ELSE 0 END) as autoMode " +
+           "FROM Device d")
+    List<Object[]> getDeviceStats();
+
     /**
      * 通过 ID 查询设备并 JOIN FETCH 已绑定的传感器，避免 N+1 查询。
      */

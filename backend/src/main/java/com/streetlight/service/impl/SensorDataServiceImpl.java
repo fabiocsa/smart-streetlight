@@ -25,6 +25,7 @@ import org.springframework.transaction.support.TransactionSynchronization;
 import org.springframework.transaction.support.TransactionSynchronizationManager;
 
 import java.time.LocalDateTime;
+import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -335,32 +336,41 @@ public class SensorDataServiceImpl implements SensorDataService {
             if (lightSensors.isEmpty()) {
                 log.warn("设备 {} 未绑定 light 传感器，无法下发控制指令", deviceId);
             } else {
-                // ★ 先写控制日志（result=null），等传感器 cmd response 回填
+                // ★ 先写控制日志 + 更新灯状态（事务内），MQTT 发送延后到事务提交后
                 ControlLog clog = ControlLog.builder()
                         .deviceId(deviceId).command(cmd).source("auto").build();
                 controlLogRepository.save(clog);
+                lockedDevice.setLightStatus(cmd);
+                deviceRepository.save(lockedDevice);
 
-                boolean allSent = true;
-                for (Sensor s : lightSensors) {
-                    Long targetSensorId = s.getSimulatorSensorId() != null
-                            ? s.getSimulatorSensorId() : s.getId();
-                    try {
-                        mqttPublishService.publishCommand(targetSensorId, deviceId, cmd, "auto");
-                    } catch (Exception e) {
-                        allSent = false;
-                        log.warn("自动联动MQTT发送失败: sensorId={}, deviceId={}, cmd={}, {}",
-                                targetSensorId, deviceId, cmd, e.getMessage());
-                    }
-                }
-                if (allSent) {
-                    lockedDevice.setLightStatus(cmd);
-                    deviceRepository.save(lockedDevice);
-                    // ★ 推送设备状态变更，前端实时更新灯光状态
-                    webSocketHandler.pushDeviceStatus(deviceId, lockedDevice.getStatus(), cmd);
-                    log.info("自动联动指令已发送并更新DB: deviceId={}, cmd={}, sensors={}, controlLogId={}",
-                            deviceId, cmd, lightSensors.size(), clog.getId());
-                }
-                // 部分失败时不更新 lightStatus，下次数据到来会重试
+                // MQTT 发布 + WS 推送延后到事务提交后，避免阻塞 DB 连接
+                final String fDeviceId = deviceId;
+                final String fCmd = cmd;
+                final List<Sensor> fSensors = new ArrayList<>(lightSensors);
+                final String fStatus = lockedDevice.getStatus();
+                TransactionSynchronizationManager.registerSynchronization(
+                    new TransactionSynchronization() {
+                        @Override
+                        public void afterCommit() {
+                            boolean allSent = true;
+                            for (Sensor s : fSensors) {
+                                Long targetSensorId = s.getSimulatorSensorId() != null
+                                        ? s.getSimulatorSensorId() : s.getId();
+                                try {
+                                    mqttPublishService.publishCommand(targetSensorId, fDeviceId, fCmd, "auto");
+                                } catch (Exception e) {
+                                    allSent = false;
+                                    log.warn("自动联动MQTT发送失败: sensorId={}, deviceId={}, cmd={}, {}",
+                                            targetSensorId, fDeviceId, fCmd, e.getMessage());
+                                }
+                            }
+                            if (allSent) {
+                                webSocketHandler.pushDeviceStatus(fDeviceId, fStatus, fCmd);
+                                log.info("自动联动指令已发送: deviceId={}, cmd={}, sensors={}",
+                                        fDeviceId, fCmd, fSensors.size());
+                            }
+                        }
+                    });
             }
         }
 

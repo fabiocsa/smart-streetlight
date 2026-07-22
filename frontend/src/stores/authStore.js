@@ -36,25 +36,6 @@ export const useAuthStore = defineStore('auth', () => {
     return info
   }
 
-  async function fetchMe() {
-    if (!token.value) return
-    try {
-      const res = await authApi.getMe()
-      const info = res?.data || res
-      if (info) {
-        username.value = info.username
-        role.value = info.role
-        localStorage.setItem('username', info.username)
-        localStorage.setItem('role', info.role)
-      }
-    } catch (e) {
-      // 仅 token 过期/无效时登出；网络错误等保留现有登录态
-      if (e.response?.status === 401) {
-        logout()
-      }
-    }
-  }
-
   function logout() {
     token.value = ''
     username.value = ''
@@ -64,5 +45,5 @@ export const useAuthStore = defineStore('auth', () => {
     localStorage.removeItem('role')
   }
 
-  return { username, role, token, isLoggedIn, isAdmin, isOperator, isMunicipal, login, register, fetchMe, logout }
+  return { username, role, token, isLoggedIn, isAdmin, isOperator, isMunicipal, login, register, logout }
 })

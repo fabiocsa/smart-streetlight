@@ -4,6 +4,7 @@ import com.streetlight.entity.Device;
 import com.streetlight.entity.SensorData;
 import com.streetlight.repository.AlarmLogRepository;
 import com.streetlight.repository.ControlLogRepository;
+import com.streetlight.repository.DeviceRepository;
 import com.streetlight.repository.SensorDataRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -21,6 +22,7 @@ import java.util.stream.Collectors;
 public class DashboardService {
 
     private final DeviceService deviceService;
+    private final DeviceRepository deviceRepository;
     private final AlarmService alarmService;
     private final SensorDataRepository sensorDataRepository;
     private final AlarmLogRepository alarmLogRepository;
@@ -29,15 +31,13 @@ public class DashboardService {
     // ==================== 基础统计 ====================
 
     public Map<String, Object> getStats() {
-        var devices = deviceService.getAllDevices();
+        // ★ 1 条 SQL 返回 device 表全部计数，避免多次网络往返
+        Object[] ds = deviceRepository.getDeviceStats().get(0);
+        long totalDevices = ((Number) ds[0]).longValue();
+        long onlineDevices = ((Number) ds[1]).longValue();
+        long lightsOn = ((Number) ds[2]).longValue();
+        long autoMode = ((Number) ds[3]).longValue();
 
-        // 一趟遍历完成 4 个计数
-        long totalDevices = devices.size();
-        long onlineDevices = 0, lightsOn = 0;
-        for (var d : devices) {
-            if ("online".equals(d.getStatus())) onlineDevices++;
-            if ("on".equals(d.getLightStatus())) lightsOn++;
-        }
         long offlineDevices = totalDevices - onlineDevices;
         long lightsOff = totalDevices - lightsOn;
         long pendingAlarms = alarmService.countPendingAlarms();
@@ -63,12 +63,10 @@ public class DashboardService {
     // ==================== 设备状态分布 ====================
 
     public List<Map<String, Object>> getDeviceStatusDistribution() {
-        var devices = deviceService.getAllDevices();
-        long online = 0, offline = 0, autoMode = 0, manualMode = 0;
-        for (var d : devices) {
-            if ("online".equals(d.getStatus())) online++; else offline++;
-            if ("auto".equals(d.getControlMode())) autoMode++; else manualMode++;
-        }
+        long online = deviceRepository.countByStatus("online");
+        long offline = deviceRepository.count() - online;
+        long autoMode = deviceRepository.countByControlMode("auto");
+        long manualMode = deviceRepository.count() - autoMode;
 
         return List.of(
             Map.of("name", "在线", "value", online),
