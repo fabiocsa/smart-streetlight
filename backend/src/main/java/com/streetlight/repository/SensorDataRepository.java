@@ -21,8 +21,6 @@ public interface SensorDataRepository extends JpaRepository<SensorData, Long> {
 
     Optional<SensorData> findTopByDeviceIdOrderByReportedAtDesc(String deviceId);
 
-    List<SensorData> findTop50ByOrderByReportedAtDesc();
-
     Optional<SensorData> findTopByDeviceIdAndSensorTypeOrderByReportedAtDesc(
             String deviceId, String sensorType);
 
@@ -32,9 +30,6 @@ public interface SensorDataRepository extends JpaRepository<SensorData, Long> {
     /** 按传感器ID + 时间范围查询历史数据（带分页限制条数） */
     List<SensorData> findBySensorIdAndReportedAtBetweenOrderByReportedAtAsc(
             Long sensorId, LocalDateTime start, LocalDateTime end, Pageable pageable);
-
-    List<SensorData> findBySensorTypeAndReportedAtBetweenOrderByReportedAtAsc(
-            String sensorType, LocalDateTime start, LocalDateTime end);
 
     List<SensorData> findByDeviceIdAndSensorTypeAndReportedAtBetweenOrderByReportedAtAsc(
             String deviceId, String sensorType, LocalDateTime start, LocalDateTime end);
@@ -74,38 +69,11 @@ public interface SensorDataRepository extends JpaRepository<SensorData, Long> {
 
     // ===== 光照专用聚合（兼容旧调用，转调通用方法） =====
 
-    @Query("SELECT AVG(CAST(function('json_unquote', function('json_extract', s.dataJson, " +
-           "'$.lightIntensity')) AS double)) FROM SensorData s WHERE s.deviceId = :deviceId " +
-           "AND s.reportedAt BETWEEN :start AND :end")
-    Double avgLightIntensity(@Param("deviceId") String deviceId,
-                             @Param("start") LocalDateTime start,
-                             @Param("end") LocalDateTime end);
-
-    @Query("SELECT MAX(CAST(function('json_unquote', function('json_extract', s.dataJson, " +
-           "'$.lightIntensity')) AS double)) FROM SensorData s WHERE s.deviceId = :deviceId " +
-           "AND s.reportedAt BETWEEN :start AND :end")
-    Double maxLightIntensity(@Param("deviceId") String deviceId,
-                             @Param("start") LocalDateTime start,
-                             @Param("end") LocalDateTime end);
-
-    @Query("SELECT MIN(CAST(function('json_unquote', function('json_extract', s.dataJson, " +
-           "'$.lightIntensity')) AS double)) FROM SensorData s WHERE s.deviceId = :deviceId " +
-           "AND s.reportedAt BETWEEN :start AND :end")
-    Double minLightIntensity(@Param("deviceId") String deviceId,
-                             @Param("start") LocalDateTime start,
-                             @Param("end") LocalDateTime end);
-
-    // ===== Dashboard 聚合 =====
-
-    @Query(value = "SELECT sd.* FROM sensor_data sd " +
-           "INNER JOIN (SELECT device_id, MAX(reported_at) AS max_time FROM sensor_data GROUP BY device_id) latest " +
-           "ON sd.device_id = latest.device_id AND sd.reported_at = latest.max_time",
-           nativeQuery = true)
-    List<SensorData> findLatestPerDevice();
+    // ★ 全系统统一使用 illuminance（硬件和模拟器都发此字段）
+    String LIGHT_FIELD = "CAST(function('json_unquote', function('json_extract', s.dataJson, '$.illuminance')) AS double)";
 
     /**
      * 获取每个设备每种传感器类型的最新一条数据。
-     * 用于仪表盘"设备最新传感器数据"表格，展示每个设备的各类传感器最新读数。
      */
     @Query(value = "SELECT sd.* FROM sensor_data sd " +
            "INNER JOIN (SELECT device_id, sensor_type, MAX(reported_at) AS max_time " +
@@ -118,18 +86,12 @@ public interface SensorDataRepository extends JpaRepository<SensorData, Long> {
     @Query("SELECT COUNT(s) FROM SensorData s WHERE s.reportedAt >= :todayStart")
     long countToday(@Param("todayStart") LocalDateTime todayStart);
 
-    @Query("SELECT COALESCE(AVG(CAST(function('json_unquote', function('json_extract', s.dataJson, " +
-           "'$.lightIntensity')) AS double)), 0) FROM SensorData s WHERE s.reportedAt >= :todayStart")
-    Double avgTodayLight(@Param("todayStart") LocalDateTime todayStart);
-
-    @Query("SELECT HOUR(s.reportedAt) AS hr, AVG(CAST(function('json_unquote', " +
-           "function('json_extract', s.dataJson, '$.lightIntensity')) AS double)) AS avgVal " +
+    @Query("SELECT HOUR(s.reportedAt) AS hr, AVG(" + LIGHT_FIELD + ") AS avgVal " +
            "FROM SensorData s WHERE s.reportedAt >= :since " +
            "GROUP BY HOUR(s.reportedAt) ORDER BY hr")
     List<Object[]> hourlyAvgLightSince(@Param("since") LocalDateTime since);
 
-    @Query("SELECT HOUR(s.reportedAt) AS hr, AVG(CAST(function('json_unquote', " +
-           "function('json_extract', s.dataJson, '$.lightIntensity')) AS double)) AS avgVal " +
+    @Query("SELECT HOUR(s.reportedAt) AS hr, AVG(" + LIGHT_FIELD + ") AS avgVal " +
            "FROM SensorData s WHERE s.deviceId = :deviceId AND s.reportedAt >= :since " +
            "GROUP BY HOUR(s.reportedAt) ORDER BY hr")
     List<Object[]> hourlyAvgLightByDevice(@Param("deviceId") String deviceId,
@@ -175,17 +137,17 @@ public interface SensorDataRepository extends JpaRepository<SensorData, Long> {
                                                   @Param("field") String field,
                                                   @Param("since") LocalDateTime since);
 
-    // ===== 光照专用的按天聚合 (保留兼容) =====
+    // ===== 光照专用的按天聚合 (保留兼容) ★ COALESCE 兼容硬件 illuminance 和模拟器 lightIntensity =====
 
     @Query(value = "SELECT DATE(reported_at) AS dt, " +
-           "AVG(CAST(JSON_UNQUOTE(JSON_EXTRACT(data_json, '$.lightIntensity')) AS DOUBLE)) AS avg_val " +
+           "AVG(CAST(JSON_UNQUOTE(JSON_EXTRACT(data_json, '$.illuminance')) AS DOUBLE)) AS avg_val " +
            "FROM sensor_data WHERE reported_at >= :since " +
            "GROUP BY DATE(reported_at) ORDER BY dt",
            nativeQuery = true)
     List<Object[]> dailyAvgLightSince(@Param("since") LocalDateTime since);
 
     @Query(value = "SELECT DATE(reported_at) AS dt, " +
-           "AVG(CAST(JSON_UNQUOTE(JSON_EXTRACT(data_json, '$.lightIntensity')) AS DOUBLE)) AS avg_val " +
+           "AVG(CAST(JSON_UNQUOTE(JSON_EXTRACT(data_json, '$.illuminance')) AS DOUBLE)) AS avg_val " +
            "FROM sensor_data WHERE device_id = :deviceId AND reported_at >= :since " +
            "GROUP BY DATE(reported_at) ORDER BY dt",
            nativeQuery = true)

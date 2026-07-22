@@ -11,10 +11,4 @@ public interface AlarmRuleRepository extends JpaRepository<AlarmRule, Long> {
 
     /** 所有启用的规则 */
     List<AlarmRule> findByEnabledTrue();
-
-    /** 按规则类型查找启用的规则 */
-    List<AlarmRule> findByRuleTypeAndEnabledTrue(String ruleType);
-
-    /** 按设备查找启用的规则（含全局规则 deviceId=null） */
-    List<AlarmRule> findByDeviceIdOrDeviceIdIsNullAndEnabledTrue(String deviceId);
 }

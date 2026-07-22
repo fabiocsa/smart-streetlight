@@ -199,7 +199,7 @@ const compareMode = ref(false)
 const selectedDevice = ref('')
 const selectedDevices = ref([])
 const selectedRange = ref('24h')
-const selectedMetric = ref('lightIntensity')
+const selectedMetric = ref('illuminance')
 const loading = ref(false)
 const trendData = ref({})
 const compareTrends = ref([])
@@ -212,18 +212,20 @@ const totalSlots = computed(() => selectedRange.value === '24h' ? 24 : selectedR
 const COMPARE_COLORS = ['#409EFF', '#F56C6C', '#67C23A', '#E6A23C', '#9B59B6', '#1ABC9C']
 
 const metricOptions = [
-  { label: '光照强度 (Lux)', value: 'lightIntensity' },
+  { label: '光照强度 (Lux)', value: 'illuminance' },
   { label: '温度 (°C)', value: 'temperature' },
   { label: '功率 (W)', value: 'power' }
 ]
 
 const metricUnitsMap = {
+  illuminance: 'Lux',
   lightIntensity: 'Lux',
   temperature: '°C',
   power: 'W'
 }
 
 const metricLabels = {
+  illuminance: '光照强度',
   lightIntensity: '光照强度',
   temperature: '温度',
   power: '功率'

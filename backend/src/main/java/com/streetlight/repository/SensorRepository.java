@@ -25,12 +25,6 @@ public interface SensorRepository extends JpaRepository<Sensor, Long> {
     List<Sensor> findUnboundSensors();
 
     /**
-     * 查找所有未绑定且处于指定启用状态的传感器。
-     */
-    @Query(value = "SELECT s.* FROM sensor s WHERE s.id NOT IN (SELECT sensor_id FROM device_sensor) AND s.enabled = :enabled", nativeQuery = true)
-    List<Sensor> findUnboundSensorsByEnabled(@Param("enabled") Boolean enabled);
-
-    /**
      * 通过传感器 DB ID 反查其绑定的设备 business key（如 "SL-001"）。
      * 未绑定时返回空。
      */

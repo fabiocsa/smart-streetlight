@@ -377,10 +377,6 @@ public class SensorDataServiceImpl implements SensorDataService {
         if (illuminance instanceof Number) {
             return ((Number) illuminance).doubleValue();
         }
-        Object light = data.get("lightIntensity");
-        if (light instanceof Number) {
-            return ((Number) light).doubleValue();
-        }
         return null;
     }
 

@@ -21,7 +21,7 @@ export function getLatestSensorDataByType(sensorType) {
 }
 
 /** 通用传感器趋势：可选设备ID + 指标名(lightIntensity/temperature/humidity/power) + 时间范围(24h/7d/30d) */
-export function getSensorTrend(deviceId, metric = 'lightIntensity', range = '24h') {
+export function getSensorTrend(deviceId, metric = 'illuminance', range = '24h') {
   const params = { metric, range }
   if (deviceId) params.deviceId = deviceId
   return request.get('/dashboard/sensor-trend', { params })
@@ -35,7 +35,7 @@ export function getLightTrend(deviceId, range = '24h') {
 }
 
 /** 多设备趋势对比：传入设备ID数组，返回各设备趋势数据 */
-export function getSensorTrendCompare(deviceIds, metric = 'lightIntensity', range = '24h') {
+export function getSensorTrendCompare(deviceIds, metric = 'illuminance', range = '24h') {
   return request.post('/dashboard/sensor-trend-compare', { deviceIds, metric, range })
 }
 

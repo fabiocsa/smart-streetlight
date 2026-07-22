@@ -25,7 +25,7 @@ DEFAULT_TZ_OFFSET = 8  # UTC+8 (Asia/Shanghai)
 
 # 每种传感器类型只发送自己相关的字段（v5 — 按类型分离数据）
 SENSOR_TYPE_FIELDS = {
-    "light":       ["illuminance", "lightIntensity", "cloudCover", "status"],
+    "light":       ["illuminance", "cloudCover", "status"],
     "temperature": ["temperature"],
     "humidity":    ["humidity"],
     "power":       ["voltage", "power"],
@@ -347,7 +347,6 @@ def generate_sensor_data(
     # v5: 按传感器类型分离数据 — 每种类型只发送自己相关的字段
     full_data = {
         "illuminance": illuminance,
-        "lightIntensity": illuminance,
         "temperature": temperature,
         "humidity": humidity,
         "voltage": voltage,
@@ -480,7 +479,6 @@ def generate_sensor_data_with_template(
 SAMPLE_TEMPLATES = {
     "light": {
         "illuminance": 40,
-        "lightIntensity": 40,
         "cloudCover": 0.3,
         "status": "OFF",
         "sensorType": "light",

@@ -1,6 +1,5 @@
 package com.streetlight.entity;
 
-import com.streetlight.enums.DeviceStatus;
 import jakarta.persistence.*;
 import lombok.*;
 import org.hibernate.annotations.CreationTimestamp;

@@ -268,9 +268,7 @@ class SensorWorker:
                 try:
                     overrides = _json.loads(content)
                     base_payload.update(overrides)
-                    if "illuminance" in overrides and "lightIntensity" not in overrides:
-                        base_payload["lightIntensity"] = overrides["illuminance"]
-                    elif "lightIntensity" in overrides and "illuminance" not in overrides:
+                    if "lightIntensity" in overrides and "illuminance" not in overrides:
                         base_payload["illuminance"] = overrides["lightIntensity"]
                     logger.info(f"[{self._label}] 固定模式发送: illuminance={base_payload.get('illuminance')}, "
                                 f"sensorType={base_payload.get('sensorType')}")

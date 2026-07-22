@@ -89,12 +89,14 @@ public class SensorData {
 
     @Transient
     public Double getLightIntensity() {
-        return getDoubleField("lightIntensity");
+        Double v = getDoubleField("illuminance");
+        return v != null ? v : getDoubleField("lightIntensity");
     }
 
     @Transient
     public Double getIlluminance() {
-        return getDoubleField("illuminance");
+        Double v = getDoubleField("illuminance");
+        return v != null ? v : getDoubleField("lightIntensity");
     }
 
     @Transient

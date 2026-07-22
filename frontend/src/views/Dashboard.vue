@@ -147,8 +147,8 @@
 
         <div class="ctrl-logs">
           <span class="ctrl-label">最近操作</span>
-          <div v-if="recentControls.length === 0" class="logs-empty">暂无记录</div>
-          <div v-for="l in recentControls.slice(0, 3)" :key="l.id" class="log-item">
+          <div v-if="deviceRecentControls.length === 0" class="logs-empty">暂无记录</div>
+          <div v-for="l in deviceRecentControls.slice(0, 3)" :key="l.id" class="log-item">
             <span class="log-dot" :class="l.result === 'success' ? 'ok' : 'err'"></span>
             <span class="log-act">{{ l.command === 'on' ? '开灯' : '关灯' }} · {{ l.source === 'auto' ? '自动' : '手动' }}</span>
             <span class="log-time">{{ relativeTime(l.createdAt) }}</span>
@@ -184,6 +184,12 @@ const devices = ref([])
 const latestSensorData = ref([])
 const recentAlarms = ref([])
 const recentControls = ref([])
+// ★ 只显示当前选中设备的最近操作
+const deviceRecentControls = computed(() => {
+  const did = selectedDevice.value?.deviceId
+  if (!did) return []
+  return recentControls.value.filter(c => c.deviceId === did)
+})
 const focusDeviceId = ref(null)
 const ctrlBusy = ref(false)
 

@@ -150,11 +150,11 @@ public class DashboardService {
     // ==================== 光照趋势（兼容旧 API） ====================
 
     public Map<String, Object> getLightTrend(String deviceId) {
-        return getSensorTrend(deviceId, "lightIntensity", "24h");
+        return getSensorTrend(deviceId, "illuminance", "24h");
     }
 
     public Map<String, Object> getLightTrend(String deviceId, String range) {
-        return getSensorTrend(deviceId, "lightIntensity", range);
+        return getSensorTrend(deviceId, "illuminance", range);
     }
 
     // ==================== 通用传感器趋势 ====================
@@ -195,7 +195,7 @@ public class DashboardService {
         if (isHourly) {
             // 小时聚合（使用光照专用方法作为默认，其他 metric 用通用方法）
             List<Object[]> rows;
-            if ("lightIntensity".equals(metric)) {
+            if ("illuminance".equals(metric) || "lightIntensity".equals(metric)) {
                 rows = hasDevice
                         ? sensorDataRepository.hourlyAvgLightByDevice(deviceId, since)
                         : sensorDataRepository.hourlyAvgLightSince(since);
@@ -220,7 +220,7 @@ public class DashboardService {
         } else {
             // 天聚合
             List<Object[]> rows;
-            if ("lightIntensity".equals(metric)) {
+            if ("illuminance".equals(metric) || "lightIntensity".equals(metric)) {
                 rows = hasDevice
                         ? sensorDataRepository.dailyAvgLightByDevice(deviceId, since)
                         : sensorDataRepository.dailyAvgLightSince(since);
@@ -386,8 +386,8 @@ public class DashboardService {
      */
     private String sensorTypeForMetric(String metric) {
         switch (metric) {
-            case "lightIntensity": return "light";
             case "illuminance":    return "light";
+            case "lightIntensity": return "light";
             case "temperature":    return "temperature";
             case "humidity":       return "humidity";
             case "power":          return "power";

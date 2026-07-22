@@ -4,6 +4,11 @@
 
     <!-- 工具栏（左上角） -->
     <div class="map-toolbar">
+      <el-tooltip :content="is3D ? '切换为 2D 平面视图' : '切换为 3D 立体视图'" placement="right" :show-after="150" :hide-after="0">
+        <el-button size="small" @click="toggle3D">
+          <span class="tool-btn-label">{{ is3D ? '3D' : '2D' }}</span>
+        </el-button>
+      </el-tooltip>
       <el-tooltip content="拖拽移动地图" placement="right" :show-after="150" :hide-after="0">
         <el-button
           :type="currentTool === 'pan' ? 'primary' : 'default'"
@@ -14,7 +19,7 @@
           <span class="tool-btn-label">拖拽</span>
         </el-button>
       </el-tooltip>
-      <el-tooltip content="框选圈选设备 · Ctrl+点击可多选" placement="right" :show-after="150" :hide-after="0">
+      <el-tooltip content="框选圈选设备 · 按住 Ctrl 切换到框选，松开恢复拖拽" placement="right" :show-after="150" :hide-after="0">
         <el-button
           :type="currentTool === 'select' ? 'primary' : 'default'"
           size="small"
@@ -153,6 +158,21 @@ const AMAP_KEY = '89cb94c3464ebb41c9b691f12bf082ff'
 
 // ======================== 工具栏状态 ========================
 const currentTool = ref('pan')   // 'pan' | 'select' | 'add-location'
+const is3D = ref(true)
+
+function toggle3D() {
+  if (!map) return
+  is3D.value = !is3D.value
+  if (is3D.value) {
+    map.setPitch(55)
+    map.setViewMode('3D')
+    map.setShowBuildingBlock(true)
+  } else {
+    map.setPitch(0)
+    map.setViewMode('2D')
+    map.setShowBuildingBlock(false)
+  }
+}
 
 // ======================== 添加设备坐标 ========================
 const addLocationCoords = ref(null)
@@ -184,19 +204,34 @@ const contextMenu = reactive({
 })
 
 // ======================== 工具切换 ========================
-function switchTool(tool) {
+const savedTool = ref('pan')  // Ctrl 按下前保存的工具
+
+function switchTool(tool, keepSelection = false) {
   currentTool.value = tool
   if (!map) return
   if (tool === 'select') {
-    map.setStatus({ dragEnable: false })
+    map.setStatus({ dragEnable: false, rotateEnable: false, pitchEnable: false })
     mapContainer.value.style.cursor = 'crosshair'
   } else if (tool === 'add-location') {
-    map.setStatus({ dragEnable: true })
+    map.setStatus({ dragEnable: true, rotateEnable: true, pitchEnable: true })
     mapContainer.value.style.cursor = 'copy'
   } else {
-    map.setStatus({ dragEnable: true })
+    map.setStatus({ dragEnable: true, rotateEnable: true, pitchEnable: true })
     mapContainer.value.style.cursor = ''
-    clearSelection()
+    if (!keepSelection) clearSelection()
+  }
+}
+
+// ★ Ctrl 按住 → 框选模式；松开 → 恢复拖拽（保留已选中）
+function onKeyDown(e) {
+  if (e.key === 'Control' && !e.repeat && currentTool.value !== 'select') {
+    savedTool.value = currentTool.value
+    switchTool('select')
+  }
+}
+function onKeyUp(e) {
+  if (e.key === 'Control' && currentTool.value === 'select') {
+    switchTool(savedTool.value, true)
   }
 }
 
@@ -241,13 +276,15 @@ function createMarkerEl(device, selected) {
   wrap._dot = dot
   wrap._label = label
 
-  // hover 动画
+  // hover 动画（框选模式下全部禁用，避免拖拽卡顿）
   wrap.addEventListener('mouseenter', () => {
+    if (currentTool.value === 'select') return
     dot.style.transform = 'scale(1.4)'
     dot.style.boxShadow = '0 0 10px rgba(0,0,0,0.4), 0 0 0 4px rgba(64,158,255,0.3)'
     label.style.opacity = '0.85'
   })
   wrap.addEventListener('mouseleave', () => {
+    if (currentTool.value === 'select') return
     dot.style.transform = 'scale(1)'
     applyMarkerStyle(dot, device, selectedDeviceIds.has(device.id))
     label.style.opacity = '0.35'
@@ -334,7 +371,6 @@ function onMapMouseUp() {
   const minLat = Math.min(topLeft.lat, bottomRight.lat)
   const maxLat = Math.max(topLeft.lat, bottomRight.lat)
 
-  selectedDeviceIds.clear()
   markers.forEach(({ device }) => {
     if (device.longitude >= minLng && device.longitude <= maxLng &&
         device.latitude >= minLat && device.latitude <= maxLat) {
@@ -342,7 +378,7 @@ function onMapMouseUp() {
     }
   })
 
-  refreshMarkerStyles()
+  requestAnimationFrame(() => refreshMarkerStyles())
 }
 
 // ======================== 初始化地图 ========================
@@ -351,16 +387,17 @@ async function initMap() {
     AMap = await AMapLoader.load({
       key: AMAP_KEY,
       version: '2.0',
-      plugins: []
+      plugins: ['AMap.ControlBar']
     })
 
     map = new AMap.Map(mapContainer.value, {
       center: [106.5, 29.5],
-      zoom: 13,
-      viewMode: '2D',
-      // 隐藏无关地图元素
-      showBuildingBlock: false,
-      features: ['bg', 'road'],   // 仅显示底图+道路，隐藏 POI/建筑
+      zoom: 15,
+      pitch: 55,                    // 3D 视角倾斜度
+      rotation: 0,
+      viewMode: '3D',               // 3D 模式
+      showBuildingBlock: true,      // 显示建筑方块
+      features: ['bg', 'road', 'building'],
       resizeEnable: true
     })
 
@@ -396,12 +433,16 @@ async function initMap() {
       contextMenu.visible = true
     })
 
-    // 点击地图空白处关闭菜单、关闭信息窗
+    // 点击地图空白处关闭菜单
     map.on('click', (e) => {
-      // 点击空白处关闭右键菜单
       contextMenu.visible = false
-      // 不关闭信息窗（点击标记时会自动切换）
     })
+
+    map.addControl(new AMap.ControlBar({
+      position: 'RB',
+      showZoomBar: false,
+      showControlButton: true
+    }))
 
     updateMarkers()
     if (markers.length > 0) {
@@ -441,23 +482,22 @@ function updateMarkers() {
       offset: new AMap.Pixel(-10, -10)
     })
 
-    // 使用原生 DOM 事件（确保能获取 ctrlKey）
     el.addEventListener('click', (domEvent) => {
       domEvent.stopPropagation()
       if (domEvent.ctrlKey || domEvent.metaKey) {
-        // Ctrl+Click → 切换选中
         if (selectedDeviceIds.has(device.id)) {
           selectedDeviceIds.delete(device.id)
         } else {
           selectedDeviceIds.add(device.id)
         }
-        refreshMarkerStyles()
+        // 立即更新当前标记样式
+        applyMarkerStyle(el._dot || el, device, selectedDeviceIds.has(device.id))
         infoWindow.close()
         contextMenu.visible = false
         return
       }
 
-      // 普通点击 → 显示详情 + 通知父组件
+      // 普通点击 → 显示详情
       contextMenu.visible = false
       emit('select-device', device.deviceId)
       infoWindow.setContent(buildInfoContent(device))
@@ -743,10 +783,14 @@ watch(() => props.focusDeviceId, (id) => {
 })
 
 onMounted(() => {
+  document.addEventListener('keydown', onKeyDown)
+  document.addEventListener('keyup', onKeyUp)
   nextTick(initMap)
 })
 
 onBeforeUnmount(() => {
+  document.removeEventListener('keydown', onKeyDown)
+  document.removeEventListener('keyup', onKeyUp)
   if (infoWindow) infoWindow = null
   if (map) {
     map.destroy()
@@ -793,9 +837,11 @@ onBeforeUnmount(() => {
 }
 .map-toolbar .el-button {
   height: 28px;
+  min-width: 56px;
   padding: 0 6px !important;
   display: inline-flex !important;
   align-items: center !important;
+  justify-content: center;
   gap: 4px;
 }
 .map-toolbar .el-button .el-icon {
